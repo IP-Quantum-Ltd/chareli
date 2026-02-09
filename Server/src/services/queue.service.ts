@@ -2,6 +2,8 @@ import { Queue, Worker, Job, QueueEvents } from 'bullmq';
 import { redisService } from './redis.service';
 import logger from '../utils/logger';
 
+const WORKER_CONCURRENCY = 5;
+
 // Job types
 export enum JobType {
   GAME_ZIP_PROCESSING = 'game-zip-processing',
@@ -416,7 +418,7 @@ class QueueService {
 
     const worker = new Worker(queueName, processor, {
       connection: redisConfig,
-      concurrency: 5, // Reduced from 50 to match DB pool size (max: 3-5)
+      concurrency: WORKER_CONCURRENCY, // Reduced to match DB pool size
     });
 
     // Track active jobs for monitoring
@@ -429,13 +431,12 @@ class QueueService {
       activeJobs++;
       totalProcessed++;
 
-      // Log every 100 jobs or every 10th job if low volume
-      if (
+        if (
         totalProcessed % 100 === 0 ||
         (totalProcessed <= 100 && totalProcessed % 10 === 0)
       ) {
         logger.info(
-          `[WORKER:${queueName}] Active jobs: ${activeJobs}/5 | Total processed: ${totalProcessed} | Failed: ${totalFailed}`
+          `[WORKER:${queueName}] Active jobs: ${activeJobs}/${WORKER_CONCURRENCY} | Total processed: ${totalProcessed} | Failed: ${totalFailed}`
         );
       }
     });
@@ -447,7 +448,7 @@ class QueueService {
       // Log slow jobs (>1s) or periodically (every 500 jobs)
       if (duration > 1000 || totalProcessed % 500 === 0) {
         logger.info(
-          `[PERF:${queueName}] Job ${job.id} completed in ${duration}ms | Active: ${activeJobs}/5`
+          `[PERF:${queueName}] Job ${job.id} completed in ${duration}ms | Active: ${activeJobs}/${WORKER_CONCURRENCY}`
         );
       }
     });
@@ -457,7 +458,7 @@ class QueueService {
       totalFailed++;
       const duration = job.finishedOn ? job.finishedOn - job.processedOn : 0;
       logger.error(
-        `[PERF:${queueName}] Job ${job?.id} failed after ${duration}ms | Active: ${activeJobs}/5 | Total failed: ${totalFailed}`,
+        `[PERF:${queueName}] Job ${job?.id} failed after ${duration}ms | Active: ${activeJobs}/${WORKER_CONCURRENCY} | Total failed: ${totalFailed}`,
         error
       );
     });
@@ -485,7 +486,7 @@ class QueueService {
           const failed = await queue.getFailedCount();
 
           logger.info(
-            `[QUEUE:${queueName}] Waiting: ${waiting} | Active: ${active} | Completed: ${completed} | Failed: ${failed} | Worker concurrency: ${activeJobs}/5`
+            `[QUEUE:${queueName}] Waiting: ${waiting} | Active: ${active} | Completed: ${completed} | Failed: ${failed} | Worker concurrency: ${activeJobs}/${WORKER_CONCURRENCY}`
           );
         }
       } catch (error) {
