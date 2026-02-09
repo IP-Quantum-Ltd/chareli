@@ -435,7 +435,7 @@ class QueueService {
         (totalProcessed <= 100 && totalProcessed % 10 === 0)
       ) {
         logger.info(
-          `[WORKER:${queueName}] Active jobs: ${activeJobs}/50 | Total processed: ${totalProcessed} | Failed: ${totalFailed}`
+          `[WORKER:${queueName}] Active jobs: ${activeJobs}/5 | Total processed: ${totalProcessed} | Failed: ${totalFailed}`
         );
       }
     });
@@ -447,7 +447,7 @@ class QueueService {
       // Log slow jobs (>1s) or periodically (every 500 jobs)
       if (duration > 1000 || totalProcessed % 500 === 0) {
         logger.info(
-          `[PERF:${queueName}] Job ${job.id} completed in ${duration}ms | Active: ${activeJobs}/50`
+          `[PERF:${queueName}] Job ${job.id} completed in ${duration}ms | Active: ${activeJobs}/5`
         );
       }
     });
@@ -457,7 +457,7 @@ class QueueService {
       totalFailed++;
       const duration = job.finishedOn ? job.finishedOn - job.processedOn : 0;
       logger.error(
-        `[PERF:${queueName}] Job ${job?.id} failed after ${duration}ms | Active: ${activeJobs}/50 | Total failed: ${totalFailed}`,
+        `[PERF:${queueName}] Job ${job?.id} failed after ${duration}ms | Active: ${activeJobs}/5 | Total failed: ${totalFailed}`,
         error
       );
     });
@@ -485,7 +485,7 @@ class QueueService {
           const failed = await queue.getFailedCount();
 
           logger.info(
-            `[QUEUE:${queueName}] Waiting: ${waiting} | Active: ${active} | Completed: ${completed} | Failed: ${failed} | Worker concurrency: ${activeJobs}/50`
+            `[QUEUE:${queueName}] Waiting: ${waiting} | Active: ${active} | Completed: ${completed} | Failed: ${failed} | Worker concurrency: ${activeJobs}/5`
           );
         }
       } catch (error) {
