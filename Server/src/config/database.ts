@@ -26,9 +26,9 @@ export const AppDataSource = new DataSource({
     // - Current: 15 connections per instance (safe for dev/staging)
     //
     // Production: Adjust based on Supabase tier
-    // - Small (400 pooler): 20 instances × 15 = 300 (75% capacity, safe)
-    // - Medium (600 pooler): 20 instances × 20 = 400 (67% capacity, safe)
-    max: config.env === 'production' ? 8 : 10, // Increased from 5/10
+    // - Small (400 pooler): 50 instances × 15 = 300 (75% capacity, safe)
+    // - Medium (600 pooler): 50 instances × 20 = 400 (67% capacity, safe)
+    max: config.env === 'production' ? 3 : 5,
 
     // Connection management
     connectionTimeoutMillis: 30000, // 30s connection timeout
