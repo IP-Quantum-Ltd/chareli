@@ -416,7 +416,7 @@ class QueueService {
 
     const worker = new Worker(queueName, processor, {
       connection: redisConfig,
-      concurrency: 50, // Increased from 3 to handle 2000+ concurrent users
+      concurrency: 5, // Reduced from 50 to match DB pool size (max: 3-5)
     });
 
     // Track active jobs for monitoring
