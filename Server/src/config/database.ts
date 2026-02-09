@@ -2,13 +2,8 @@ import { DataSource } from 'typeorm';
 import config from './config';
 import path from 'path';
 
-export const AppDataSource = new DataSource({
-  type: 'postgres',
-  host: config.database.host,
-  port: config.database.port,
-  username: config.database.username,
-  password: config.database.password,
-  database: config.database.database,
+const commonOptions = {
+  type: 'postgres' as const,
   synchronize: false,
   logging: false, // Set to false to disable SQL query logs
   entities: [path.join(__dirname, '../entities/**/*.{ts,js}')],
@@ -40,7 +35,43 @@ export const AppDataSource = new DataSource({
     // Minimum pool size (keep some connections ready)
     min: 2,
   },
-});
+};
+
+// Use replication if a read host is configured
+// This allows offloading read queries to a replica (slave)
+const dataSourceOptions = config.database.readHost
+  ? {
+      ...commonOptions,
+      replication: {
+        master: {
+          host: config.database.host,
+          port: config.database.port,
+          username: config.database.username,
+          password: config.database.password,
+          database: config.database.database,
+        },
+        slaves: [
+          {
+            host: config.database.readHost,
+            port: config.database.port,
+            username: config.database.username,
+            password: config.database.password,
+            database: config.database.database,
+          },
+        ],
+      },
+    }
+  : {
+      ...commonOptions,
+      host: config.database.host,
+      port: config.database.port,
+      username: config.database.username,
+      password: config.database.password,
+      database: config.database.database,
+    };
+
+// Cast to any because TypeORM types struggle with the conditional replication union
+export const AppDataSource = new DataSource(dataSourceOptions as any);
 
 export const initializeDatabase = async (): Promise<void> => {
   try {
