@@ -18,8 +18,8 @@
     "test:verbose": "jest --verbose --runInBand",
     "test:debug": "jest --detectOpenHandles --verbose --runInBand",
     "test:ci": "jest --runInBand --forceExit --detectOpenHandles",
-    "warm-cache": "ts-node src/scripts/warmCache.ts",
-    "post-deploy": "ts-node src/scripts/post_deploy.ts"
+    "warm-cache": "node dist/scripts/warmCache.js",
+    "post-deploy": "node dist/scripts/post_deploy.js"
   },
   "keywords": [],
   "author": "",
