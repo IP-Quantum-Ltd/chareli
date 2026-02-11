@@ -17,6 +17,7 @@ interface Config {
     username: string;
     password: string;
     database: string;
+    readHost?: string;
   };
   jwt: {
     secret: string;
@@ -139,6 +140,7 @@ const config: Config = {
     username: process.env.DB_USERNAME || 'postgres',
     password: process.env.DB_PASSWORD || 'postgres',
     database: process.env.DB_DATABASE || 'chareli_db',
+    readHost: process.env.DB_READ_HOST,
   },
   jwt: {
     secret: process.env.JWT_SECRET || 'your_jwt_secret_key_here',

@@ -20,11 +20,14 @@ export const useGames = (params?: {
   return useQuery<PaginatedResponse<GameResponse>>({
     queryKey: [BackendRoute.GAMES, params],
     queryFn: async () => {
-      // Try CDN for popular filter (only if no search active)
+      // Try CDN for popular filter
+      // Strict check: Page 1 only, no search, no category (CDN JSON is a static top-list)
       if (
         cdnFetch.isEnabled() &&
         params?.filter === 'popular' &&
-        !params.search
+        !params.search &&
+        !params.categoryId &&
+        (!params.page || params.page === 1)
       ) {
         try {
           const result = await cdnFetch.fetch<GameResponse[]>({
@@ -48,6 +51,39 @@ export const useGames = (params?: {
           }
         } catch (error) {
           console.warn('[Games] CDN fetch failed for popular, using API:', error);
+          // Fall through to API
+        }
+      }
+
+      // Try CDN for recently_added filter
+      // games_active.json is naturally sorted by createdAt DESC, so we can use it here
+      if (
+        cdnFetch.isEnabled() &&
+        params?.filter === 'recently_added' &&
+        !params.search &&
+        !params.categoryId &&
+        (!params.page || params.page === 1)
+      ) {
+        try {
+          const result = await cdnFetch.fetch<GameResponse[]>({
+            cdnPath: 'games_active.json',
+            apiPath: BackendRoute.GAMES,
+          });
+
+          if (result.source === 'cdn') {
+            console.log('[Games] Using CDN for recently_added');
+            const limit = params?.limit || result.data.length;
+            const limitedData = result.data.slice(0, limit);
+
+            return {
+              data: limitedData,
+              total: result.data.length,
+              page: 1,
+              limit: limitedData.length,
+            } as PaginatedResponse<GameResponse>;
+          }
+        } catch (error) {
+          console.warn('[Games] CDN fetch failed for recently_added, using API:', error);
           // Fall through to API
         }
       }
