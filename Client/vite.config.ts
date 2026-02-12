@@ -5,9 +5,16 @@ import tailwindcss from '@tailwindcss/vite';
 import path from 'path';
 import { visualizer } from 'rollup-plugin-visualizer';
 import { createHtmlPlugin } from 'vite-plugin-html';
+import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig(({ mode }) => {
-  const plugins: PluginOption[] = [react(), tailwindcss(),createHtmlPlugin({
+  // Load env variables
+  const env = loadEnv(mode, process.cwd(), '');
+
+  const plugins: PluginOption[] = [
+    react(),
+    tailwindcss(),
+    createHtmlPlugin({
       minify: {
         collapseWhitespace: true,
         removeComments: true,
@@ -16,7 +23,84 @@ export default defineConfig(({ mode }) => {
         minifyCSS: true,
         minifyJS: true,
       },
-    }),];
+    }),
+    VitePWA({
+      registerType: 'autoUpdate',
+      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'android-chrome-192x192.png'],
+      manifest: {
+        name: 'ArcadesBox',
+        short_name: 'ArcadesBox',
+        description: 'Play amazing arcade games online',
+        theme_color: '#ffffff',
+        icons: [
+          {
+            src: 'android-chrome-192x192.png',
+            sizes: '192x192',
+            type: 'image/png'
+          },
+          {
+            src: 'android-chrome-512x512.png',
+            sizes: '512x512',
+            type: 'image/png'
+          }
+        ]
+      },
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
+        runtimeCaching: [
+          {
+            // Cache CDN JSON files with Stale-While-Revalidate
+            urlPattern: ({ url }: { url: URL }) => {
+              return url.hostname.includes('cdn.arcadesbox.org') && url.pathname.includes('/cdn/') && url.pathname.endsWith('.json');
+            },
+            handler: 'StaleWhileRevalidate' as const,
+            options: {
+              cacheName: 'cdn-json-cache',
+              expiration: {
+                maxEntries: 50,
+                maxAgeSeconds: 5 * 60, // 5 minutes
+              },
+              cacheableResponse: {
+                statuses: [0, 200, 304],
+              },
+            },
+          },
+          {
+            // Cache API responses with Network First
+            urlPattern: ({ url }: { url: URL }) => {
+              return url.hostname.includes('api') && url.hostname.includes('arcadesbox.com');
+            },
+            handler: 'NetworkFirst' as const,
+            options: {
+              cacheName: 'api-cache',
+              expiration: {
+                maxEntries: 30,
+                maxAgeSeconds: 5 * 60,
+              },
+              networkTimeoutSeconds: 3,
+            },
+          },
+          {
+            // Cache game images with Cache First
+            urlPattern: ({ url }: { url: URL }) => {
+              return url.hostname.includes('cdn.arcadesbox.org') && /\.(png|jpg|jpeg|webp|svg|gif)$/i.test(url.pathname);
+            },
+            handler: 'CacheFirst' as const,
+            options: {
+              cacheName: 'images-cache',
+              expiration: {
+                maxEntries: 100,
+                maxAgeSeconds: 30 * 24 * 60 * 60, // 30 days
+              },
+            },
+          },
+        ],
+      },
+      devOptions: {
+        enabled: false, // Disable in development to avoid conflicts
+      },
+    }),
+  ];
 
   if (mode === 'analyze' || process.env.ANALYZE === 'true') {
     plugins.push(
@@ -29,9 +113,6 @@ export default defineConfig(({ mode }) => {
       })
     );
   }
-
-  // Load env variables
-  const env = loadEnv(mode, process.cwd(), '');
 
   return {
     plugins,
