@@ -13,6 +13,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import mime from 'mime-types';
+import crypto from 'crypto';
 
 import { IStorageService, UploadResult } from './storage.interface';
 import config from '../config/config';
@@ -310,6 +311,109 @@ export class R2StorageAdapter implements IStorageService {
       });
       throw new Error(
         `Failed to upload file to R2: ${(error as Error).message}`
+      );
+    }
+  }
+
+  /**
+   * Get the ETag of an existing object via HEAD request (cheap operation)
+   * Returns null if object doesn't exist
+   */
+  async getObjectETag(key: string): Promise<string | null> {
+    try {
+      const command = new HeadObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+      });
+
+      const response = await this.s3Client.send(command);
+      return response.ETag?.replace(/"/g, '') || null;
+    } catch (error: any) {
+      // Object doesn't exist
+      if (error.name === 'NotFound' || error.$metadata?.httpStatusCode === 404) {
+        return null;
+      }
+      logger.error('Error getting object ETag from R2:', { error, key });
+      throw new Error(
+        `Failed to get object ETag: ${(error as Error).message}`
+      );
+    }
+  }
+
+  /**
+   * Calculate MD5 hash of content (matches R2's ETag for non-multipart uploads)
+   */
+  private calculateMD5(content: Buffer): string {
+    return crypto.createHash('md5').update(content).digest('hex');
+  }
+
+  /**
+   * Conditionally upload file only if content has changed
+   * Compares MD5 hash with existing ETag to avoid unnecessary uploads
+   * Saves R2 write operations and bandwidth costs
+   * 
+   * @returns uploaded: true if file was uploaded, false if skipped
+   * @returns etag: The ETag (either existing or new)
+   * @returns skipped: true if upload was skipped due to no changes
+   */
+  async uploadIfChanged(
+    key: string,
+    body: Buffer,
+    contentType: string,
+    metadata?: Record<string, string>,
+    cacheControl?: string
+  ): Promise<{ key: string; etag: string; uploaded: boolean; skipped: boolean }> {
+    const startTime = Date.now();
+
+    try {
+      // Calculate MD5 of new content
+      const newETag = this.calculateMD5(body);
+
+      // Check existing ETag via HEAD request (Class B operation - $0.40/million)
+      const existingETag = await this.getObjectETag(key);
+
+      // Compare ETags
+      if (existingETag && existingETag === newETag) {
+        // Content unchanged - skip upload
+        const duration = Date.now() - startTime;
+        logger.info(
+          `[OPTIMIZATION] Skipped upload (content unchanged) in ${duration}ms: ${key}, ETag: ${newETag}`
+        );
+        return {
+          key,
+          etag: newETag,
+          uploaded: false,
+          skipped: true,
+        };
+      }
+
+      // Content changed or doesn't exist - proceed with upload
+      const result = await this.uploadWithExactKey(
+        key,
+        body,
+        contentType,
+        metadata,
+        cacheControl
+      );
+
+      const duration = Date.now() - startTime;
+      logger.info(
+        `[OPTIMIZATION] Uploaded (content changed) in ${duration}ms: ${key}, ETag: ${result.etag}`
+      );
+
+      return {
+        ...result,
+        uploaded: true,
+        skipped: false,
+      };
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      logger.error(`[OPTIMIZATION] Conditional upload failed after ${duration}ms:`, {
+        error,
+        key,
+      });
+      throw new Error(
+        `Failed to conditionally upload file: ${(error as Error).message}`
       );
     }
   }

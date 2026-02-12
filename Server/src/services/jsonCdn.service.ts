@@ -808,7 +808,8 @@ Disallow: /
 
   /**
    * Upload JSON to R2 with CDN cache headers and ETag support
-   * Cache-Control changed to allow revalidation for ETag-based caching
+   * Uses conditional upload to skip unnecessary uploads when content hasn't changed
+   * This dramatically reduces R2 write operations and bandwidth costs
    */
   private async uploadJson(key: string, data: any): Promise<void> {
     try {
@@ -818,8 +819,8 @@ Disallow: /
       // Use exact key path for CDN files (e.g., cdn/categories.json)
       const fullKey = `cdn/${key}`;
 
-      // Upload with revalidation-friendly cache headers
-      const result = await this.r2Adapter.uploadWithExactKey(
+      // Conditionally upload only if content has changed
+      const result = await this.r2Adapter.uploadIfChanged(
         fullKey,
         buffer,
         'application/json',
@@ -830,12 +831,18 @@ Disallow: /
         'public, max-age=300, must-revalidate' // 5 minutes, allows conditional requests
       );
 
-      // Store ETag in Redis for 1 hour
-      if (result.etag) {
-        await redisService.setCdnETag(key, result.etag, 3600);
-        logger.info(`Uploaded JSON to R2: ${fullKey} (${buffer.length} bytes), ETag: ${result.etag}`);
+      // Store ETag in Redis for 1 hour (regardless of whether uploaded or skipped)
+      await redisService.setCdnETag(key, result.etag, 3600);
+
+      // Log with optimization status
+      if (result.skipped) {
+        logger.info(
+          `[COST OPTIMIZATION] Skipped R2 upload (content unchanged): ${fullKey} (${buffer.length} bytes), ETag: ${result.etag}`
+        );
       } else {
-        logger.info(`Uploaded JSON to R2: ${fullKey} (${buffer.length} bytes)`);
+        logger.info(
+          `[COST OPTIMIZATION] Uploaded to R2 (content changed): ${fullKey} (${buffer.length} bytes), ETag: ${result.etag}`
+        );
       }
     } catch (error) {
       logger.error(`Error uploading JSON ${key}:`, error);
