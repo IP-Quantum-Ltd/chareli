@@ -278,13 +278,15 @@ export class R2StorageAdapter implements IStorageService {
   /**
    * Upload file with exact key (no UUID prefix or modifications)
    * Useful for CDN JSON files that need predictable paths
+   * Returns both the key and ETag for cache validation
    */
   async uploadWithExactKey(
     key: string,
     body: Buffer,
     contentType: string,
-    metadata?: Record<string, string>
-  ): Promise<string> {
+    metadata?: Record<string, string>,
+    cacheControl?: string
+  ): Promise<{ key: string; etag: string }> {
     try {
       const command = new PutObjectCommand({
         Bucket: this.bucket,
@@ -292,13 +294,15 @@ export class R2StorageAdapter implements IStorageService {
         Body: body,
         ContentType: contentType,
         Metadata: metadata,
-        CacheControl: 'public, max-age=31536000, immutable', // 1 year cache
+        CacheControl: cacheControl || 'public, max-age=31536000, immutable',
       });
 
-      await this.s3Client.send(command);
-      logger.info(`Successfully uploaded file to R2 with exact key: ${key}`);
+      const response = await this.s3Client.send(command);
+      const etag = response.ETag?.replace(/"/g, '') || ''; // Remove quotes from ETag
 
-      return key;
+      logger.info(`Successfully uploaded file to R2 with exact key: ${key}, ETag: ${etag}`);
+
+      return { key, etag };
     } catch (error) {
       logger.error('Error uploading file with exact key to R2:', {
         error,

@@ -6,6 +6,7 @@ import { SystemConfig } from '../entities/SystemConfig';
 import { Analytics } from '../entities/Analytics';
 import { R2StorageAdapter } from './r2.storage.adapter';
 import { cloudflareCacheService } from './cloudflare-cache.service';
+import { redisService } from './redis.service';
 import logger from '../utils/logger';
 import config from '../config/config';
 import { In } from 'typeorm';
@@ -806,7 +807,8 @@ Disallow: /
   }
 
   /**
-   * Upload JSON to R2 with CDN cache headers
+   * Upload JSON to R2 with CDN cache headers and ETag support
+   * Cache-Control changed to allow revalidation for ETag-based caching
    */
   private async uploadJson(key: string, data: any): Promise<void> {
     try {
@@ -816,22 +818,31 @@ Disallow: /
       // Use exact key path for CDN files (e.g., cdn/categories.json)
       const fullKey = `cdn/${key}`;
 
-      await this.r2Adapter.uploadWithExactKey(
+      // Upload with revalidation-friendly cache headers
+      const result = await this.r2Adapter.uploadWithExactKey(
         fullKey,
         buffer,
         'application/json',
         {
           generatedAt: new Date().toISOString(),
           size: buffer.length.toString(),
-        }
+        },
+        'public, max-age=300, must-revalidate' // 5 minutes, allows conditional requests
       );
 
-      logger.info(`Uploaded JSON to R2: ${fullKey} (${buffer.length} bytes)`);
+      // Store ETag in Redis for 1 hour
+      if (result.etag) {
+        await redisService.setCdnETag(key, result.etag, 3600);
+        logger.info(`Uploaded JSON to R2: ${fullKey} (${buffer.length} bytes), ETag: ${result.etag}`);
+      } else {
+        logger.info(`Uploaded JSON to R2: ${fullKey} (${buffer.length} bytes)`);
+      }
     } catch (error) {
       logger.error(`Error uploading JSON ${key}:`, error);
       throw error;
     }
   }
+
 
   /**
    * Invalidate specific cache entries by regenerating them
