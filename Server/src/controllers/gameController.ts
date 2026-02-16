@@ -1139,28 +1139,64 @@ export const createGame = async (
       s3Key: permanentThumbnailKey,
     });
 
-    // Queue background job for ZIP processing
-    logger.info('Queuing background job for ZIP processing...');
-    console.log('🚀 [CREATE GAME] Queuing job for game:', {
-      gameId: game.id,
-      title,
-      gameFileKey,
-    });
+    // ============================================================================
+    // ZIP PROCESSING - Feature Flag (Cloudflare Worker vs Local BullMQ)
+    // ============================================================================
+    const useCloudflareWorker = process.env.ZIP_PROCESSING_MODE === 'cloudflare';
 
-    const job = await queueService.addGameZipProcessingJob({
-      gameId: game.id,
-      gameFileKey,
-      userId: req.user?.userId,
-    });
+    if (useCloudflareWorker) {
+      // ============================================================================
+      // [NEW] Cloudflare Worker handles ZIP processing automatically
+      // R2 event notification triggers worker when ZIP is uploaded to temp-games/
+      // Worker will send webhook to /api/internal/game-processed when complete
+      // ============================================================================
+      
+      // Store the temp file path in metadata so webhook can find it
+      game.metadata = {
+        ...game.metadata,
+        _tempGameFileKey: gameFileKey,
+        _uploadedAt: new Date().toISOString(),
+      } as any; // Casting to any since metadata is JSONB and can store arbitrary fields
+      await queryRunner.manager.save(game);
+      
+      logger.info('[CLOUDFLARE WORKER] ZIP will be processed by edge worker', {
+        gameId: game.id,
+        gameFileKey,
+      });
+      console.log('☁️  [CLOUDFLARE WORKER] Queued for edge processing:', {
+        gameId: game.id,
+        gameFileKey,
+      });
+      
+      // No job ID needed - worker processes automatically
+      // Game will be activated via webhook when processing completes
+    } else {
+      // ============================================================================
+      // [LEGACY] Local BullMQ Worker - Original system (kept for rollback)
+      // Can be re-enabled by setting ZIP_PROCESSING_MODE=local in .env
+      // ============================================================================
+      logger.info('[LOCAL WORKER] Queuing background job for ZIP processing...');
+      console.log('🚀 [CREATE GAME] Queuing job for game:', {
+        gameId: game.id,
+        title,
+        gameFileKey,
+      });
 
-    // Update game with job ID
-    game.jobId = job.id as string;
-    await queryRunner.manager.save(game);
+      const job = await queueService.addGameZipProcessingJob({
+        gameId: game.id,
+        gameFileKey,
+        userId: req.user?.userId,
+      });
 
-    console.log('✅ [CREATE GAME] Job queued successfully:', {
-      gameId: game.id,
-      jobId: job.id,
-    });
+      // Update game with job ID
+      game.jobId = job.id as string;
+      await queryRunner.manager.save(game);
+
+      console.log('✅ [CREATE GAME] Job queued successfully:', {
+        gameId: game.id,
+        jobId: job.id,
+      });
+    }
 
     // Note: Cleanup of temporary files will be handled by background workers
 
@@ -1486,30 +1522,56 @@ export const updateGame = async (
     if (gameFileKey) {
       logger.info(`Updating game file from temporary storage: ${gameFileKey}`);
 
-      // Queue background job for ZIP processing (same as create flow)
-      console.log('🚀 [UPDATE GAME] Queuing job for game:', {
-        gameId: game.id,
-        gameFileKey,
-      });
-
       // Set game to processing status and disabled until processing completes
       game.processingStatus = GameProcessingStatus.PENDING;
       game.status = GameStatus.DISABLED; // Disable until processing completes
       // processingError will be cleared by worker on successful completion
 
-      const job = await queueService.addGameZipProcessingJob({
-        gameId: game.id,
-        gameFileKey,
-        userId: req.user?.userId,
-      });
+      // ============================================================================
+      // ZIP PROCESSING - Feature Flag (Cloudflare Worker vs Local BullMQ)
+      // ============================================================================
+      const useCloudflareWorker = process.env.ZIP_PROCESSING_MODE === 'cloudflare';
 
-      // Update game with job ID
-      game.jobId = job.id as string;
+      if (useCloudflareWorker) {
+        // ============================================================================
+        // [NEW] Cloudflare Worker handles ZIP processing automatically
+        // R2 event notification triggers worker when ZIP is uploaded to temp-games/
+        // Worker will send webhook to /api/internal/game-processed when complete
+        // ============================================================================
+        logger.info('[CLOUDFLARE WORKER] ZIP will be processed by edge worker', {
+          gameId: game.id,
+          gameFileKey,
+        });
+        console.log('☁️  [CLOUDFLARE WORKER] Queued for edge processing:', {
+          gameId: game.id,
+          gameFileKey,
+        });
+        
+        // No job ID needed - worker processes automatically
+      } else {
+        // ============================================================================
+        // [LEGACY] Local BullMQ Worker - Original system (kept for rollback)
+        // Can be re-enabled by setting ZIP_PROCESSING_MODE=local in .env
+        // ============================================================================
+        console.log('🚀 [UPDATE GAME] Queuing job for game:', {
+          gameId: game.id,
+          gameFileKey,
+        });
 
-      console.log('✅ [UPDATE GAME] Job queued successfully:', {
-        gameId: game.id,
-        jobId: job.id,
-      });
+        const job = await queueService.addGameZipProcessingJob({
+          gameId: game.id,
+          gameFileKey,
+          userId: req.user?.userId,
+        });
+
+        // Update game with job ID
+        game.jobId = job.id as string;
+
+        console.log('✅ [UPDATE GAME] Job queued successfully:', {
+          gameId: game.id,
+          jobId: job.id,
+        });
+      }
     }
     // Handle game file upload - Old multer approach (for backward compatibility)
     else if (files?.gameFile && files.gameFile[0]) {
