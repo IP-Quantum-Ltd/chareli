@@ -1,45 +1,14 @@
-name = "chareli-game-zip-processor"
-main = "src/index.ts"
-compatibility_date = "2024-01-01"
+# Minimal config — infrastructure (bindings, KV, R2, vars) is managed by Terraform.
+# The worker name is overridden in CI via: wrangler deploy --name $WORKER_SCRIPT_NAME
 
-# Cloudflare Account ID (from your .env)
-account_id = "dacf6a813dc2999111d17089036c7fbc"
+name = "game-zip-processor"
+main = "src/index.ts"
+compatibility_date = "2026-02-16"
 
 # Queue consumer configuration
 [[queues.consumers]]
 queue = "game-zip-queue"
 max_batch_size = 1           # Process one ZIP at a time (resource-intensive)
 max_batch_timeout = 30       # Wait max 30s for batching
-max_retries = 3              # Retry failed jobs 3 times with exponential backoff
-dead_letter_queue = "game-zip-dlq"  # Failed jobs go here after 3 retries
-
-# R2 bucket binding (from your .env)
-[[r2_buckets]]
-binding = "GAME_BUCKET"
-bucket_name = "test-game-uploads"
-
-# KV namespace binding for status tracking
-[[kv_namespaces]]
-binding = "GAME_STATUS"
-id = "17ee0860cee94a7ea7d9d269c3d7b077"
-
-# Environment variables
-[vars]
-# Development: Using ngrok for local testing
-# Production: Use your actual API domain
-BACKEND_WEBHOOK_URL = "https://66d2-41-218-211-37.ngrok-free.app/api/internal/game-processed"
-
-# Secrets (set via: wrangler secret put WEBHOOK_SECRET)
-# Run this command to set the secret:
-# wrangler secret put WEBHOOK_SECRET
-# WEBHOOK_SECRET = "set-via-cli"
-
-# Staging environment (optional)
-[env.staging]
-[env.staging.vars]
-BACKEND_WEBHOOK_URL = "https://staging-api-domain.com/api/internal/game-processed"
-
-# Production environment (optional)
-[env.production]
-[env.production.vars]
-BACKEND_WEBHOOK_URL = "https://your-production-api.com/api/internal/game-processed"
+max_retries = 3              # Retry failed jobs 3 times
+dead_letter_queue = "game-zip-dlq"
