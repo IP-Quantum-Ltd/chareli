@@ -242,10 +242,38 @@ jobs:
             --data '{"purge_everything":true}'
           echo "Cache purge completed"
 
+  deploy-worker:
+    name: Deploy Game ZIP Worker to Cloudflare
+    needs: [detect-changes]
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref_name == 'release' && 'production' || github.ref_name == 'dev' && 'development' || github.ref_name == 'main' && 'staging' || 'development' }}
+    if: |
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      needs.detect-changes.outputs.backend == 'true'
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Deploy Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: Server/workers/game-zip-processor
+          command: deploy --name ${{ vars.WORKER_SCRIPT_NAME }}
+
   notify-discord:
     name: Notify Discord
     needs:
-      [detect-changes, build-and-test-backend, deploy-frontend, deploy-backend]
+      [
+        detect-changes,
+        build-and-test-backend,
+        deploy-frontend,
+        deploy-backend,
+        deploy-worker,
+      ]
     environment: ${{ github.ref_name == 'release' && 'production' || github.ref_name == 'dev' && 'development' || github.ref_name == 'main' && 'staging' || 'development' }}
     runs-on: ubuntu-latest
     permissions:
