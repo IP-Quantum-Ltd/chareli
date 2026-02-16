@@ -11,6 +11,7 @@ import analyticsRoutes from './analyticsRoutes';
 import adminRoutes from './adminRoutes';
 import cdnRoutes from './cdnRoutes';
 import gameProposalRoutes from './gameProposalRoutes';
+import webhookRoutes from './webhookRoutes';
 import { ApiError } from '../middlewares/errorHandler';
 
 const router = Router();
@@ -46,6 +47,7 @@ router.use('/analytics', analyticsRoutes);
 router.use('/admin', adminRoutes);
 router.use('/cdn', cdnRoutes);
 router.use('/game-proposals', gameProposalRoutes);
+router.use('/internal', webhookRoutes); // Internal webhooks from Cloudflare Worker
 
 // Handle 404 errors for routes that don't exist
 router.all('/:path', (req, _res, next) => {
