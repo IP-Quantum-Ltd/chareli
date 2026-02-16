@@ -45,6 +45,9 @@ dist-ssr
 .env.*
 !.env.example
 
+# Cloudflare Workers configuration (contains sensitive account IDs and secrets)
+Server/workers/*/wrangler.toml
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

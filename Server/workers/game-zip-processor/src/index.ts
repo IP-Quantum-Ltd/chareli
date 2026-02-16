@@ -188,8 +188,8 @@ async function processGameZip(gameId: string, zipKey: string, env: Env): Promise
   });
 
   // STEP 5: Upload each file to R2 (matches storageService.uploadDirectory)
-  // Use a unique folder ID (matches current system using uuidv4)
-  const gameFolderId = generateUUID();
+  // Use a unique folder ID using Cloudflare Workers' native crypto.randomUUID()
+  const gameFolderId = crypto.randomUUID();
   const gamePath = `games/${gameFolderId}`;
 
   console.log(`[${gameId}] ⬆️ Uploading files to permanent storage at: ${gamePath}`);
@@ -288,17 +288,6 @@ function findIndexHtml(fileEntries: [string, Uint8Array][]): string | null {
     }
   }
   return null;
-}
-
-/**
- * Generate UUID (matches v4 uuid format)
- */
-function generateUUID(): string {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === 'x' ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
 }
 
 /**

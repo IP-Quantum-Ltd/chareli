@@ -2,8 +2,9 @@ name = "chareli-game-zip-processor"
 main = "src/index.ts"
 compatibility_date = "2024-01-01"
 
-# Cloudflare Account ID (from your .env)
-account_id = "dacf6a813dc2999111d17089036c7fbc"
+# Cloudflare Account ID
+# Get this from: https://dash.cloudflare.com/ (right sidebar)
+account_id = "YOUR_CLOUDFLARE_ACCOUNT_ID"
 
 # Queue consumer configuration
 [[queues.consumers]]
@@ -13,33 +14,37 @@ max_batch_timeout = 30       # Wait max 30s for batching
 max_retries = 3              # Retry failed jobs 3 times with exponential backoff
 dead_letter_queue = "game-zip-dlq"  # Failed jobs go here after 3 retries
 
-# R2 bucket binding (from your .env)
+# R2 bucket binding
+# bucket_name should match your R2 bucket (e.g., from .env: R2_BUCKET)
 [[r2_buckets]]
 binding = "GAME_BUCKET"
-bucket_name = "test-game-uploads"
+bucket_name = "YOUR_R2_BUCKET_NAME"
 
 # KV namespace binding for status tracking
+# Create KV namespace: wrangler kv:namespace create "GAME_STATUS"
+# Copy the ID from the output
 [[kv_namespaces]]
 binding = "GAME_STATUS"
-id = "17ee0860cee94a7ea7d9d269c3d7b077"
+id = "YOUR_KV_NAMESPACE_ID"
 
 # Environment variables
 [vars]
 # Development: Using ngrok for local testing
 # Production: Use your actual API domain
-BACKEND_WEBHOOK_URL = "https://66d2-41-218-211-37.ngrok-free.app/api/internal/game-processed"
+BACKEND_WEBHOOK_URL = "YOUR_BACKEND_WEBHOOK_URL"
 
 # Secrets (set via: wrangler secret put WEBHOOK_SECRET)
 # Run this command to set the secret:
+# cd Server/workers/game-zip-processor
 # wrangler secret put WEBHOOK_SECRET
-# WEBHOOK_SECRET = "set-via-cli"
+# Then paste your secret from .env: CLOUDFLARE_WEBHOOK_SECRET
 
 # Staging environment (optional)
 [env.staging]
 [env.staging.vars]
-BACKEND_WEBHOOK_URL = "https://staging-api-domain.com/api/internal/game-processed"
+BACKEND_WEBHOOK_URL = "https://staging-api.yourdomain.com/api/internal/game-processed"
 
 # Production environment (optional)
 [env.production]
 [env.production.vars]
-BACKEND_WEBHOOK_URL = "https://your-production-api.com/api/internal/game-processed"
+BACKEND_WEBHOOK_URL = "https://api.yourdomain.com/api/internal/game-processed"
