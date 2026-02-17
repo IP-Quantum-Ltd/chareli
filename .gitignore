@@ -45,8 +45,8 @@ dist-ssr
 .env.*
 !.env.example
 
-# Cloudflare Workers configuration (contains sensitive account IDs and secrets)
-Server/workers/*/wrangler.toml
+# Cloudflare Workers - wrangler.toml is safe to commit (contains only placeholders)
+# Secrets and account IDs are injected at deploy time via CI variables
 
 # Editor directories and files
 .vscode/*

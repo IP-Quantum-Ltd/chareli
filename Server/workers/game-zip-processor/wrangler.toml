@@ -1,0 +1,18 @@
+# Minimal config — infrastructure bindings (KV, R2, vars) are managed by Terraform.
+# Queue consumer config stays here because Cloudflare validates the queue handler
+# exists in the script before allowing consumer registration.
+# The worker name is overridden in CI via: wrangler deploy --name $WORKER_SCRIPT_NAME
+# Queue names are templated in CI via sed to match Terraform-provisioned names.
+
+name = "game-zip-processor"
+main = "src/index.ts"
+compatibility_date = "2026-02-17"
+
+# Queue consumer configuration
+# NOTE: Queue names below are placeholders, replaced in CI with actual Terraform-provisioned names.
+[[queues.consumers]]
+queue = "GAME_ZIP_QUEUE_PLACEHOLDER"
+max_batch_size = 1           # Process one ZIP at a time (resource-intensive)
+max_batch_timeout = 30       # Wait max 30s for batching
+max_retries = 3              # Retry failed jobs 3 times
+dead_letter_queue = "GAME_ZIP_DLQ_PLACEHOLDER"
