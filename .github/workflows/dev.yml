@@ -281,6 +281,14 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Template wrangler.toml with environment queue names
+        working-directory: Server/workers/game-zip-processor
+        run: |
+          sed -i "s/GAME_ZIP_QUEUE_PLACEHOLDER/${{ vars.GAME_ZIP_QUEUE_NAME }}/g" wrangler.toml
+          sed -i "s/GAME_ZIP_DLQ_PLACEHOLDER/${{ vars.GAME_ZIP_DLQ_NAME }}/g" wrangler.toml
+          echo "--- wrangler.toml after templating ---"
+          cat wrangler.toml
+
       - name: Deploy Worker
         uses: cloudflare/wrangler-action@v3
         with:

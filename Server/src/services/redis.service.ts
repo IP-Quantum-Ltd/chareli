@@ -594,7 +594,45 @@ class RedisService {
   async deleteAllCdnETags(): Promise<number> {
     return await this.deletePattern('cdn:etag:*');
   }
+
+  // ============= IDEMPOTENCY METHODS =============
+
+  /**
+   * Atomically set a key only if it doesn't exist (idempotency check)
+   * Uses Redis SET NX EX for atomic operation across distributed systems
+   * @param key - The idempotency key
+   * @param value - The value to store (typically gameId or metadata)
+   * @param ttl - TTL in seconds (default: 3600 = 1 hour)
+   * @returns true if the key was set (first time), false if it already existed
+   */
+  async setIfNotExists(key: string, value: any, ttl: number = 3600): Promise<boolean> {
+    const result = await this.executeWithTimeout(async () => {
+      const serialized = JSON.stringify(value);
+      // SET key value EX ttl NX
+      // NX = Only set if key doesn't exist (atomic check-and-set)
+      // EX = Set expiry time in seconds
+      // ioredis requires EX and ttl before NX
+      const response = await this.redis.set(key, serialized, 'EX', ttl, 'NX');
+      // Returns 'OK' if set successfully (first time), null if key already exists
+      return response === 'OK';
+    }, 'setIfNotExists');
+
+    // If executeWithTimeout returns null (circuit breaker or error), treat as "new"
+    // This ensures webhook processing continues even if Redis is temporarily down
+    return result ?? true;
+  }
+
+
+  /**
+   * Check if an idempotency key has been processed and get its value
+   * @param key - The idempotency key to check
+   * @returns The stored value if exists, null otherwise
+   */
+  async getIdempotencyKey<T>(key: string): Promise<T | null> {
+    return await this.get<T>(key);
+  }
 }
 
 export const redisService = new RedisService();
+
 

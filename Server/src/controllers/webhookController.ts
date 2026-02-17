@@ -17,15 +17,14 @@ import { AppDataSource } from '../config/database';
 import { Game, GameProcessingStatus, GameStatus } from '../entities/Games';
 import { File } from '../entities/Files';
 import { websocketService } from '../services/websocket.service';
+import { redisService } from '../services/redis.service';
 import logger from '../utils/logger';
 
 const gameRepository = AppDataSource.getRepository(Game);
 const fileRepository = AppDataSource.getRepository(File);
 
-// Track processed idempotency keys (in-memory cache)
-// In production, use Redis for distributed systems
-const processedWebhooks = new Map<string, { timestamp: number; gameId: string }>();
-const IDEMPOTENCY_TTL = 3600000; // 1 hour
+// Idempotency TTL in seconds (1 hour)
+const IDEMPOTENCY_TTL = 3600;
 
 interface WebhookPayload {
   gameId: string;
@@ -77,7 +76,7 @@ export async function handleGameProcessed(req: Request, res: Response): Promise<
       return;
     }
 
-    // STEP 2: Check idempotency key (prevent duplicate processing)
+    // STEP 2: Check idempotency key (prevent duplicate processing using Redis)
     const idempotencyKey = req.headers['x-idempotency-key'] as string;
     if (!idempotencyKey) {
       logger.warn('[WEBHOOK] Missing idempotency key');
@@ -85,38 +84,42 @@ export async function handleGameProcessed(req: Request, res: Response): Promise<
       return;
     }
 
-    // Clean up expired keys
-    const now = Date.now();
-    for (const [key, value] of processedWebhooks.entries()) {
-      if (now - value.timestamp > IDEMPOTENCY_TTL) {
-        processedWebhooks.delete(key);
-      }
-    }
-
-    // Check if already processed
-    if (processedWebhooks.has(idempotencyKey)) {
-      const cached = processedWebhooks.get(idempotencyKey)!;
-      logger.info('[WEBHOOK] Duplicate webhook detected (idempotency)', {
-        idempotencyKey,
-        gameId: cached.gameId,
-        originalTimestamp: new Date(cached.timestamp).toISOString(),
-      });
-      res.status(200).json({ 
-        message: 'Already processed',
-        gameId: cached.gameId,
-      });
-      return;
-    }
-
-    // STEP 3: Parse and validate payload
+    // Parse gameId early for idempotency logging
     const payload: WebhookPayload = req.body;
-    const { gameId, status, entryPoint, s3Key, fileCount, totalSize, processedAt, error } = payload;
+    const { gameId } = payload;
 
     if (!gameId) {
       logger.warn('[WEBHOOK] Missing gameId in payload');
       res.status(400).json({ error: 'Missing gameId' });
       return;
     }
+
+    // Atomic idempotency check using Redis SET NX
+    // This works across multiple server instances (distributed system safe)
+    const redisKey = `webhook:idempotency:${idempotencyKey}`;
+    const isNew = await redisService.setIfNotExists(
+      redisKey,
+      { gameId, timestamp: new Date().toISOString() },
+      IDEMPOTENCY_TTL
+    );
+
+    if (!isNew) {
+      // Webhook already processed
+      const cached = await redisService.getIdempotencyKey<{ gameId: string; timestamp: string }>(redisKey);
+      logger.info('[WEBHOOK] Duplicate webhook detected (idempotency)', {
+        idempotencyKey,
+        gameId,
+        originalTimestamp: cached?.timestamp,
+      });
+      res.status(200).json({ 
+        message: 'Already processed',
+        gameId,
+      });
+      return;
+    }
+
+    // STEP 3: Parse remaining payload fields
+    const { status, entryPoint, s3Key, fileCount, totalSize, processedAt, error } = payload;
 
     logger.info('[WEBHOOK] Processing webhook', {
       gameId,
@@ -178,12 +181,8 @@ export async function handleGameProcessed(req: Request, res: Response): Promise<
       return;
     }
 
-    // STEP 6: Mark as processed (idempotency)
-    processedWebhooks.set(idempotencyKey, {
-      timestamp: now,
-      gameId,
-    });
-
+    // STEP 6: Webhook processed successfully
+    // Note: Idempotency already handled in STEP 2 via Redis SET NX
     logger.info('[WEBHOOK] Webhook processed successfully', { gameId, status });
     res.status(200).json({ 
       message: 'Webhook processed',
