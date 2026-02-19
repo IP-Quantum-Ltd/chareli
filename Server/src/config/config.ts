@@ -107,6 +107,10 @@ interface Config {
     apiToken: string;
     cdnZoneId: string;
     appZoneId: string;
+    webhookSecret: string;
+  };
+  zipProcessing: {
+    mode: 'local' | 'cloudflare';
   };
 }
 
@@ -244,6 +248,10 @@ const config: Config = {
     apiToken: process.env.CLOUDFLARE_API_TOKEN || '',
     cdnZoneId: process.env.CLOUDFLARE_CDN_ZONE_ID || '',
     appZoneId: process.env.CLOUDFLARE_APP_ZONE_ID || '',
+    webhookSecret: process.env.CLOUDFLARE_WEBHOOK_SECRET || '',
+  },
+  zipProcessing: {
+    mode: (process.env.ZIP_PROCESSING_MODE || 'local') as 'local' | 'cloudflare',
   },
 };
 
