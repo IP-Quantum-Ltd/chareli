@@ -1142,7 +1142,7 @@ export const createGame = async (
     // ============================================================================
     // ZIP PROCESSING - Feature Flag (Cloudflare Worker vs Local BullMQ)
     // ============================================================================
-    const useCloudflareWorker = process.env.ZIP_PROCESSING_MODE === 'cloudflare';
+    const useCloudflareWorker = config.zipProcessing.mode === 'cloudflare';
 
     if (useCloudflareWorker) {
       // ============================================================================
@@ -1530,7 +1530,7 @@ export const updateGame = async (
       // ============================================================================
       // ZIP PROCESSING - Feature Flag (Cloudflare Worker vs Local BullMQ)
       // ============================================================================
-      const useCloudflareWorker = process.env.ZIP_PROCESSING_MODE === 'cloudflare';
+      const useCloudflareWorker = config.zipProcessing.mode === 'cloudflare';
 
       if (useCloudflareWorker) {
         // ============================================================================
