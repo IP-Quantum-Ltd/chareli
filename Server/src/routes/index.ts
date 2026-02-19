@@ -13,6 +13,7 @@ import cdnRoutes from './cdnRoutes';
 import gameProposalRoutes from './gameProposalRoutes';
 import webhookRoutes from './webhookRoutes';
 import { ApiError } from '../middlewares/errorHandler';
+import { debugConfig } from '../controllers/debugController';
 
 const router = Router();
 
@@ -33,6 +34,19 @@ router.get('/health', (_req, res) => {
     message: 'API is running',
   });
 });
+
+/**
+ * @swagger
+ * /debug/config:
+ *   get:
+ *     summary: Debug config check
+ *     description: Check environment variables and config (masked for security)
+ *     tags: [Debug]
+ *     responses:
+ *       200:
+ *         description: Config debug info
+ */
+router.get('/debug/config', debugConfig);
 
 // API routes
 router.use('/auth', authRoutes);
