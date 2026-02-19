@@ -19,7 +19,6 @@ import { File } from '../entities/Files';
 import { websocketService } from '../services/websocket.service';
 import { redisService } from '../services/redis.service';
 import logger from '../utils/logger';
-import config from '../config/config';
 
 const gameRepository = AppDataSource.getRepository(Game);
 const fileRepository = AppDataSource.getRepository(File);
@@ -53,7 +52,7 @@ export async function handleGameProcessed(req: Request, res: Response): Promise<
 
     // STEP 1: Validate webhook secret
     const providedSecret = req.headers['x-webhook-secret'] as string;
-    const expectedSecret = config.cloudflare.webhookSecret;
+    const expectedSecret = process.env.CLOUDFLARE_WEBHOOK_SECRET;
 
     logger.info('[WEBHOOK] Secret validation', {
       hasProvidedSecret: !!providedSecret,
