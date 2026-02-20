@@ -33,8 +33,8 @@ class CacheInvalidationService {
       // Invalidate all search results (games may appear in search)
       await cacheService.invalidateAllSearches();
 
-      // Regenerate CDN JSON files and purge Cloudflare cache
-      await jsonCdnService.invalidateCache(['games_active', 'games_all', 'games_popular']);
+      // ✨ INCREMENTAL CDN UPDATE - Queue for batch processing
+      await jsonCdnService.queueGameUpdate(gameId);
 
       logger.info(`Successfully invalidated caches for game ${gameId}`);
     } catch (error) {
@@ -89,8 +89,8 @@ class CacheInvalidationService {
       // Invalidate search (new game should be searchable)
       await cacheService.invalidateAllSearches();
 
-      // Regenerate CDN JSON files and purge Cloudflare cache
-      await jsonCdnService.invalidateCache(['games_active', 'games_all', 'games_popular']);
+      // ✨ INCREMENTAL CDN UPDATE - Queue for batch processing
+      await jsonCdnService.queueGameUpdate(gameId);
 
       logger.info(`Successfully invalidated caches for new game ${gameId}`);
     } catch (error) {
@@ -122,8 +122,9 @@ class CacheInvalidationService {
       // Invalidate search
       await cacheService.invalidateAllSearches();
 
-      // Regenerate CDN JSON files and purge Cloudflare cache
-      await jsonCdnService.invalidateCache(['games_active', 'games_all', 'games_popular']);
+      // ✨ INCREMENTAL CDN UPDATE - Queue for batch processing
+      // The incremental update will handle removing the game from lists
+      await jsonCdnService.queueGameUpdate(gameId);
 
       logger.info(`Successfully invalidated caches for deleted game ${gameId}`);
     } catch (error) {

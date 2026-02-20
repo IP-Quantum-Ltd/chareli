@@ -38,6 +38,10 @@ class JsonCdnService {
     lastGenerationDuration: 0,
     failureCount: 0,
   };
+  
+  // Incremental update batching
+  private pendingUpdates = new Set<string>();
+  private updateTimer: NodeJS.Timeout | null = null;
 
   constructor() {
     this.config = {
@@ -961,6 +965,199 @@ Disallow: /
       count,
       version: '1.0',
     };
+  }
+
+  // ============================================================================
+  // INCREMENTAL CDN UPDATE METHODS
+  // ============================================================================
+
+  /**
+   * Queue a game for incremental CDN update (debounced batching)
+   * Collects multiple game updates within 10 seconds, then processes in batch
+   */
+  async queueGameUpdate(gameId: string): Promise<void> {
+    if (!this.config.enabled) {
+      logger.debug('JSON CDN is disabled, skipping queue');
+      return;
+    }
+
+    this.pendingUpdates.add(gameId);
+    logger.info(`[INCREMENTAL] Queued game ${gameId} for CDN update (${this.pendingUpdates.size} pending)`);
+
+    // Clear existing timer
+    if (this.updateTimer) {
+      clearTimeout(this.updateTimer);
+    }
+
+    // Set new timer - process batch after 10 seconds of inactivity
+    this.updateTimer = setTimeout(async () => {
+      await this.processPendingUpdates();
+    }, 10000);
+  }
+
+  /**
+   * Process all pending game updates in batch
+   */
+  private async processPendingUpdates(): Promise<void> {
+    if (this.pendingUpdates.size === 0) return;
+
+    const gameIds = Array.from(this.pendingUpdates);
+    this.pendingUpdates.clear();
+
+    logger.info(`[BATCH UPDATE] Processing ${gameIds.length} games`);
+
+    try {
+      // Process all updates in parallel
+      await Promise.all(
+        gameIds.map(gameId => this.updateSingleGameInLists(gameId))
+      );
+
+      logger.info(`✅ [BATCH UPDATE] Completed ${gameIds.length} games`);
+    } catch (error) {
+      logger.error('[BATCH UPDATE] Error processing updates:', error);
+      // Don't re-queue on error to avoid infinite loops
+    }
+  }
+
+  /**
+   * Update a single game in the CDN JSON files (incremental update)
+   * Instead of regenerating entire arrays, we patch the specific game
+   */
+  async updateSingleGameInLists(gameId: string): Promise<void> {
+    const startTime = Date.now();
+    
+    try {
+      logger.info(`[INCREMENTAL] Starting update for game ${gameId}`);
+
+      // Fetch the single updated game
+      const gameRepository = AppDataSource.getRepository(Game);
+      const game = await gameRepository.findOne({
+        where: { id: gameId },
+        relations: ['category', 'createdBy', 'thumbnailFile', 'gameFile'],
+      });
+
+      if (!game) {
+        logger.warn(`[INCREMENTAL] Game ${gameId} not found`);
+        return;
+      }
+
+      // Transform to CDN format
+      const userLikesCount = await this.getUserLikesCount(gameId);
+      const gameData = {
+        ...game,
+        likeCount: calculateLikeCount(game, userLikesCount),
+        thumbnailFile: game.thumbnailFile ? {
+          ...game.thumbnailFile,
+          s3Key: this.r2Adapter.getPublicUrl(game.thumbnailFile.s3Key),
+        } : null,
+        gameFile: game.gameFile ? {
+          ...game.gameFile,
+          s3Key: this.r2Adapter.getPublicUrl(game.gameFile.s3Key),
+        } : null,
+      };
+
+      // Update games_active.json (only if game is active)
+      if (game.status === GameStatus.ACTIVE) {
+        await this.patchGameInJson('games_active.json', gameData);
+      } else {
+        // If game is no longer active, remove it from games_active.json
+        await this.removeGameFromJson('games_active.json', gameId);
+      }
+
+      // Update games_all.json
+      await this.patchGameInJson('games_all.json', gameData);
+
+      // Update individual game detail file
+      await this.generateGameDetailJson(gameId, game.slug);
+
+      const duration = Date.now() - startTime;
+      logger.info(`✅ [INCREMENTAL] Updated game ${gameId} in ${duration}ms`);
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      logger.error(`[INCREMENTAL] Error updating game ${gameId} after ${duration}ms:`, error);
+      
+      // Fallback: trigger full regeneration
+      logger.warn('[INCREMENTAL] Falling back to full regeneration');
+      await this.generateAllJsonFiles();
+    }
+  }
+
+  /**
+   * Patch a single game in a JSON file (incremental update)
+   * Downloads existing JSON, updates the specific game, uploads
+   */
+  private async patchGameInJson(filename: string, gameData: any): Promise<void> {
+    const key = `cdn/${filename}`;
+
+    try {
+      // Download existing JSON
+      const existingBuffer = await this.r2Adapter.downloadFile(key);
+      const existingJson = JSON.parse(existingBuffer.toString('utf-8'));
+
+      // Find and replace the game in the array
+      const games = existingJson.games || [];
+      const index = games.findIndex((g: any) => g.id === gameData.id);
+
+      if (index >= 0) {
+        // Update existing game
+        games[index] = gameData;
+        logger.info(`[INCREMENTAL] Updated game at index ${index} in ${filename}`);
+      } else {
+        // Add new game (insert at beginning for "newest first" order)
+        games.unshift(gameData);
+        logger.info(`[INCREMENTAL] Added new game to ${filename} (now ${games.length} games)`);
+      }
+
+      // Update metadata
+      existingJson.metadata = this.createMetadata(games.length);
+
+      // Upload patched JSON (will skip if content unchanged via uploadIfChanged)
+      await this.uploadJson(filename, existingJson);
+    } catch (error: any) {
+      if (error.name === 'NoSuchKey' || error.$metadata?.httpStatusCode === 404) {
+        // File doesn't exist yet - do full generation as fallback
+        logger.warn(`[INCREMENTAL] ${filename} doesn't exist, cannot patch`);
+        throw error; // Let caller handle fallback
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Remove a game from a JSON file (for when game is deactivated)
+   */
+  private async removeGameFromJson(filename: string, gameId: string): Promise<void> {
+    const key = `cdn/${filename}`;
+
+    try {
+      // Download existing JSON
+      const existingBuffer = await this.r2Adapter.downloadFile(key);
+      const existingJson = JSON.parse(existingBuffer.toString('utf-8'));
+
+      // Filter out the game
+      const games = existingJson.games || [];
+      const filteredGames = games.filter((g: any) => g.id !== gameId);
+
+      if (filteredGames.length < games.length) {
+        logger.info(`[INCREMENTAL] Removed game ${gameId} from ${filename}`);
+        
+        // Update JSON
+        existingJson.games = filteredGames;
+        existingJson.metadata = this.createMetadata(filteredGames.length);
+
+        // Upload updated JSON
+        await this.uploadJson(filename, existingJson);
+      } else {
+        logger.debug(`[INCREMENTAL] Game ${gameId} not found in ${filename}, nothing to remove`);
+      }
+    } catch (error: any) {
+      if (error.name === 'NoSuchKey' || error.$metadata?.httpStatusCode === 404) {
+        // File doesn't exist - nothing to remove
+        logger.debug(`[INCREMENTAL] ${filename} doesn't exist, nothing to remove`);
+        return;
+      }
+      throw error;
+    }
   }
 }
 
