@@ -281,6 +281,10 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Install dependencies
+        working-directory: Server/workers/game-zip-processor
+        run: npm ci
+
       - name: Build & Deploy Worker Script (Content Only)
         working-directory: Server/workers/game-zip-processor
         env:
