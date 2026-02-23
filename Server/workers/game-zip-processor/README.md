@@ -100,7 +100,7 @@ wrangler tail
 |----------|-------------|--------|
 | `BACKEND_WEBHOOK_URL` | Backend webhook endpoint | wrangler.toml |
 | `WEBHOOK_SECRET` | Secret for webhook auth | wrangler secret |
-| `GAME_BUCKET` | R2 bucket binding | wrangler.toml |
+| `GAMES_BUCKET` | R2 bucket binding | wrangler.toml |
 | `GAME_STATUS` | KV namespace binding | wrangler.toml |
 
 ## 🔗 Related Files
