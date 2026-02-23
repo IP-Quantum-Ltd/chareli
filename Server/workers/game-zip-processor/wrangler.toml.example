@@ -20,7 +20,7 @@ account_id = "YOUR_CLOUDFLARE_ACCOUNT_ID"
 # R2 bucket binding
 # bucket_name should match your R2 bucket (e.g., from .env: R2_BUCKET)
 [[r2_buckets]]
-binding = "GAME_BUCKET"
+binding = "GAMES_BUCKET"
 bucket_name = "YOUR_R2_BUCKET_NAME"
 
 # KV namespace binding for status tracking

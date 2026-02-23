@@ -25,7 +25,7 @@
 import { unzip } from 'fflate';
 
 export interface Env {
-  GAME_BUCKET: R2Bucket;
+  GAMES_BUCKET: R2Bucket;
   GAME_STATUS: KVNamespace;
   BACKEND_WEBHOOK_URL: string;
   WEBHOOK_SECRET?: string;
@@ -138,7 +138,7 @@ async function processGameZip(gameId: string, zipKey: string, env: Env): Promise
 
   // STEP 2: Download ZIP from R2 (matches storageService.downloadFile)
   console.log(`[${gameId}] ⬇️ Downloading ZIP from R2...`);
-  const zipObject = await env.GAME_BUCKET.get(zipKey);
+  const zipObject = await env.GAMES_BUCKET.get(zipKey);
   if (!zipObject) {
     throw new Error(`ZIP file not found: ${zipKey}`);
   }
@@ -213,7 +213,7 @@ async function processGameZip(gameId: string, zipKey: string, env: Env): Promise
     const destKey = `${gamePath}/${filePath}`;
     const contentType = getContentType(filePath);
 
-    await env.GAME_BUCKET.put(destKey, fileData, {
+    await env.GAMES_BUCKET.put(destKey, fileData, {
       httpMetadata: {
         contentType,
         cacheControl: 'public, max-age=31536000', // Cache for 1 year
@@ -266,7 +266,7 @@ async function processGameZip(gameId: string, zipKey: string, env: Env): Promise
   // STEP 8: Delete source ZIP (cleanup - matches current system)
   console.log(`[${gameId}] 🗑️ Cleaning up source ZIP...`);
   try {
-    await env.GAME_BUCKET.delete(zipKey);
+    await env.GAMES_BUCKET.delete(zipKey);
   } catch (error) {
     console.warn(`[${gameId}] ⚠️ Failed to delete source ZIP:`, error);
     // Don't fail the job for cleanup errors
