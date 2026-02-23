@@ -13,13 +13,9 @@ compatibility_date = "2024-01-01"
 account_id = "YOUR_CLOUDFLARE_ACCOUNT_ID"
 
 # Queue consumer configuration
-# NOTE: Queue names below are placeholders, replaced in CI with actual Terraform-provisioned names.
-[[queues.consumers]]
-queue = "GAME_ZIP_QUEUE_PLACEHOLDER"
-max_batch_size = 1           # Process one ZIP at a time (resource-intensive)
-max_batch_timeout = 30       # Wait max 30s for batching
-max_retries = 3              # Retry failed jobs 3 times with exponential backoff
-dead_letter_queue = "game-zip-dlq"  # Failed jobs go here after 3 retries
+# NOTE: This section is now managed by Terraform in the iac-arcadesbox repository.
+# wrangler.toml is kept for local development (wrangler dev) only.
+# In production, Cloudflare validates that a script has a queue handler before permitting consumer attachment.
 
 # R2 bucket binding
 # bucket_name should match your R2 bucket (e.g., from .env: R2_BUCKET)
