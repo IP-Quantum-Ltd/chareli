@@ -270,7 +270,7 @@ jobs:
           echo "🏗️ Building worker..."
           # Build specifically for production-like environment (transpiling TS to JS)
           # We use --dry-run to trigger the build process and --outdir to capture the output
-          npx wrangler build --outdir dist
+          npx wrangler deploy --dry-run --outdir dist
 
           echo "🚀 Uploading script content to Cloudflare..."
           # The `/content` endpoint updates only the script, preserving all Provisioned Bindings
