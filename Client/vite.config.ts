@@ -163,12 +163,14 @@ export default defineConfig(({ mode }) => {
           },
         },
       },
-      sourcemap: false,
+      // Staging: minified + source maps + console.logs (debuggable)
+      // Production: fully minified, no source maps, no console.logs (optimized)
+      sourcemap: mode === 'staging',
       minify: 'terser',
       terserOptions: {
         compress: {
-          drop_console: true,
-          drop_debugger: true,
+          drop_console: mode !== 'staging',  // Keep console.logs ONLY in staging
+          drop_debugger: mode !== 'staging', // Keep debugger ONLY in staging
         },
         format: {
           comments: false,
