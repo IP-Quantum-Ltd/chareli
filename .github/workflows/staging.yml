@@ -270,7 +270,7 @@ jobs:
           echo "🏗️ Building worker..."
           # Build specifically for production-like environment (transpiling TS to JS)
           # We use --dry-run to trigger the build process and --outdir to capture the output
-          npx wrangler deploy --dry-run --outdir dist --name $WORKER_NAME
+          npx wrangler deploy --dry-run --outdir dist
 
           echo "🚀 Uploading script content to Cloudflare..."
           # The `/content` endpoint updates only the script, preserving all Provisioned Bindings
@@ -282,10 +282,10 @@ jobs:
             exit 1
           fi
 
-          curl -X PUT "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$WORKER_NAME/content" \
+          curl -X PUT "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$WORKER_NAME" \
                -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-               -H "Content-Type: application/javascript+module" \
-               --data-binary "@$BUNDLE_FILE"
+               -F "metadata={\"main_module\":\"index.js\"}" \
+               -F "index.js=@$BUNDLE_FILE;type=application/javascript+module"
 
           echo "✅ Worker script updated successfully (bindings preserved)"
 
