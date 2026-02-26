@@ -1,10 +1,30 @@
-name = "game-zip-processor" # Overridden at deploy time via WORKER_NAME in CI
+name = "${WORKER_SCRIPT_NAME}"
 main = "src/index.ts"
-compatibility_date = "2026-02-24"
+compatibility_date = "2026-02-17"
 compatibility_flags = ["nodejs_compat"]
 
-# Bindings are NOT defined here — they are managed exclusively by Terraform (worker.tf).
-# This file is only used by wrangler for the --dry-run build step.
-# Deployment uses the Cloudflare Workers REST API (curl) to update script content only,
-# which preserves all existing Terraform-managed bindings.
+# ─────────────────────────────────────────────────────────────────────────────
+# These values are injected at CI time via envsubst from GitHub secrets/vars.
+# They must match exactly what Terraform provisions to prevent drift.
+# See: iac-arcadesbox/worker.tf for the Terraform source of truth.
+# ─────────────────────────────────────────────────────────────────────────────
+
+[[r2_buckets]]
+binding    = "GAMES_BUCKET"
+bucket_name = "${R2_GAMES_BUCKET_NAME}"
+
+[[kv_namespaces]]
+binding = "GAME_STATUS"
+id      = "${CLOUDFLARE_KV_NAMESPACE_ID}"
+
+[[queues.producers]]
+binding = "GAME_ZIP_QUEUE"
+queue   = "${CLOUDFLARE_QUEUE_NAME}"
+
+[[queues.producers]]
+binding = "GAME_ZIP_DLQ"
+queue   = "${CLOUDFLARE_DLQ_NAME}"
+
+[vars]
+BACKEND_WEBHOOK_URL = "${WORKER_BACKEND_WEBHOOK_URL}"
 
