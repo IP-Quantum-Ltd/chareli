@@ -1,0 +1,16 @@
+{
+	"folders": [
+		{
+			"path": "../iac-arcadesbox"
+		},
+		{
+			"path": "."
+		},
+		{
+			"path": "../backup-tool"
+		}
+	],
+  "settings": {
+    "postman.settings.dotenv-detection-notification-visibility": false
+  }
+}

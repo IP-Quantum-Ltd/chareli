@@ -2,16 +2,16 @@
  * ============================================================================
  * Chareli Game ZIP Processor - Cloudflare Worker
  * ============================================================================
- * 
+ *
  * This worker matches the exact logic of Server/src/services/zip.service.ts
  * and Server/src/workers/gameZipProcessor.ts
- * 
+ *
  * KEY BEHAVIORS (matching current system):
  * - Recursively searches for index.html (case-insensitive)
  * - Uploads all files from ZIP to R2
  * - Preserves directory structure
  * - Sends webhook to backend when complete
- * 
+ *
  * FLOW:
  * 1. User uploads ZIP → R2 storage (uploads/{gameId}/game.zip)
  * 2. R2 event notification → Triggers this worker via queue
@@ -22,7 +22,7 @@
  * 7. Backend updates database and emits WebSocket
  */
 
-import { unzip } from 'fflate';
+import { unzipSync } from 'fflate';
 
 export interface Env {
   GAMES_BUCKET: R2Bucket;
@@ -81,7 +81,7 @@ export default {
     // We need to extract the UUID (everything except the last timestamp segment)
     const folderName = pathParts[1]; // e.g., "7ad4c4c1-cb38-4ad5-b3f4-d8b9065733db-1770978040452"
     const parts = folderName.split('-');
-    
+
     // UUID has 5 segments (8-4-4-4-12 format), timestamp is the 6th segment
     // Rejoin the first 5 segments to get the complete UUID
     const gameId = parts.slice(0, 5).join('-');
@@ -157,15 +157,9 @@ async function processGameZip(gameId: string, zipKey: string, env: Env): Promise
   const zipBuffer = await zipObject.arrayBuffer();
   const zipData = new Uint8Array(zipBuffer);
 
-  const files = await new Promise<Record<string, Uint8Array>>((resolve, reject) => {
-    unzip(zipData, (err, result) => {
-      if (err) {
-        reject(new Error(`ZIP extraction failed: ${err.message}`));
-      } else {
-        resolve(result);
-      }
-    });
-  });
+  // unzipSync runs inline — unzip() uses new Worker() internally which
+  // is not available in the Cloudflare Workers runtime.
+  const files = unzipSync(zipData);
 
   const fileEntries = Object.entries(files);
   console.log(`[${gameId}] ✅ Extracted ${fileEntries.length} files`);
@@ -373,15 +367,15 @@ function getContentType(filename: string): string {
     htm: 'text/html',
     txt: 'text/plain',
     xml: 'application/xml',
-    
+
     // JavaScript/JSON
     js: 'application/javascript',
     mjs: 'application/javascript',
     json: 'application/json',
-    
+
     // CSS
     css: 'text/css',
-    
+
     // Images
     png: 'image/png',
     jpg: 'image/jpeg',
@@ -391,31 +385,31 @@ function getContentType(filename: string): string {
     webp: 'image/webp',
     ico: 'image/x-icon',
     bmp: 'image/bmp',
-    
+
     // Fonts
     woff: 'font/woff',
     woff2: 'font/woff2',
     ttf: 'font/ttf',
     otf: 'font/otf',
     eot: 'application/vnd.ms-fontobject',
-    
+
     // Audio
     mp3: 'audio/mpeg',
     ogg: 'audio/ogg',
     wav: 'audio/wav',
     m4a: 'audio/mp4',
-    
+
     // Video
     mp4: 'video/mp4',
     webm: 'video/webm',
     ogv: 'video/ogg',
-    
+
     // Other
     wasm: 'application/wasm',
     pdf: 'application/pdf',
     zip: 'application/zip',
     map: 'application/json',
   };
-  
+
   return types[ext || ''] || 'application/octet-stream';
 }
