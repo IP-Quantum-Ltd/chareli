@@ -1,34 +1,17 @@
-name = "game-zip-processor" # Overridden in CI with --name
+name = "game-zip-processor" # Overridden at deploy time via --name $WORKER_NAME
 main = "src/index.ts"
 compatibility_date = "2026-02-24"
 compatibility_flags = ["nodejs_compat"]
 
-# Account ID should be injected via CI if possible
-# but safe to commit if needed
-account_id = "YOUR_CLOUDFLARE_ACCOUNT_ID"
-
-############################################
-# R2 Binding (Provisioned via Terraform)
-############################################
-[[r2_buckets]]
-binding = "GAMES_BUCKET"
-bucket_name = "game-assets-bucket"
-
 ############################################
 # KV Namespace (Provisioned via Terraform)
+# ID is injected at CI time from the
+# Terraform output via CLOUDFLARE_KV_NAMESPACE_ID secret
 ############################################
 [[kv_namespaces]]
 binding = "GAME_STATUS"
-id = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+id = "$CLOUDFLARE_KV_NAMESPACE_ID"
 
-############################################
-# Queue Consumer (Terraform attaches consumer)
-# This exists so Cloudflare validates handler
-############################################
-[[queues.consumers]]
-queue = "game-zip-queue"
-
-############################################
-# Environment Variables (Non-secret only)
-############################################
-BACKEND_WEBHOOK_URL = "https://api-staging.arcadesbox.com/api/internal/game-processed"
+# NOTE: R2, Queue bindings and env vars are managed exclusively by
+# Terraform (worker.tf). They are preserved during wrangler deploy
+# via --keep-vars. Do NOT define them here to avoid drift.

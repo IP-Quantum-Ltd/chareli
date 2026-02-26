@@ -260,34 +260,24 @@ jobs:
         working-directory: Server/workers/game-zip-processor
         run: npm ci
 
-      - name: Build & Deploy Worker Script (Content Only)
+      - name: Deploy Worker Script via Wrangler
         working-directory: Server/workers/game-zip-processor
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          WORKER_NAME: ${{ vars.WORKER_SCRIPT_NAME }}
+          # Populated from the Terraform output: kv_namespace_id
+          # Run: terraform output -raw kv_namespace_id  and store in this secret
+          CLOUDFLARE_KV_NAMESPACE_ID: ${{ secrets.CLOUDFLARE_KV_NAMESPACE_ID }}
         run: |
-          echo "🏗️ Building worker..."
-          # Build specifically for production-like environment (transpiling TS to JS)
-          # We use --dry-run to trigger the build process and --outdir to capture the output
-          npx wrangler deploy --dry-run --outdir dist
+          echo "🚀 Deploying worker via wrangler..."
+          # --name overrides the name in wrangler.toml with the Terraform-provisioned script name
+          # --keep-vars preserves all bindings set by Terraform (R2, Queue, BACKEND_WEBHOOK_URL etc.)
+          # wrangler correctly bundles fflate and all other dependencies as a multi-module worker
+          npx wrangler deploy \
+            --name ${{ vars.WORKER_SCRIPT_NAME }} \
+            --keep-vars
 
-          echo "🚀 Uploading script content to Cloudflare..."
-          # The `/content` endpoint updates only the script, preserving all Provisioned Bindings
-          # Cloudflare usually names the bundled file index.js or worker.js
-          BUNDLE_FILE=$(find dist -name "*.js" | head -n 1)
-
-          if [ -z "$BUNDLE_FILE" ]; then
-            echo "❌ Error: Could not find bundled script in dist/"
-            exit 1
-          fi
-
-          curl -X PUT "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$WORKER_NAME" \
-               -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-               -F "metadata={\"main_module\":\"index.js\"}" \
-               -F "index.js=@$BUNDLE_FILE;type=application/javascript+module"
-
-          echo "✅ Worker script updated successfully (bindings preserved)"
+          echo "✅ Worker deployed successfully (Terraform bindings preserved)"
 
   notify-discord:
     name: Notify Discord
