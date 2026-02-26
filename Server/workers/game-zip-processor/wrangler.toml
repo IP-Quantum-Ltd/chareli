@@ -11,19 +11,19 @@ compatibility_flags = ["nodejs_compat"]
 
 [[r2_buckets]]
 binding    = "GAMES_BUCKET"
-bucket_name = "${R2_GAMES_BUCKET_NAME}"
+bucket_name = "${GAMES_BUCKET_NAME}"
 
 [[kv_namespaces]]
 binding = "GAME_STATUS"
 id      = "${CLOUDFLARE_KV_NAMESPACE_ID}"
 
-[[queues.producers]]
-binding = "GAME_ZIP_QUEUE"
-queue   = "${CLOUDFLARE_QUEUE_NAME}"
-
-[[queues.producers]]
-binding = "GAME_ZIP_DLQ"
-queue   = "${CLOUDFLARE_DLQ_NAME}"
+[[queues.consumers]]
+binding           = "GAME_ZIP_QUEUE"
+queue             = "${GAME_ZIP_QUEUE_NAME}"
+max_batch_size    = 10
+max_batch_timeout = 30
+max_retries       = 3
+dead_letter_queue = "${GAME_ZIP_DLQ_NAME}"
 
 [vars]
 BACKEND_WEBHOOK_URL = "${WORKER_BACKEND_WEBHOOK_URL}"

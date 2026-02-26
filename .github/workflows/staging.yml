@@ -270,10 +270,10 @@ jobs:
           # From: terraform output -raw kv_namespace_id  → store as secret
           CLOUDFLARE_KV_NAMESPACE_ID: ${{ secrets.CLOUDFLARE_KV_NAMESPACE_ID }}
           # R2 bucket name: arcadesbox-games-cdn-{env}-v1
-          R2_GAMES_BUCKET_NAME: ${{ vars.R2_GAMES_BUCKET_NAME }}
+          GAMES_BUCKET_NAME: ${{ vars.GAMES_BUCKET_NAME }}
           # Queue names provisioned by Terraform
-          CLOUDFLARE_QUEUE_NAME: ${{ vars.CLOUDFLARE_QUEUE_NAME }}
-          CLOUDFLARE_DLQ_NAME: ${{ vars.CLOUDFLARE_DLQ_NAME }}
+          CLOUDFLARE_QUEUE_NAME: ${{ vars.GAME_ZIP_QUEUE_NAME }}
+          CLOUDFLARE_DLQ_NAME: ${{ vars.GAME_ZIP_DLQ_NAME }}
           # Backend webhook URL for this environment
           WORKER_BACKEND_WEBHOOK_URL: ${{ vars.WORKER_BACKEND_WEBHOOK_URL }}
         run: |
