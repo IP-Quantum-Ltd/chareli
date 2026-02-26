@@ -59,7 +59,7 @@ interface GameStatus {
  */
 export default {
   async queue(batch: MessageBatch<R2EventMessage>, env: Env): Promise<void> {
-    console.log(`📦 Processing batch of ${batch.messages.length} messages`);
+    console.log(`📦 Worker version: unzipSync-fix | Processing batch of ${batch.messages.length} messages`);
 
     for (const message of batch.messages) {
       const event = message.body;
