@@ -1,13 +1,34 @@
-# Minimal config — infrastructure bindings (KV, R2, vars) are managed by Terraform.
-# Queue consumer config stays here because Cloudflare validates the queue handler
-# exists in the script before allowing consumer registration.
-# The worker name is overridden in CI via: wrangler deploy --name $WORKER_SCRIPT_NAME
-# Queue names are templated in CI via sed to match Terraform-provisioned names.
-
-name = "game-zip-processor"
+name = "game-zip-processor" # Overridden in CI with --name
 main = "src/index.ts"
-compatibility_date = "2026-02-17"
+compatibility_date = "2026-02-24"
+compatibility_flags = ["nodejs_compat"]
 
-# Queue consumer configuration
-# NOTE: Queue names below are placeholders, replaced in CI with actual Terraform-provisioned names.
-# This section is now managed by Terraform in worker.tf
+# Account ID should be injected via CI if possible
+# but safe to commit if needed
+account_id = "YOUR_CLOUDFLARE_ACCOUNT_ID"
+
+############################################
+# R2 Binding (Provisioned via Terraform)
+############################################
+[[r2_buckets]]
+binding = "GAMES_BUCKET"
+bucket_name = "game-assets-bucket"
+
+############################################
+# KV Namespace (Provisioned via Terraform)
+############################################
+[[kv_namespaces]]
+binding = "GAME_STATUS"
+id = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+############################################
+# Queue Consumer (Terraform attaches consumer)
+# This exists so Cloudflare validates handler
+############################################
+[[queues.consumers]]
+queue = "game-zip-queue"
+
+############################################
+# Environment Variables (Non-secret only)
+############################################
+BACKEND_WEBHOOK_URL = "https://api-staging.arcadesbox.com/api/internal/game-processed"
