@@ -270,8 +270,13 @@ jobs:
           CLOUDFLARE_KV_NAMESPACE_ID: ${{ secrets.CLOUDFLARE_KV_NAMESPACE_ID }}
         run: |
           echo "🚀 Deploying worker via wrangler..."
+
+          # wrangler.toml does not support shell variable expansion.
+          # Substitute the real KV namespace ID (from Terraform output) before wrangler reads the file.
+          sed -i "s|\$CLOUDFLARE_KV_NAMESPACE_ID|${CLOUDFLARE_KV_NAMESPACE_ID}|g" wrangler.toml
+
           # --name overrides the name in wrangler.toml with the Terraform-provisioned script name
-          # --keep-vars preserves all bindings set by Terraform (R2, Queue, BACKEND_WEBHOOK_URL etc.)
+          # --keep-vars preserves plain-text vars set by Terraform (BACKEND_WEBHOOK_URL etc.)
           # wrangler correctly bundles fflate and all other dependencies as a multi-module worker
           npx wrangler deploy \
             --name ${{ vars.WORKER_SCRIPT_NAME }} \
