@@ -28,3 +28,18 @@ dead_letter_queue = "${GAME_ZIP_DLQ_NAME}"
 [vars]
 BACKEND_WEBHOOK_URL = "${WORKER_BACKEND_WEBHOOK_URL}"
 
+[observability]
+enabled = false
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+persist = true
+invocation_logs = true
+
+[observability.traces]
+enabled = true
+persist = true
+head_sampling_rate = 1
+
