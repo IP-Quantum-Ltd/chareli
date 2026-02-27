@@ -277,7 +277,7 @@ jobs:
           # Backend webhook URL for this environment
           WORKER_BACKEND_WEBHOOK_URL: ${{ vars.WORKER_BACKEND_WEBHOOK_URL }}
         run: |
-          echo " Substituting binding values into wrangler.toml..."
+          echo "Substituting binding values into wrangler.toml..."
           # envsubst replaces all ${VAR} tokens in wrangler.toml with real values.
           # The result is a fully populated wrangler.toml that matches Terraform exactly.
           envsubst < wrangler.toml > wrangler.substituted.toml
