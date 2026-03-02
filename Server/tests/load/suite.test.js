@@ -10,31 +10,47 @@ export const options = {
   scenarios: {
     // 10% of traffic is authentication
     authentication: {
-      executor: 'constant-vus',
+      executor: 'ramping-vus',
       exec: 'auth_scenario',
-      vus: Math.max(1, Math.floor(TOTAL_VUS * 0.10)),
-      duration: '5m',
+      startVUs: 0,
+      stages: [
+        { duration: '2m', target: Math.max(1, Math.floor(TOTAL_VUS * 0.10)) }, // ramp up
+        { duration: '2m', target: Math.max(1, Math.floor(TOTAL_VUS * 0.10)) }, // hold
+        { duration: '1m', target: 0 },                                         // ramp down
+      ],
     },
     // 50% of traffic is browsing/discovery
     discovery: {
-      executor: 'constant-vus',
+      executor: 'ramping-vus',
       exec: 'discovery_scenario',
-      vus: Math.max(1, Math.floor(TOTAL_VUS * 0.50)),
-      duration: '5m',
+      startVUs: 0,
+      stages: [
+        { duration: '2m', target: Math.max(1, Math.floor(TOTAL_VUS * 0.50)) },
+        { duration: '2m', target: Math.max(1, Math.floor(TOTAL_VUS * 0.50)) },
+        { duration: '1m', target: 0 },
+      ],
     },
     // 10% of traffic is high-frequency analytics
     analytics: {
-      executor: 'constant-vus',
+      executor: 'ramping-vus',
       exec: 'analytics_scenario',
-      vus: Math.max(1, Math.floor(TOTAL_VUS * 0.10)),
-      duration: '5m',
+      startVUs: 0,
+      stages: [
+        { duration: '2m', target: Math.max(1, Math.floor(TOTAL_VUS * 0.10)) },
+        { duration: '2m', target: Math.max(1, Math.floor(TOTAL_VUS * 0.10)) },
+        { duration: '1m', target: 0 },
+      ],
     },
     // 30% of traffic is full gameplay flow
     gameplay: {
-      executor: 'constant-vus',
+      executor: 'ramping-vus',
       exec: 'gameplay_scenario',
-      vus: Math.max(1, Math.floor(TOTAL_VUS * 0.30)),
-      duration: '5m',
+      startVUs: 0,
+      stages: [
+        { duration: '2m', target: Math.max(1, Math.floor(TOTAL_VUS * 0.30)) },
+        { duration: '2m', target: Math.max(1, Math.floor(TOTAL_VUS * 0.30)) },
+        { duration: '1m', target: 0 },
+      ],
     },
   },
   thresholds: {

@@ -1,13 +1,46 @@
-# Minimal config — infrastructure bindings (KV, R2, vars) are managed by Terraform.
-# Queue consumer config stays here because Cloudflare validates the queue handler
-# exists in the script before allowing consumer registration.
-# The worker name is overridden in CI via: wrangler deploy --name $WORKER_SCRIPT_NAME
-# Queue names are templated in CI via sed to match Terraform-provisioned names.
-
-name = "game-zip-processor"
+name = "${WORKER_SCRIPT_NAME}"
 main = "src/index.ts"
 compatibility_date = "2026-02-17"
+compatibility_flags = ["nodejs_compat"]
 
-# Queue consumer configuration
-# NOTE: Queue names below are placeholders, replaced in CI with actual Terraform-provisioned names.
-# This section is now managed by Terraform in worker.tf
+# ─────────────────────────────────────────────────────────────────────────────
+# These values are injected at CI time via envsubst from GitHub secrets/vars.
+# They must match exactly what Terraform provisions to prevent drift.
+# See: iac-arcadesbox/worker.tf for the Terraform source of truth.
+# ─────────────────────────────────────────────────────────────────────────────
+
+[[r2_buckets]]
+binding    = "GAMES_BUCKET"
+bucket_name = "${GAMES_BUCKET_NAME}"
+
+[[kv_namespaces]]
+binding = "GAME_STATUS"
+id      = "${CLOUDFLARE_KV_NAMESPACE_ID}"
+
+[[queues.consumers]]
+binding           = "GAME_ZIP_QUEUE"
+queue             = "${GAME_ZIP_QUEUE_NAME}"
+max_batch_size    = 10
+max_batch_timeout = 30
+max_retries       = 3
+dead_letter_queue = "${GAME_ZIP_DLQ_NAME}"
+
+[vars]
+BACKEND_WEBHOOK_URL = "${WORKER_BACKEND_WEBHOOK_URL}"
+WEBHOOK_SECRET       = "${WEBHOOK_SECRET}"
+
+[observability]
+enabled = false
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+persist = true
+invocation_logs = true
+
+[observability.traces]
+enabled = true
+persist = true
+head_sampling_rate = 1
+
