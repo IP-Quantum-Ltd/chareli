@@ -39,7 +39,6 @@ BACKEND_WEBHOOK_URL = "YOUR_BACKEND_WEBHOOK_URL"
 # Secrets (set via: wrangler secret put WEBHOOK_SECRET)
 # Run this command to set the secret:
 # cd Server/workers/game-zip-processor
-# wrangler secret put WEBHOOK_SECRET
 WEBHOOK_SECRET = CLOUDFLARE_WEBHOOK_SECRET
 
 # Staging environment (optional)
