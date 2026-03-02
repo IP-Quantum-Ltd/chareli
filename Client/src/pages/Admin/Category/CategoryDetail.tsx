@@ -24,8 +24,8 @@ export default function CategoryDetail() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   const { mutateAsync: deleteCategory, isPending: isDeletingCategory } = useDeleteCategory();
-  const { data: categoryData, isLoading } = useCategoryById(categoryId!, { 
-    page: currentPage, 
+  const { data: categoryData, isLoading } = useCategoryById(categoryId!, {
+    page: currentPage,
     limit: 5
   });
 
@@ -89,13 +89,13 @@ export default function CategoryDetail() {
         <IoChevronBack />
         <p>Back</p>
       </button>
-      
+
       <div className="flex flex-col md:flex-row gap-6">
-        <div className="bg-[#F1F5F9] dark:bg-[#334154] rounded-2xl p-6 flex flex-col items-center w-full md:w-1/3 md:self-start">
+        <div className="bg-transparent dark:bg-[#334154] rounded-2xl p-6 flex flex-col items-center w-full md:w-1/3 md:self-start">
           <h2 className="text-sm sm:text-base font-normal font-dmmono text-[#121C2D] tracking-wider dark:text-white text-center truncate mb-4">
             {category.name}
           </h2>
-          
+
           <div className="flex flex-col gap-2 w-full">
             {permissions.canManageGames ? (
               <>
@@ -106,7 +106,7 @@ export default function CategoryDetail() {
                 >
                   Edit <CiEdit className="dark:text-white" />
                 </Button>
-                
+
                 {!category.isDefault && (
                   <Button
                     className="flex items-center justify-center gap-2 w-full bg-[#EF4444] text-white tracking-wider hover:bg-[#dc2626] cursor-pointer"
@@ -117,7 +117,7 @@ export default function CategoryDetail() {
                 )}
               </>
             ) : null}
-            
+
             {permissions.isViewer && (
               <div className="flex items-center justify-center w-full py-2 px-4 bg-gray-300 text-gray-600 rounded-md">
                 <span className="text-sm font-medium">View Only</span>
@@ -128,7 +128,7 @@ export default function CategoryDetail() {
 
         {/* Right: Details */}
         <div className="flex-1 flex flex-col gap-6">
-          <div className="bg-[#F1F5F9] dark:bg-[#121C2D] rounded-2xl p-6">
+          <div className="bg-transparent dark:bg-[#121C2D] rounded-2xl p-6">
             <h3 className="text-base font-normal mb-2 text-[#475568] tracking-wider dark:text-white">
               Overview
             </h3>
@@ -144,7 +144,7 @@ export default function CategoryDetail() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div className="bg-[#F1F5F9] dark:bg-[#121C2D] rounded-xl p-4 sm:p-6">
+            <div className="bg-transparent dark:bg-[#121C2D] rounded-xl p-4 sm:p-6">
               <div className="flex items-center gap-3 sm:gap-4">
                 <div className="bg-[#6A7282] rounded-full p-2 sm:p-3 flex-shrink-0">
                   <LuGamepad2 className="w-6 h-6 sm:w-8 sm:h-8 text-white" />
@@ -160,7 +160,7 @@ export default function CategoryDetail() {
               </div>
             </div>
 
-            <div className="bg-[#F1F5F9] dark:bg-[#121C2D] rounded-xl p-4 sm:p-6">
+            <div className="bg-transparent dark:bg-[#121C2D] rounded-xl p-4 sm:p-6">
               <div className="flex items-center gap-3 sm:gap-4">
                 <div className="bg-[#6A7282] rounded-full p-2 sm:p-3 flex-shrink-0">
                   <TbCalendarClock className="w-6 h-6 sm:w-8 sm:h-8 text-white" />
@@ -176,7 +176,7 @@ export default function CategoryDetail() {
               </div>
             </div>
 
-            <div className="bg-[#F1F5F9] dark:bg-[#121C2D] rounded-xl p-4 sm:p-6 sm:col-span-2 lg:col-span-1">
+            <div className="bg-transparent dark:bg-[#121C2D] rounded-xl p-4 sm:p-6 sm:col-span-2 lg:col-span-1">
               <div className="flex items-center gap-3 sm:gap-4">
                 <div className="bg-[#6A7282] rounded-full p-2 sm:p-3 flex-shrink-0">
                   <FiClock className="w-6 h-6 sm:w-8 sm:h-8 text-white" />
@@ -193,7 +193,7 @@ export default function CategoryDetail() {
             </div>
           </div>
 
-          <div className="bg-[#F1F5F9] dark:bg-[#121C2D] rounded-2xl p-6">
+          <div className="bg-transparent dark:bg-[#121C2D] rounded-2xl p-6">
             <p className="text-[#18192b] text-xl dark:text-white mb-6">
               Category Games
             </p>
@@ -352,7 +352,7 @@ export default function CategoryDetail() {
         title="Are you sure you want to Delete Category?"
         description="This action cannot be reversed"
       />
-      
+
       {editOpen && categoryId && (
         <EditCategory
           open={editOpen}

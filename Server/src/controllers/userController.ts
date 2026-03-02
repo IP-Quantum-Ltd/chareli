@@ -312,7 +312,7 @@ export const createUser = async (
     let ipAddress = '';
     let country = null;
     let deviceType = 'unknown';
-    
+
     try {
       const forwarded = req.headers["x-forwarded-for"];
       ipAddress = extractClientIP(
@@ -389,10 +389,18 @@ export const createUser = async (
     await userRepository.save(user);
 
     // Create analytics entry for signup
-    const signupAnalytics = new Analytics();
-    signupAnalytics.userId = user.id;
-    signupAnalytics.activityType = "Signed up";
-    await analyticsRepository.save(signupAnalytics);
+    // Create analytics entry for signup - only for players
+    const userWithRole = await userRepository.findOne({
+      where: { id: user.id },
+      relations: ['role']
+    });
+
+    if (userWithRole?.role?.name === 'player') {
+      const signupAnalytics = new Analytics();
+      signupAnalytics.userId = user.id;
+      signupAnalytics.activityType = "Signed up";
+      await analyticsRepository.save(signupAnalytics);
+    }
 
     // Don't return sensitive information
     const { password: _, ...userWithoutSensitiveInfo } = user;

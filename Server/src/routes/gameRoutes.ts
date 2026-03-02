@@ -22,6 +22,7 @@ import {
 import {
   authenticate,
   isAdmin,
+  isEditor,
   optionalAuthenticate,
 } from '../middlewares/authMiddleware';
 import {
@@ -72,34 +73,45 @@ router.delete(
 );
 
 router.use(authenticate);
-router.use(isAdmin);
+// Remove global isAdmin to allow Editor access to specific routes
 
-router.post('/presigned-url', uploadLimiter, generatePresignedUrl);
+// Presigned URL generation - Allow Editors (needed for creating/updating games with images)
+router.post('/presigned-url', isEditor, uploadLimiter, generatePresignedUrl);
 
-// Multipart upload routes
-router.post('/multipart/create', uploadLimiter, createMultipartUpload);
-router.post('/multipart/part-url', uploadLimiter, getMultipartUploadPartUrl);
-router.post('/multipart/complete', uploadLimiter, completeMultipartUpload);
-router.post('/multipart/abort', uploadLimiter, abortMultipartUpload);
+// Multipart upload routes - Allow Editors
+router.post('/multipart/create', isEditor, uploadLimiter, createMultipartUpload);
+router.post('/multipart/part-url', isEditor, uploadLimiter, getMultipartUploadPartUrl);
+router.post('/multipart/complete', isEditor, uploadLimiter, completeMultipartUpload);
+router.post('/multipart/abort', isEditor, uploadLimiter, abortMultipartUpload);
 
-router.post('/bulk-update-free-time', bulkUpdateFreeTime);
-router.post('/', uploadGameFiles, createGame);
+// Bulk update - Admin only (seems unrelated to single game management)
+router.post('/bulk-update-free-time', isAdmin, bulkUpdateFreeTime);
+
+// Create Game - Allow Editors
+router.post('/', isEditor, uploadGameFiles, createGame);
+
+// Update Game - Allow Editors
 router.put(
   '/:id',
+  isEditor,
   validateParams(gameIdParamSchema),
   uploadGameFilesForUpdate,
   updateGame
 );
-router.delete('/:id', validateParams(gameIdParamSchema), deleteGame);
 
-// Game processing status routes
+// Delete Game - Admin only (User explicitly requested NO delete permissions for Editors)
+router.delete('/:id', isAdmin, validateParams(gameIdParamSchema), deleteGame);
+
+// Game processing status routes - Allow Editors
 router.get(
   '/:id/processing-status',
+  isEditor,
   validateParams(gameIdParamSchema),
   getGameProcessingStatus
 );
 router.post(
   '/:id/retry-processing',
+  isEditor,
   validateParams(gameIdParamSchema),
   retryGameProcessing
 );

@@ -4,7 +4,10 @@ import {
   Column,
   CreateDateColumn,
   Index,
+  ManyToOne,
+  JoinColumn,
 } from 'typeorm';
+import { User } from './User';
 
 @Entity('signup_analytics', { schema: 'internal' })
 export class SignupAnalytics {
@@ -14,6 +17,14 @@ export class SignupAnalytics {
   @Column({ nullable: true })
   @Index()
   sessionId: string;
+
+  @Column({ name: 'user_id', nullable: true })
+  @Index()
+  userId: string | null;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'user_id' })
+  user: User | null;
 
   @Column({ nullable: true })
   ipAddress: string;

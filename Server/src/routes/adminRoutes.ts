@@ -25,10 +25,12 @@ import {
 } from '../controllers/imageReprocessingController';
 
 const router = Router();
+// Import missing middleware
+import { isEditor } from '../middlewares/authMiddleware';
 
-// All admin routes require authentication and admin role
-router.use(authenticate, isAdmin);
-// Apply admin rate limiting
+// All admin routes require authentication
+router.use(authenticate);
+// Apply admin rate limiting - applies to all authenticated dashboard routes
 router.use(adminLimiter);
 
 /**
@@ -43,7 +45,7 @@ router.use(adminLimiter);
  *       200:
  *         description: Dashboard analytics retrieved successfully
  */
-router.get('/dashboard', getDashboardAnalytics);
+router.get('/dashboard', isAdmin, getDashboardAnalytics);
 
 /**
  * @swagger
@@ -57,7 +59,7 @@ router.get('/dashboard', getDashboardAnalytics);
  *       200:
  *         description: Games popularity metrics retrieved successfully
  */
-router.get('/games-popularity', getGamesPopularityMetrics);
+router.get('/games-popularity', isAdmin, getGamesPopularityMetrics);
 
 /**
  * @swagger
@@ -71,7 +73,8 @@ router.get('/games-popularity', getGamesPopularityMetrics);
  *       200:
  *         description: Games with analytics retrieved successfully
  */
-router.get('/games-analytics', getGamesWithAnalytics);
+// Allow Editors to access game list/analytics
+router.get('/games-analytics', isEditor, getGamesWithAnalytics);
 
 /**
  * @swagger
@@ -97,7 +100,7 @@ router.get('/games-analytics', getGamesWithAnalytics);
  *       200:
  *         description: Users with analytics retrieved successfully
  */
-router.get('/users-analytics', getUsersWithAnalytics);
+router.get('/users-analytics', isAdmin, getUsersWithAnalytics);
 
 /**
  * @swagger
@@ -118,7 +121,8 @@ router.get('/users-analytics', getUsersWithAnalytics);
  *       200:
  *         description: Game analytics retrieved successfully
  */
-router.get('/games/:id/analytics', getGameAnalyticsById);
+// Allow Editors to access game analytics
+router.get('/games/:id/analytics', isEditor, getGameAnalyticsById);
 
 /**
  * @swagger
@@ -139,7 +143,7 @@ router.get('/games/:id/analytics', getGameAnalyticsById);
  *       200:
  *         description: User analytics retrieved successfully
  */
-router.get('/users/:id/analytics', getUserAnalyticsById);
+router.get('/users/:id/analytics', isAdmin, getUserAnalyticsById);
 
 /**
  * @swagger
@@ -153,7 +157,7 @@ router.get('/users/:id/analytics', getUserAnalyticsById);
  *       200:
  *         description: User activity log retrieved successfully
  */
-router.get('/user-activity-log', getUserActivityLog);
+router.get('/user-activity-log', isAdmin, getUserActivityLog);
 
 /**
  * @swagger
@@ -167,7 +171,7 @@ router.get('/user-activity-log', getUserActivityLog);
  *       200:
  *         description: Inactive users check completed successfully
  */
-router.post('/check-inactive-users', runInactiveUsersCheck);
+router.post('/check-inactive-users', isAdmin, runInactiveUsersCheck);
 
 // Cache Routes
 /**
@@ -211,7 +215,7 @@ router.post('/check-inactive-users', runInactiveUsersCheck);
  *       403:
  *         description: Forbidden - Admin access required
  */
-router.get('/cache/stats', async (req, res, next) => {
+router.get('/cache/stats', isAdmin, async (req, res, next) => {
   try {
     const stats = await cacheService.getStats();
 
@@ -250,7 +254,7 @@ router.get('/cache/stats', async (req, res, next) => {
  *       403:
  *         description: Forbidden - Admin access required
  */
-router.post('/cache/clear', async (req, res, next) => {
+router.post('/cache/clear', isAdmin, async (req, res, next) => {
   try {
     await cacheService.clearAll();
 
@@ -276,7 +280,7 @@ router.post('/cache/clear', async (req, res, next) => {
  *       200:
  *         description: Games cache cleared successfully
  */
-router.post('/cache/clear/games', async (req, res, next) => {
+router.post('/cache/clear/games', isAdmin, async (req, res, next) => {
   try {
     await cacheService.invalidateAllGames();
 
@@ -302,7 +306,7 @@ router.post('/cache/clear/games', async (req, res, next) => {
  *       200:
  *         description: Categories cache cleared successfully
  */
-router.post('/cache/clear/categories', async (req, res, next) => {
+router.post('/cache/clear/categories', isAdmin, async (req, res, next) => {
   try {
     await cacheService.invalidateCategories();
 
@@ -326,7 +330,7 @@ router.post('/cache/clear/categories', async (req, res, next) => {
  *       200:
  *         description: CDN files regenerated successfully
  */
-router.post('/cdn/regenerate', async (req, res, next) => {
+router.post('/cdn/regenerate', isAdmin, async (req, res, next) => {
   try {
     const { jsonCdnService } = await import('../services/jsonCdn.service');
 
@@ -358,7 +362,7 @@ router.post('/cdn/regenerate', async (req, res, next) => {
  *       200:
  *         description: Status retrieved successfully
  */
-router.get('/image-reprocessing/status', getReprocessingStatus);
+router.get('/image-reprocessing/status', isAdmin, getReprocessingStatus);
 
 /**
  * @swagger
@@ -382,7 +386,7 @@ router.get('/image-reprocessing/status', getReprocessingStatus);
  *       200:
  *         description: Reprocessing started successfully
  */
-router.post('/image-reprocessing/start', startReprocessing);
+router.post('/image-reprocessing/start', isAdmin, startReprocessing);
 
 /**
  * @swagger
@@ -396,7 +400,7 @@ router.post('/image-reprocessing/start', startReprocessing);
  *       200:
  *         description: Reprocessing paused successfully
  */
-router.post('/image-reprocessing/pause', pauseReprocessing);
+router.post('/image-reprocessing/pause', isAdmin, pauseReprocessing);
 
 /**
  * @swagger
@@ -410,7 +414,7 @@ router.post('/image-reprocessing/pause', pauseReprocessing);
  *       200:
  *         description: Reprocessing resumed successfully
  */
-router.post('/image-reprocessing/resume', resumeReprocessing);
+router.post('/image-reprocessing/resume', isAdmin, resumeReprocessing);
 
 /**
  * @swagger
@@ -424,6 +428,6 @@ router.post('/image-reprocessing/resume', resumeReprocessing);
  *       200:
  *         description: Status reset successfully
  */
-router.delete('/image-reprocessing/reset', resetReprocessing);
+router.delete('/image-reprocessing/reset', isAdmin, resetReprocessing);
 
 export default router;

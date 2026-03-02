@@ -16,4 +16,152 @@
   .all-games-grid > div {
     grid-row: span 1 !important;
   }
+
+  .see-more-button {
+    width: 150px;
+    height: 50px;
+    padding: 10px;
+    font-size: 16px;
+    font-weight: 500;
+    gap: 5px;
+  }
+}
+
+/* See more games button styling */
+.see-more-button {
+  position: relative;
+  width: 350px;
+  height: 70px;
+  padding: 16px;
+
+  border-radius: 16px;
+  background-color: #792a10;
+  color: #ffffff;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+
+  font-size: 20px;
+  font-weight: 600;
+  cursor: pointer;
+
+  z-index: 0;
+  overflow: hidden;
+
+  animation: see-more-pulse 0.5s ease-in-out infinite alternate;
+  transition: transform 150ms ease-out;
+}
+
+
+.see-more-button::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+
+  padding: 5px; /* border thickness */
+  border-radius: inherit;
+
+  background: conic-gradient(
+    from 125.21deg at 62.01% -239.15%,
+    #ffffff -43.27deg,
+    rgba(173, 173, 173, 0) 164.42deg,
+    rgba(255, 255, 255, 0) 228.46deg,
+    #ffffff 316.73deg,
+    rgba(173, 173, 173, 0) 524.42deg
+  );
+
+  transition: transform 400ms ease;
+  z-index: -1;
+}
+
+.see-more-button::after {
+  content: "";
+  position: absolute;
+  inset: 5px;
+
+  background: inherit;
+  border-radius: calc(16px - 5px);
+
+  z-index: -1;
+}
+
+.see-more-button:hover::before {
+  transform: rotate(180deg);
+}
+
+
+@keyframes see-more-pulse {
+  0% {
+    background-color: #792a10;
+  }
+  33% {
+    background-color: #cc3e0f;
+  }
+  66% {
+    background-color: #fd5a24;
+  }
+  100% {
+    background-color: #f76535;
+  }
+}
+
+@media (max-width: 640px) {
+  .see-more-button {
+    width: 150px;
+    height: 50px;
+    padding: 10px;
+    font-size: 14px;
+    font-weight: 500;
+    gap: 5px;
+  }
+}
+
+/* Back to top floating button */
+.back-to-top-button {
+  position: fixed;
+  right: 1.5rem;
+  bottom: 1.5rem;
+  z-index: 40;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1rem;
+  border-radius: 9999px;
+  border: none;
+  background: rgba(15, 23, 42, 0.9);
+  color: #f9fafb;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.4);
+  backdrop-filter: blur(8px);
+  transition: transform 150ms ease-out, opacity 150ms ease-out, background 150ms ease-out;
+}
+
+.back-to-top-button:hover {
+  transform: translateY(-2px);
+  background: rgba(30, 64, 175, 0.95);
+}
+
+.back-to-top-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 9999px;
+  background: rgba(248, 250, 252, 0.1);
+  font-size: 1rem;
+  line-height: 1;
+}
+
+@media (max-width: 640px) {
+  .back-to-top-button {
+    right: 1rem;
+    bottom: 1rem;
+    padding: 0.5rem 0.85rem;
+    font-size: 0.75rem;
+  }
 }

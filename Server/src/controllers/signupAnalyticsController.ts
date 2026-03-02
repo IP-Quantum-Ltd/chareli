@@ -1,23 +1,25 @@
 import { Request, Response, NextFunction } from 'express';
 import { AppDataSource } from '../config/database';
 import { SignupAnalytics } from '../entities/SignupAnalytics';
+import { User } from '../entities/User';
 import { getCountryFromIP, extractClientIP, getIPCacheStats } from '../utils/ipUtils';
+import { AdminExclusionService } from '../services/adminExclusion.service';
 
 const signupAnalyticsRepository = AppDataSource.getRepository(SignupAnalytics);
 
 function detectDeviceType(userAgent: string): string {
   const ua = userAgent.toLowerCase();
-  
+
   if (
-    ua.includes('ipad') || 
-    ua.includes('tablet') || 
+    ua.includes('ipad') ||
+    ua.includes('tablet') ||
     (ua.includes('android') && !ua.includes('mobi'))
   ) {
     return 'tablet';
   }
-  
+
   if (
-    ua.includes('mobi') || 
+    ua.includes('mobi') ||
     ua.includes('android') ||
     ua.includes('iphone') ||
     ua.includes('ipod') ||
@@ -26,7 +28,7 @@ function detectDeviceType(userAgent: string): string {
   ) {
     return 'mobile';
   }
-  
+
   return 'desktop';
 }
 
@@ -44,7 +46,7 @@ export const testIPCountry = async (
     const { ip } = req.params;
     const country = await getCountryFromIP(ip);
     const cacheStats = getIPCacheStats();
-    
+
     res.status(200).json({
       success: true,
       data: {
@@ -88,17 +90,32 @@ export const testIPCountry = async (
  *         description: Request processed
  */
 export const trackSignupClick = async (
-  req: Request, 
-  res: Response, 
+  req: Request,
+  res: Response,
   next: NextFunction
 ): Promise<void> => {
   try {
     const { sessionId, type } = req.body;
 
+    // Check if authenticated user is admin
+    // Check if authenticated user is admin
+    if (req.user) {
+      const shouldTrack = await AdminExclusionService.shouldTrack(req.user.userId);
+
+      // Don't track signup clicks from admin users
+      if (!shouldTrack) {
+        res.status(200).json({
+          success: true,
+          message: 'Signup click not tracked (admin user)'
+        });
+        return;
+      }
+    }
+
     if (!type) {
-      res.status(400).json({ 
-        success: false, 
-        message: 'Signup form type is required' 
+      res.status(400).json({
+        success: false,
+        message: 'Signup form type is required'
       });
       return;
     }
@@ -345,7 +362,7 @@ export const getSignupAnalyticsData = async (
       .groupBy('analytics.type')
       .orderBy('count', 'DESC')
       .getRawMany();
-    
+
     res.status(200).json({
       success: true,
       data: {

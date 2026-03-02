@@ -2,9 +2,11 @@ import { Job } from 'bullmq';
 import { queueService, HomepageVisitJobData } from '../services/queue.service';
 import { AppDataSource } from '../config/database';
 import { Analytics } from '../entities/Analytics';
+import { User } from '../entities/User';
 import logger from '../utils/logger';
 
 const analyticsRepository = AppDataSource.getRepository(Analytics);
+const userRepository = AppDataSource.getRepository(User);
 
 /**
  * Worker to process homepage visit tracking jobs
@@ -16,6 +18,23 @@ queueService.createWorker<HomepageVisitJobData>(
     const { userId, sessionId } = job.data;
 
     try {
+      // Check if user is admin - skip analytics for admin users
+      if (userId) {
+        const user = await userRepository.findOne({
+          where: { id: userId },
+          relations: ['role'],
+        });
+
+        // Exclude all admin-type roles from analytics
+        const adminRoles = ['superadmin', 'admin', 'editor', 'viewer'];
+        if (user && user.role && adminRoles.includes(user.role.name)) {
+          logger.debug(
+            `[Homepage Visit Worker] Skipping homepage visit tracking for ${user.role.name} user ${userId} - admin activities are excluded from analytics`
+          );
+          return { success: true, analyticsId: 'admin-excluded' };
+        }
+      }
+
       // Create analytics entry for homepage visit
       const analytics = analyticsRepository.create({
         userId: userId || null,

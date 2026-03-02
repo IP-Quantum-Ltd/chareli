@@ -106,7 +106,7 @@ export const cacheKeys = {
 
 // Cache invalidation patterns
 export const cachePatterns = {
-  allGames: () => `cache:${cacheConfig.version}:games:*`,
+  allGames: () => `cache:${cacheConfig.version}:game:*`,
   allGamesList: () => `cache:${cacheConfig.version}:games:list:*`,
   allCategories: () => `cache:${cacheConfig.version}:categories:*`,
   categoryGames: (categoryId: string) =>

@@ -3,38 +3,41 @@ import { RiDeleteBin6Line } from "react-icons/ri";
 import { CiEdit } from "react-icons/ci";
 import { Button } from "../../components/ui/button";
 import { LazyImage } from "../../components/ui/LazyImage";
-import gameImg from "@/assets/gamesImg/1.svg";
 import { IoChevronBack } from "react-icons/io5";
 import { FiClock } from "react-icons/fi";
-import { LuGamepad2 } from "react-icons/lu";
-import { TbCalendarClock } from "react-icons/tb";
 import { useNavigate, useParams } from "react-router-dom";
-import { useGameAnalyticsById } from "../../backend/analytics.service";
 import {
   useToggleGameStatus,
   useDeleteGame,
+  useGameById,
 } from "../../backend/games.service";
 import { toast } from "sonner";
 import { DeleteConfirmationModal } from "../../components/modals/DeleteConfirmationModal";
 import { ToggleGameStatusModal } from "../../components/modals/ToggleGameStatusModal";
 import { useState } from "react";
-import { EditSheet } from "../../components/single/Edit-Sheet";
 import { formatTime } from "../../utils/main";
 import { usePermissions } from "../../hooks/usePermissions";
+import { GameBreadcrumb } from "../../components/single/GameBreadcrumb";
+import { GameInfoSection } from "../../components/single/GameInfoSection";
+import { LuGamepad2 } from "react-icons/lu";
+import { TbCalendarClock } from "react-icons/tb";
 
 export default function ViewGame() {
   const permissions = usePermissions();
   const { gameId } = useParams();
   const navigate = useNavigate();
-  const { data: game, isLoading } = useGameAnalyticsById(gameId || "");
+  const { data: gameData, isLoading } = useGameById(gameId || '');
   const toggleStatus = useToggleGameStatus();
   const deleteGame = useDeleteGame();
+
+  // Safe access to game data
+  const game = (gameData as any)?.game || gameData;
+  const gameImg = game?.thumbnailFile?.s3Key || "/placeholder-game.png";
 
   const handleBack = () => {
     navigate("/admin/game-management");
   };
 
-  const [editOpen, setEditOpen] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showDisableModal, setShowDisableModal] = useState(false);
 
@@ -45,7 +48,6 @@ export default function ViewGame() {
       </div>
     );
   }
-
 
   return (
     <div className="p-8 flex flex-col gap-6">
@@ -58,11 +60,11 @@ export default function ViewGame() {
       </button>
       <div className="flex flex-col md:flex-row gap-6">
         {/* Left: Game Card */}
-        <div className="bg-[#F1F5F9] dark:bg-[#334154] rounded-2xl p-6 flex flex-col items-center w-full md:w-1/3">
+        <div className="bg-[#F1F5F9] dark:bg-[#121C2D] rounded-2xl p-6 flex flex-col items-center w-full md:w-1/3">
           <div className="w-28 h-28 rounded-full overflow-hidden mb-4 bg-gray-100">
             <LazyImage
-              src={(game as any)?.game.thumbnailFile?.url || gameImg}
-              alt={(game as any).game?.description || "Game"}
+              src={game?.thumbnailFile?.s3Key || gameImg}
+              alt={game?.description || "Game"}
               placeholder={gameImg}
               className="w-full h-full object-cover"
               loadingClassName="rounded-full"
@@ -72,24 +74,24 @@ export default function ViewGame() {
           </div>
           <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 items-center sm:justify-center w-full">
             <h2 className="text-sm sm:text-base font-normal font-dmmono text-[#121C2D] tracking-wider dark:text-white text-center truncate">
-              {(game as any).game?.title || "-"}
+              {game?.title || "-"}
             </h2>
             <div className="flex items-center gap-2 flex-shrink-0 mb-2">
               <span
                 className={`inline-flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 rounded font-dmmono text-xs sm:text-sm tracking-wider ${
-                  (game as any).game?.status === "active"
+                  game?.status === "active"
                     ? "bg-[#6A7282]/20 dark:bg-[#6A7282] text-[#121C2D] dark:text-white"
                     : "bg-[#CBD5E0] text-[#121C2D]"
                 }`}
               >
                 <span
                   className={`w-2 h-2 rounded inline-block ${
-                    (game as any).game?.status === "active"
+                    game?.status === "active"
                       ? "bg-[#419E6A]"
                       : "bg-red-500"
                   }`}
                 ></span>
-                {(game as any).game?.status === "active"
+                {game?.status === "active"
                   ? "Active"
                   : "Inactive"}
               </span>
@@ -103,17 +105,19 @@ export default function ViewGame() {
                 <Button
                   variant="outline"
                   className="flex items-center justify-center gap-2 w-full border-2 border-[white] text-[#475568] bg-transparent dark:border-2 dark:border-white dark:text-white cursor-pointer"
-                  onClick={() => setEditOpen(true)}
+                  onClick={() => navigate(`/admin/edit-game/${gameId}`)}
                 >
                   Edit <CiEdit className="dark:text-white" />
                 </Button>
-                <Button
-                  className="flex items-center justify-center gap-2 w-full bg-[#6A7282] text-white tracking-wider hover:bg-[#5A626F] cursor-pointer"
-                  onClick={() => setShowDisableModal(true)}
-                >
-                  {(game as any).game?.status === "active" ? "Disable" : "Enable"}{" "}
-                  <IoEyeOutline />
-                </Button>
+                {(permissions.isAdmin || permissions.isSuperAdmin) && (
+                  <Button
+                    className="flex items-center justify-center gap-2 w-full bg-[#6A7282] text-white tracking-wider hover:bg-[#5A626F] cursor-pointer"
+                    onClick={() => setShowDisableModal(true)}
+                  >
+                    {game?.status === "active" ? "Disable" : "Enable"}{" "}
+                    <IoEyeOutline />
+                  </Button>
+                )}
               </>
             ) : null}
 
@@ -135,21 +139,29 @@ export default function ViewGame() {
         </div>
         {/* Right: Details */}
         <div className="flex-1 flex flex-col gap-6">
-          <div className="bg-[#F1F5F9] dark:bg-[#121C2D] rounded-2xl p-6">
+          {/* <div className="bg-[#F1F5F9] dark:bg-[#121C2D] rounded-2xl p-6">
             <h3 className="text-base font-normal mb-2 text-[#475568] tracking-wider dark:text-white">
               Overview
             </h3>
-            <p className="text-[#475568] whitespace-pre-line dark:text-white font-dmmono text-sm tracking-wider break-words overflow-wrap-anywhere">
-              {(game as any).game?.description || "-"}
-            </p>
-          </div>
+            {game?.description ? (
+              <div
+                className="prose prose-sm dark:prose-invert max-w-none
+                  prose-headings:font-dmmono prose-p:font-worksans prose-li:font-worksans
+                  prose-ul:list-disc prose-ol:list-decimal prose-ul:ml-6 prose-ol:ml-6
+                  dark:prose-headings:text-white dark:prose-p:text-gray-300 dark:prose-li:text-gray-300"
+                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(game.description) }}
+              />
+            ) : (
+              <p className="text-[#475568] dark:text-white font-dmmono text-sm">-</p>
+            )}
+          </div> */}
           <div className="flex flex-col md:flex-row gap-4">
             <div className="bg-[#F1F5F9] dark:bg-[#121C2D] rounded-2xl p-4 flex-1">
               <h3 className="font-normal mb-1 text-[#475568] tracking-wider text-base dark:text-white">
                 Game Category
               </h3>
               <p className=" text-[#475568] dark:text-white  font-dmmono text-sm tracking-wider">
-                {(game as any).game?.category?.name || "-"}
+                {game?.category?.name || "-"}
               </p>
             </div>
             <div className="bg-[#F1F5F9] dark:bg-[#121C2D] rounded-2xl p-4 flex-1">
@@ -157,8 +169,8 @@ export default function ViewGame() {
                 Position
               </h3>
               <p className="text-[#475568] dark:text-white font-dmmono text-sm tracking-wider">
-                {(game as any).game?.position
-                  ? `#${(game as any).game.position}`
+                {game?.position
+                  ? `#${game.position}`
                   : "Not assigned"}
               </p>
             </div>
@@ -167,7 +179,7 @@ export default function ViewGame() {
                 Gameplay URL
               </h3>
               {(() => {
-                const slug = (game as any).game?.slug;
+                const slug = game?.slug;
                 // Construct the public gameplay URL
                 const gameplayUrl = slug
                   ? `${window.location.origin}/gameplay/${slug}`
@@ -235,28 +247,69 @@ export default function ViewGame() {
         </div>
       </div>
 
+      {/* SEO Content Preview Section */}
+      <div className="mt-8 pt-8 border-t border-gray-200 dark:border-gray-700">
+        {/* Section Header */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+          <div>
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white font-dmmono">
+              SEO Content
+            </h2>
+          </div>
+          {permissions.canManageGames && (
+            <Button
+              variant="outline"
+              className="flex items-center gap-2 border-2 border-gray-300 dark:border-gray-600"
+              onClick={() => navigate(`/admin/edit-game/${gameId}`)}
+            >
+              <CiEdit className="w-4 h-4" />
+              Edit Game
+            </Button>
+          )}
+        </div>
+
+        {/* SEO Preview Container */}
+        <div className="bg-white dark:bg-[#0F1221] rounded-lg p-6 sm:p-8">
+          {/* Breadcrumb */}
+          <div className="mb-8">
+            <GameBreadcrumb
+              categoryName={game?.category?.name}
+              categoryId={game?.category?.id}
+              gameTitle={game?.title}
+            />
+          </div>
+
+          {/* Game Info Section */}
+          <GameInfoSection
+            game={game}
+            likeCount={gameData?.likeCount || 0}
+            hideEditButton={true}
+          />
+        </div>
+      </div>
+
       {/* Toggle Game Status Modal */}
       <ToggleGameStatusModal
         open={showDisableModal}
         onOpenChange={setShowDisableModal}
-        gameStatus={(game as any)?.game?.status || "disabled"}
-        gameTitle={(game as any)?.game?.title || "this game"}
+        gameStatus={game?.status || "disabled"}
+        gameTitle={game?.title || "this game"}
         isToggling={toggleStatus.isPending}
         onConfirm={async () => {
           try {
             await toggleStatus.mutateAsync({
               gameId: gameId || "",
-              currentStatus: (game as any)?.game?.status || "disabled",
+              currentStatus: game?.status || "disabled",
             });
             toast.success(
               `Game ${
-                (game as any)?.game?.status === "active"
+                game?.status === "active"
                   ? "disabled"
                   : "enabled"
               } successfully`
             );
             setShowDisableModal(false);
-          } catch (error) {
+          } catch {
             toast.error("Failed to update game status");
           }
         }}
@@ -271,7 +324,7 @@ export default function ViewGame() {
             await deleteGame.mutateAsync(gameId || "");
             toast.success("Game deleted successfully");
             navigate("/admin/game-management");
-          } catch (error) {
+          } catch {
             toast.error("Failed to delete game");
           }
         }}
@@ -279,11 +332,7 @@ export default function ViewGame() {
       />
 
       {/* Edit Sheet */}
-      <EditSheet
-        open={editOpen}
-        onOpenChange={setEditOpen}
-        gameId={gameId || ""}
-      />
+
     </div>
   );
 }

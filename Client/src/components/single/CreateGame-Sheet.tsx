@@ -10,6 +10,8 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { SearchableSelect } from '../ui/searchable-select';
+import { Badge } from '../ui/badge';
+import { RichTextEditor } from '../ui/RichTextEditor';
 // import uploadImg from "../../assets/fetch-upload.svg";
 import { useCreateGame } from '../../backend/games.service';
 import { useCategories } from '../../backend/category.service';
@@ -27,6 +29,8 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '../ui/sheet';
+import { X } from 'lucide-react';
+import DOMPurify from 'dompurify';
 
 interface UploadedFile {
   name: string;
@@ -42,6 +46,13 @@ interface FormValues {
   position?: number;
   thumbnailFile?: UploadedFile;
   gameFile?: UploadedFile;
+  developer?: string;
+  platform?: string[];
+  releaseDate?: string;
+  metadata?: {
+    howToPlay?: string;
+    tags?: string[];
+  };
 }
 
 // Validation schema
@@ -62,6 +73,8 @@ const validationSchema = yupObject({
     publicUrl: yupString().required(),
     key: yupString().required(),
   }),
+  developer: yupString().optional(),
+  releaseDate: yupString().optional(),
 });
 
 // Initial values
@@ -70,6 +83,13 @@ const initialValues: FormValues = {
   description: '',
   config: 1,
   categoryId: '',
+  developer: '',
+  releaseDate: '',
+  platform: ['desktop'],
+  metadata: {
+    howToPlay: '',
+    tags: [],
+  },
 };
 
 export function CreateGameSheet({
@@ -92,6 +112,7 @@ export function CreateGameSheet({
     thumbnail: false,
     game: false,
   });
+  const [newTag, setNewTag] = useState('');
 
   // Stable callback functions to prevent re-renders
   const handleThumbnailUploaded = React.useCallback((file: UploadedFile) => {
@@ -170,14 +191,30 @@ export function CreateGameSheet({
       setCurrentStep('Creating game record...');
 
       // Send file keys instead of files
+      const metadata: any = {
+        developer: values.developer || undefined,
+        platform: values.platform && values.platform.length > 0 ? values.platform : ['desktop'],
+        releaseDate: values.releaseDate || undefined,
+        howToPlay: values.metadata?.howToPlay ? DOMPurify.sanitize(values.metadata.howToPlay, {
+          ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'a', 'blockquote'],
+          ALLOWED_ATTR: ['href', 'class'],
+        }) : undefined,
+        tags: values.metadata?.tags && values.metadata.tags.length > 0 ? values.metadata.tags : undefined,
+      };
+
       const gameData = {
         title: values.title,
-        description: values.description,
+        description: values.description ? DOMPurify.sanitize(values.description, {
+          ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'a', 'blockquote'],
+          ALLOWED_ATTR: ['href', 'class'],
+        }) : undefined,
         config: values.config,
         categoryId: values.categoryId,
         position: values.position,
         thumbnailFileKey: values.thumbnailFile?.key,
         gameFileKey: values.gameFile?.key,
+        // Add metadata if any fields were provided
+        ...(Object.keys(metadata).length > 0 && { metadata }),
       };
 
       setProgress(75);
@@ -289,7 +326,8 @@ export function CreateGameSheet({
         if (!open && formikRef.current) {
           formikRef.current.resetForm();
           setUploadedFiles({ thumbnail: null, game: null });
-          setShowProgress(false);
+          setNewTag('');
+          setShowProgress(false); // Reset progress state
           setProgress(0);
           setCurrentStep('');
         }
@@ -312,7 +350,7 @@ export function CreateGameSheet({
           onSubmit={handleSubmit}
           innerRef={formikRef}
         >
-          {({ isSubmitting, isValid, dirty }) => (
+          {({ isSubmitting, isValid, dirty, values, setFieldValue }) => (
             <Form className="grid grid-cols-1 gap-6 pl-4 pr-4">
               {/* Thumbnail Upload - Full Width */}
               <div>
@@ -403,26 +441,177 @@ export function CreateGameSheet({
                 />
               </div>
 
+              {/* Developer Input */}
+              <div>
+                <Label
+                  htmlFor="developer"
+                  className="text-base mb-2 block dark:text-white"
+                >
+                  Developer (Optional)
+                </Label>
+                <Field
+                  as={Input}
+                  id="developer"
+                  name="developer"
+                  className="w-full h-12 rounded-md border border-[#CBD5E0] dark:text-white bg-[#F1F5F9] dark:bg-[#121C2D] px-3 text-gray-700 focus:border-[#6A7282] focus:outline-none font-worksans tracking-wider text-sm"
+                  placeholder="Enter developer name"
+                />
+                <ErrorMessage
+                  name="developer"
+                  component="div"
+                  className="text-red-500 mt-1 font-worksans text-sm tracking-wider"
+                />
+              </div>
+
+              {/* Platform & Release Date */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Platform */}
+                <div>
+                  <Label className="text-base mb-2 block dark:text-white">
+                    Platform
+                  </Label>
+                  <Field name="platform">
+                    {({ field, form }: any) => (
+                      <SearchableSelect
+                        options={[
+                          { value: 'Desktop', label: 'Desktop' },
+                          { value: 'Mobile', label: 'Mobile' },
+                          { value: 'Tablet', label: 'Tablet' },
+                        ]}
+                        value={field.value}
+                        onValueChange={(value) => form.setFieldValue('platform', value)}
+                        placeholder="Select platforms..."
+                        isMulti={true}
+                      />
+                    )}
+                  </Field>
+                  <ErrorMessage
+                    name="platform"
+                    component="div"
+                    className="text-red-500 mt-1 font-worksans text-sm tracking-wider"
+                  />
+                </div>
+
+                {/* Release Date */}
+                <div>
+                  <Label
+                    htmlFor="releaseDate"
+                    className="text-base mb-2 block dark:text-white"
+                  >
+                    Release Date (Optional)
+                  </Label>
+                  <Field
+                    as={Input}
+                    type="date"
+                    id="releaseDate"
+                    name="releaseDate"
+                    className="w-full h-12 rounded-md border border-[#CBD5E0] dark:text-white bg-[#F1F5F9] dark:bg-[#121C2D] px-3 text-gray-700 focus:border-[#6A7282] focus:outline-none font-worksans tracking-wider text-sm"
+                  />
+                  <ErrorMessage
+                    name="releaseDate"
+                    component="div"
+                    className="text-red-500 mt-1 font-worksans text-sm tracking-wider"
+                  />
+                </div>
+              </div>
+
               {/* Description */}
               <div>
                 <Label
                   htmlFor="description"
                   className="text-base mb-2 block dark:text-white"
                 >
-                  Short Description (Optional)
+                  Game Description (Optional)
                 </Label>
-                <Field
-                  as="textarea"
-                  id="description"
-                  name="description"
-                  className="w-full min-h-[80px] rounded-md border border-[#CBD5E0] dark:text-white dark:bg-[#121C2D] bg-[#F1F5F9] px-3 py-2 font-worksans text-sm tracking-wider  text-gray-700 focus:border-gray-500 focus:outline-none resize-none"
-                  placeholder="Description"
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 font-worksans">
+                  Rich text editor - supports formatting, lists, and links
+                </p>
+                <RichTextEditor
+                  content={values.description}
+                  onChange={(html) => setFieldValue('description', html)}
+                  placeholder="Enter game description with formatting..."
                 />
                 <ErrorMessage
                   name="description"
                   component="div"
-                  className="text-red-500  mt-1 font-worksans text-sm tracking-wider"
+                  className="text-red-500 mt-1 font-worksans text-sm tracking-wider"
                 />
+              </div>
+
+              {/* How To Play (SEO Metadata) */}
+              <div>
+                <Label
+                  htmlFor="metadata.howToPlay"
+                  className="text-base mb-2 block dark:text-white"
+                >
+                  How To Play (Optional)
+                </Label>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 font-worksans">
+                  Instructions on how to play - helps with SEO
+                </p>
+                <RichTextEditor
+                  content={values.metadata?.howToPlay || ''}
+                  onChange={(html) => setFieldValue('metadata.howToPlay', html)}
+                  placeholder="Explain how to play this game..."
+                />
+              </div>
+
+
+
+              {/* Tags (SEO Metadata) */}
+              <div>
+                <Label className="text-base mb-2 block dark:text-white">Tags (Optional)</Label>
+                <div className="flex gap-2 mb-2">
+                  <Input
+                    value={newTag}
+                    onChange={(e) => setNewTag(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const currentTags = values.metadata?.tags || [];
+                        if (newTag.trim() && !currentTags.includes(newTag.trim())) {
+                          setFieldValue('metadata.tags', [...currentTags, newTag.trim()]);
+                          setNewTag('');
+                        }
+                      }
+                    }}
+                    placeholder="Add a tag..."
+                    className="bg-[#F1F5F9] dark:bg-[#121C2D]"
+                  />
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      const currentTags = values.metadata?.tags || [];
+                      if (newTag.trim() && !currentTags.includes(newTag.trim())) {
+                        setFieldValue('metadata.tags', [...currentTags, newTag.trim()]);
+                        setNewTag('');
+                      }
+                    }}
+                    variant="outline"
+                  >
+                    Add
+                  </Button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {(values.metadata?.tags || []).map((tag, index) => (
+                    <Badge key={index} variant="secondary" className="flex items-center gap-1 px-3 py-1">
+                      {tag}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const currentTags = values.metadata?.tags || [];
+                          setFieldValue('metadata.tags', currentTags.filter((_, i) => i !== index));
+                        }}
+                        className="ml-1 hover:text-red-500"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 font-worksans">
+                  SEO tags/keywords
+                </p>
               </div>
 
               {/* Game Upload */}
@@ -472,8 +661,8 @@ export function CreateGameSheet({
                   {({ field, form }: any) => (
                     <SearchableSelect
                       value={field.value}
-                      onValueChange={(value: string) =>
-                        form.setFieldValue('categoryId', value)
+                      onValueChange={(value: string | string[]) =>
+                        form.setFieldValue('categoryId', value as string)
                       }
                       options={
                         categories?.map((category) => ({

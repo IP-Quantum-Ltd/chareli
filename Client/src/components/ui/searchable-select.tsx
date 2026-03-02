@@ -5,41 +5,51 @@ import Select from "react-select";
 import "../../styles/react-select-theme.css";
 
 export interface SearchableSelectProps {
-  value?: string;
-  onValueChange?: (value: string) => void;
+  value?: string | string[];
+  onValueChange?: (value: string | string[]) => void;
   options: Array<{ value: string; label: string }>;
   placeholder?: string;
   searchPlaceholder?: string;
   emptyText?: string;
   className?: string;
   disabled?: boolean;
+  isMulti?: boolean;
 }
 
-const SearchableSelect = React.forwardRef<any, SearchableSelectProps>(
+const SearchableSelect = React.forwardRef<any, SearchableSelectProps>( // eslint-disable-line @typescript-eslint/no-explicit-any
   (
     {
       value,
       onValueChange,
       options,
       placeholder = "Select option...",
-      searchPlaceholder,
+      // searchPlaceholder, // Unused
       emptyText = "No options found",
       className,
       disabled = false,
+      isMulti = false,
       ...props
     },
     ref
   ) => {
-    const selectedOption = options.find((option) => option.value === value);
+    const selectedOption = isMulti
+      ? options.filter((option) => (Array.isArray(value) ? value : []).includes(option.value))
+      : options.find((option) => option.value === value);
 
     return (
       <Select
         ref={ref}
-        value={selectedOption || null}
-        onChange={(selectedOption) => {
-          onValueChange?.(selectedOption?.value || "");
+        value={selectedOption || (isMulti ? [] : null)}
+        onChange={(newValue: unknown) => {
+          if (isMulti) {
+            const values = (newValue as Array<{ value: string }>).map((option) => option.value);
+            onValueChange?.(values);
+          } else {
+            onValueChange?.((newValue as { value: string })?.value || "");
+          }
         }}
         options={options}
+        isMulti={isMulti}
         placeholder={placeholder}
         isSearchable={true}
         isClearable={true}

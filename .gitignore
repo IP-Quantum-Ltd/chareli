@@ -17,6 +17,8 @@ yarn-error.log*
 # IDE files
 .idea/
 .vscode/
+.cursor/
+.antigravity/
 .history/
 *.swp
 *.swo
@@ -42,6 +44,9 @@ dist-ssr
 .env
 .env.*
 !.env.example
+
+# Cloudflare Workers - wrangler.toml is safe to commit (contains only placeholders)
+# Secrets and account IDs are injected at deploy time via CI variables
 
 # Editor directories and files
 .vscode/*

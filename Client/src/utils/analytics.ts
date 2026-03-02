@@ -113,6 +113,23 @@ export const trackGameplay = {
       event_label: gameTitle,
     });
   },
+
+  /**
+   * Track when user shares a game
+   */
+  gameShare: (
+    gameId: string,
+    gameTitle: string,
+    method: 'web_share' | 'clipboard' | 'whatsapp' | 'facebook'
+  ) => {
+    trackEvent("game_share", {
+      game_id: gameId,
+      game_title: gameTitle,
+      share_method: method,
+      event_category: "Engagement",
+      event_label: `${gameTitle} - ${method}`,
+    });
+  },
 };
 
 /**
@@ -129,6 +146,18 @@ export const trackInteraction = {
       total_games_loaded: totalGamesLoaded,
       event_category: "Engagement",
       event_label: `Page ${currentPage} - ${currentCategory}`,
+    });
+  },
+
+  /**
+   * Track when user clicks "Back to Top" in All Games section
+   */
+  backToTop: (currentCategory: string, totalGamesLoaded: number) => {
+    trackEvent("back_to_top_all_games", {
+      category: currentCategory,
+      total_games_loaded: totalGamesLoaded,
+      event_category: "Engagement",
+      event_label: `Back to Top - ${currentCategory}`,
     });
   },
 };

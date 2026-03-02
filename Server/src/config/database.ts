@@ -2,13 +2,8 @@ import { DataSource } from 'typeorm';
 import config from './config';
 import path from 'path';
 
-export const AppDataSource = new DataSource({
-  type: 'postgres',
-  host: config.database.host,
-  port: config.database.port,
-  username: config.database.username,
-  password: config.database.password,
-  database: config.database.database,
+const commonOptions = {
+  type: 'postgres' as const,
   synchronize: false,
   logging: false, // Set to false to disable SQL query logs
   entities: [path.join(__dirname, '../entities/**/*.{ts,js}')],
@@ -26,9 +21,9 @@ export const AppDataSource = new DataSource({
     // - Current: 15 connections per instance (safe for dev/staging)
     //
     // Production: Adjust based on Supabase tier
-    // - Small (400 pooler): 20 instances × 15 = 300 (75% capacity, safe)
-    // - Medium (600 pooler): 20 instances × 20 = 400 (67% capacity, safe)
-    max: config.env === 'production' ? 8 : 10, // Increased from 5/10
+    // - Small (400 pooler): 50 instances × 15 = 300 (75% capacity, safe)
+    // - Medium (600 pooler): 50 instances × 20 = 400 (67% capacity, safe)
+    max: config.env === 'production' ? 3 : 5,
 
     // Connection management
     connectionTimeoutMillis: 30000, // 30s connection timeout
@@ -40,7 +35,43 @@ export const AppDataSource = new DataSource({
     // Minimum pool size (keep some connections ready)
     min: 2,
   },
-});
+};
+
+// Use replication if a read host is configured
+// This allows offloading read queries to a replica (slave)
+const dataSourceOptions = config.database.readHost
+  ? {
+      ...commonOptions,
+      replication: {
+        master: {
+          host: config.database.host,
+          port: config.database.port,
+          username: config.database.username,
+          password: config.database.password,
+          database: config.database.database,
+        },
+        slaves: [
+          {
+            host: config.database.readHost,
+            port: config.database.port,
+            username: config.database.username,
+            password: config.database.password,
+            database: config.database.database,
+          },
+        ],
+      },
+    }
+  : {
+      ...commonOptions,
+      host: config.database.host,
+      port: config.database.port,
+      username: config.database.username,
+      password: config.database.password,
+      database: config.database.database,
+    };
+
+// Cast to any because TypeORM types struggle with the conditional replication union
+export const AppDataSource = new DataSource(dataSourceOptions as any);
 
 export const initializeDatabase = async (): Promise<void> => {
   try {

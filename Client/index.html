@@ -2,6 +2,9 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!-- Cloudflare Turnstile -->
+    <!-- <link rel="preconnect" href="https://challenges.cloudflare.com">
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script> -->
     <!-- Favicons for browser tabs and Google Search (requires 48x48 minimum) -->
     <link rel="icon" type="image/png" sizes="192x192" href="/android-chrome-192x192.png">
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
@@ -50,91 +53,9 @@
     <link rel="preload" href="/src/fonts/woff2/jersey-25-regular.woff2" as="font" type="font/woff2" crossorigin>
 
 
-    <!-- Analytics Domain Check -->
-    <script>
-      // Only enable analytics on production domains
-      const ANALYTICS_ENABLED_DOMAINS = [
-        "www.arcadesbox.com",
-        "arcadesbox.com",
-      ];
 
-      const hostname = window.location.hostname;
-      const shouldLoadAnalytics = ANALYTICS_ENABLED_DOMAINS.includes(hostname);
 
-      // Log for debugging in non-production environments
-      if (!shouldLoadAnalytics) {
-        console.log("[Analytics] Tracking disabled on:", hostname);
-      }
 
-      // Make this available globally for the AnalyticsTracker component
-      window.shouldLoadAnalytics = shouldLoadAnalytics;
-    </script>
-
-    <!-- Google tag (gtag.js) - MIGRATED TO ZARAZ -->
-    <!-- <script defer>
-      // Defer analytics loading until after page is interactive
-      window.addEventListener('load', function () {
-        setTimeout(function () {
-          if (window.shouldLoadAnalytics) {
-            // Load Google Analytics script
-            const gaScript = document.createElement("script");
-            gaScript.async = true;
-            gaScript.src =
-              "https://www.googletagmanager.com/gtag/js?id=G-M661H945TQ";
-            document.head.appendChild(gaScript);
-
-            // Initialize Google Analytics
-            window.dataLayer = window.dataLayer || [];
-            function gtag() {
-              dataLayer.push(arguments);
-            }
-            gtag("js", new Date());
-            gtag("config", "G-M661H945TQ");
-
-            console.log("[Analytics] Google Analytics enabled");
-          }
-        }, 2000); // 2 second delay
-      });
-    </script> -->
-
-    <!-- Facebook Pixel Code - Deferred Loading for Better Performance -->
-    <script defer>
-      // Defer Facebook Pixel loading until after page is interactive
-      window.addEventListener('load', function () {
-        setTimeout(function () {
-          if (window.shouldLoadAnalytics) {
-            !(function (f, b, e, v, n, t, s) {
-              if (f.fbq) return;
-              n = f.fbq = function () {
-                n.callMethod
-                  ? n.callMethod.apply(n, arguments)
-                  : n.queue.push(arguments);
-              };
-              if (!f._fbq) f._fbq = n;
-              n.push = n;
-              n.loaded = !0;
-              n.version = "2.0";
-              n.queue = [];
-              t = b.createElement(e);
-              t.async = !0;
-              t.src = v;
-              s = b.getElementsByTagName(e)[0];
-              s.parentNode.insertBefore(t, s);
-            })(
-              window,
-              document,
-              "script",
-              "https://connect.facebook.net/en_US/fbevents.js"
-            );
-            fbq("init", "1940362026887774");
-            fbq("track", "PageView");
-
-            console.log("[Analytics] Facebook Pixel enabled");
-          }
-        }, 2000); // 2 second delay
-      });
-    </script>
-    <!-- End Facebook Pixel Code -->
 
     <!-- Schema.org Structured Data (JSON-LD) -->
     <!-- Organization Schema -->
@@ -204,14 +125,7 @@
   </head>
 
   <body class="">
-    <!-- Facebook Pixel Noscript - Conditionally Loaded -->
-    <script>
-      if (window.shouldLoadAnalytics) {
-        document.write(
-          '<noscript><img height="1" width="1" src="https://www.facebook.com/tr?id=1940362026887774&ev=PageView&noscript=1" /></noscript>'
-        );
-      }
-    </script>
+
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

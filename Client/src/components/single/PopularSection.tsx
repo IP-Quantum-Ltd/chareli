@@ -80,7 +80,7 @@ const PopularSection = ({
         )}
       </div>
       <div className="">
-        <Card className="border-hidden shadow-none p-0 dark:bg-[#0f1221]">
+        <Card className="border-hidden shadow-none p-0 bg-transparent dark:bg-[#0f1221]">
           {isLoading && <GamesSkeleton count={4} />}
           {error && (
             <div className="text-center py-8 text-red-500">

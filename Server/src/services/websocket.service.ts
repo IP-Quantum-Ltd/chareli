@@ -76,6 +76,24 @@ class WebSocketService {
   }
 
   /**
+   * Emit proposal update event
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  emitProposalUpdate(action: string, proposal: any): void {
+    if (!this.io) {
+      return;
+    }
+
+    this.io.emit('proposal-update', {
+      action,
+      proposal,
+      timestamp: new Date().toISOString(),
+    });
+
+    logger.info(`Emitted proposal update: ${action} for ${proposal.id}`);
+  }
+
+  /**
    * Get Socket.io server instance
    */
   getIO(): SocketIOServer | null {

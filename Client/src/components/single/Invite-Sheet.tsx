@@ -42,19 +42,21 @@ export function InviteSheet({ children }: { children: React.ReactNode }) {
   // Determine available roles based on current user's role
   const getAvailableRoles = () => {
     const userRole = user?.role?.name?.toLowerCase();
-    
+
     if (userRole === 'superadmin') {
       return [
         { value: "superadmin", label: "Super Admin" },
         { value: "admin", label: "Admin" },
+        { value: "editor", label: "Editor" },
         { value: "viewer", label: "Viewer" }
       ];
     } else if (userRole === 'admin') {
       return [
+        { value: "editor", label: "Editor" },
         { value: "viewer", label: "Viewer" }
       ];
     }
-    
+
     // Default fallback (shouldn't happen if permissions are correct)
     return [{ value: "viewer", label: "Viewer" }];
   };
@@ -138,7 +140,11 @@ export function InviteSheet({ children }: { children: React.ReactNode }) {
                   {({ field, form }: any) => (
                     <SearchableSelect
                       value={field.value}
-                      onValueChange={(value: string) => form.setFieldValue("role", value)}
+                      onValueChange={(value: string | string[]) => {
+                        if (typeof value === 'string') {
+                          form.setFieldValue("role", value);
+                        }
+                      }}
                       options={availableRoles}
                       placeholder="Select role"
                       searchPlaceholder="Search roles..."

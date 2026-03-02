@@ -25,9 +25,9 @@ import {
   RiEqualizer2Line,
   RiGamepadLine,
 } from "react-icons/ri";
-import { CreateGameSheet } from "../../../components/single/CreateGame-Sheet";
+// import { CreateGameSheet } from "../../../components/single/CreateGame-Sheet";
 import { useNavigate } from "react-router-dom";
-import { EditSheet } from "../../../components/single/Edit-Sheet";
+
 import { cn } from "../../../lib/utils";
 import { formatTime } from "../../../utils/main";
 import GameThumbnail from "../Analytics/GameThumbnail";
@@ -42,10 +42,10 @@ const pageSize = 10;
 // Custom hook to detect user activity/idle state
 const useUserActivity = (idleTimeMs = 60000) => {
   const [isUserActive, setIsUserActive] = useState(true);
-  
+
   useEffect(() => {
     let timeout: NodeJS.Timeout;
-    
+
     const resetActivityTimer = () => {
       clearTimeout(timeout);
       setIsUserActive(true);
@@ -53,21 +53,21 @@ const useUserActivity = (idleTimeMs = 60000) => {
         setIsUserActive(false); // User becomes inactive after 60s
       }, idleTimeMs);
     };
-    
+
     // All user activity events
     const activityEvents = [
       'mousedown', 'mousemove', 'mouseup', 'click',
       'keydown', 'keyup', 'scroll', 'wheel',
       'touchstart', 'touchmove', 'touchend'
     ];
-    
+
     activityEvents.forEach(event => {
       document.addEventListener(event, resetActivityTimer, { passive: true });
     });
-    
+
     // Initialize timer
     resetActivityTimer();
-    
+
     return () => {
       clearTimeout(timeout);
       activityEvents.forEach(event => {
@@ -75,16 +75,16 @@ const useUserActivity = (idleTimeMs = 60000) => {
       });
     };
   }, [idleTimeMs]);
-  
+
   return isUserActive;
 };
 
 export default function GameManagement() {
   const permissions = usePermissions();
-  
+
   // Initialize WebSocket connection for real-time status updates
   useWebSocket();
-  
+
   const [page, setPage] = useState(1);
   const [historyPage, setHistoryPage] = useState(1);
   const [filters, setFilters] = useState<{
@@ -101,7 +101,7 @@ export default function GameManagement() {
   }>();
   const navigate = useNavigate();
 
-  const [editOpen, setEditOpen] = useState(false);
+
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
   const [reOrderModalOpen, setReOrderModalOpen] = useState(false);
@@ -116,7 +116,7 @@ export default function GameManagement() {
   const [reorderHistoryOpen, setReorderHistoryOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const queryClient = useQueryClient();
-  
+
   // User activity detection (becomes inactive after 60s of no activity)
   const isUserActive = useUserActivity(60000);
 
@@ -131,30 +131,30 @@ export default function GameManagement() {
       refetchOnWindowFocus: false,
       refetchInterval: (data: any) => {
         if (!data?.data || !Array.isArray(data.data)) return false;
-        
-        const processingGames = data.data.filter((game: any) => 
+
+        const processingGames = data.data.filter((game: any) =>
           game.processingStatus && ['pending', 'processing'].includes(game.processingStatus)
         );
-        
+
         if (processingGames.length === 0) return false;
-        
+
         // User interaction checks - directly access local state
-        const modalOpen = editOpen || deleteModalOpen || reOrderModalOpen;
+        const modalOpen = deleteModalOpen || reOrderModalOpen;
         const filterActive = !!filters || !!historyFilters;
         const reorderModeActive = reorderOpen || reorderHistoryOpen;
-        
+
         // Smart polling logic:
         const shouldPausePolling = (modalOpen || filterActive || reorderModeActive) && isUserActive;
-        
+
         if (shouldPausePolling) {
           console.log('⏸️ Polling paused - user actively interacting');
           return false;
         }
-        
+
         if (modalOpen && !isUserActive) {
           console.log('▶️ Polling resumed - user idle for 60s');
         }
-        
+
         // Poll every 10 seconds for processing games
         return 10000;
       },
@@ -181,7 +181,7 @@ export default function GameManagement() {
         case 'pending':
           // Get progress from global storage
           pendingProgress = getGameProgress(game.id) || 0;
-          
+
           // If there's progress, show it like processing
           if (pendingProgress > 0) {
             return (
@@ -192,7 +192,7 @@ export default function GameManagement() {
                 </span>
                 {/* Progress bar */}
                 <div className="w-full h-1 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                  <div 
+                  <div
                     className="h-full bg-yellow-500 transition-all duration-300 ease-out"
                     style={{ width: `${pendingProgress}%` }}
                   ></div>
@@ -200,7 +200,7 @@ export default function GameManagement() {
               </div>
             );
           }
-          
+
           // No progress yet, show regular queued
           return (
             <span className="inline-flex items-center gap-2 p-1 rounded bg-yellow-500 text-white tracking-wider text-nowrap">
@@ -208,7 +208,7 @@ export default function GameManagement() {
               Queued
             </span>
           );
-          
+
         case 'processing':
           // Get progress from global storage
           progress = getGameProgress(game.id) || 0;
@@ -220,14 +220,14 @@ export default function GameManagement() {
               </span>
               {/* Progress bar */}
               <div className="w-full h-1 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                <div 
+                <div
                   className="h-full bg-blue-500 transition-all duration-300 ease-out"
                   style={{ width: `${progress}%` }}
                 ></div>
               </div>
             </div>
           );
-          
+
         case 'failed':
           return (
             <div className="relative group">
@@ -235,7 +235,7 @@ export default function GameManagement() {
                 <span className="w-2 h-2 bg-white rounded-full"></span>
                 Failed
               </span>
-              
+
               {/* Error tooltip */}
               {game.processingError && (
                 <div className="absolute left-0 top-full mt-1 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-50 shadow-lg max-w-xs">
@@ -247,7 +247,7 @@ export default function GameManagement() {
           );
       }
     }
-    
+
     // Show normal active/inactive status for completed games
     return game.status === "active" ? (
       <span className="inline-flex items-center gap-2 p-1 rounded bg-[#419E6A] text-white tracking-wider text-nowrap">
@@ -266,12 +266,12 @@ export default function GameManagement() {
   });
 
   console.log("History Response:", historyResponse);
-  
+
   // Handle both paginated and non-paginated responses
   const allHistoryData = Array.isArray(historyResponse) ? historyResponse : (historyResponse?.data || []);
   const historyTotal = allHistoryData.length;
   const historyTotalPages = Math.ceil(historyTotal / pageSize);
-  
+
   // Apply client-side pagination to history data
   const startIndex = (historyPage - 1) * pageSize;
   const endIndex = startIndex + pageSize;
@@ -283,11 +283,11 @@ export default function GameManagement() {
     if (filters?.categoryId && game.category?.id !== filters.categoryId)
       return false;
     if (filters?.status && game.status !== filters.status) return false;
-    
+
     // Apply search filter
     if (searchQuery && !game.title.toLowerCase().includes(searchQuery.toLowerCase()))
       return false;
-    
+
     return true;
   });
 
@@ -300,7 +300,7 @@ export default function GameManagement() {
       });
       toast.success("Game deleted successfully");
       setDeleteModalOpen(false);
-      setEditOpen(false); // Close edit sheet
+      setDeleteModalOpen(false);
       setSelectedGameId(null); // Clear selected game
     } catch (error: any) {
       // Check if it's a "not found" error, which means the game was already deleted
@@ -310,7 +310,7 @@ export default function GameManagement() {
         });
         toast.success("Game deleted successfully");
         setDeleteModalOpen(false);
-        setEditOpen(false); // Close edit sheet
+        setDeleteModalOpen(false);
         setSelectedGameId(null); // Clear selected game
       } else {
         toast.error("Failed to delete game");
@@ -320,14 +320,14 @@ export default function GameManagement() {
 
   const totalGames = filteredGames.length;
   const totalPages = Math.ceil(totalGames / pageSize);
-  
+
   // Apply client-side pagination to games data
   const gamesStartIndex = (page - 1) * pageSize;
   const gamesEndIndex = gamesStartIndex + pageSize;
   const paginatedGames = filteredGames.slice(gamesStartIndex, gamesEndIndex);
 
   return (
-    <div className="p-6">
+    <div className="p-6 bg-[#F1F5F9] dark:bg-[#121C2D]">
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6">
         <h1 className="text-[#6A7282] dark:text-white text-2xl sm:text-3xl font-worksans">
           All Games
@@ -365,7 +365,7 @@ export default function GameManagement() {
               )}
             </>
           )}
-          
+
           {/* Hide reorder and create buttons for viewers */}
           {permissions.canManageGames && (
             <>
@@ -399,11 +399,12 @@ export default function GameManagement() {
                 </Button>
               )}
               {!reorderOpen && (
-                <CreateGameSheet>
-                  <Button className="bg-[#6A7282] text-white hover:bg-[#6A7282] tracking-wider py-2 sm:py-[14px] text-sm sm:text-base h-[48px] font-dmmono cursor-pointer">
-                    Create New Game
-                  </Button>
-                </CreateGameSheet>
+                <Button
+                  className="bg-[#6A7282] text-white hover:bg-[#6A7282] tracking-wider py-2 sm:py-[14px] text-sm sm:text-base h-[48px] font-dmmono cursor-pointer"
+                  onClick={() => navigate('/admin/create-game')}
+                >
+                  Create New Game
+                </Button>
               )}
             </>
           )}
@@ -531,12 +532,12 @@ export default function GameManagement() {
                     <td className="px-4 py-3 tracking-wider">
                       {game.category?.name ? (
                         <div className="relative group">
-                          <span 
+                          <span
                             className="block truncate max-w-[150px]"
                             title={game.category.name.length > 20 ? game.category.name : undefined}
                           >
-                            {game.category.name.length > 20 
-                              ? `${game.category.name.substring(0, 20)}...` 
+                            {game.category.name.length > 20
+                              ? `${game.category.name.substring(0, 20)}...`
                               : game.category.name
                             }
                           </span>
@@ -571,14 +572,13 @@ export default function GameManagement() {
                             title="Edit"
                             onClick={(e) => {
                               e.stopPropagation();
-                              setSelectedGameId(game.id);
-                              setEditOpen(true);
+                              navigate(`/admin/edit-game/${game.id}`);
                             }}
                           >
                             <CiEdit className="cursor-pointer" />
                           </button>
                         )}
-                        
+
                         {/* View button - available for all users */}
                         <button
                           className="text-black hover:text-black p-1 dark:text-white cursor-pointer"
@@ -594,7 +594,7 @@ export default function GameManagement() {
                             <IoEyeOffOutline className="cursor-pointer" />
                           )}
                         </button>
-                        
+
                         {/* Delete button - only for users who can delete */}
                         {permissions.canDelete && (
                           <button
@@ -609,7 +609,7 @@ export default function GameManagement() {
                             <RiDeleteBin6Line className="cursor-pointer" />
                           </button>
                         )}
-                        
+
                         {/* Show "View Only" text for viewers when no actions are available */}
                         {permissions.isViewer && (
                           <span className="text-gray-400 text-xs">View Only</span>
@@ -655,7 +655,7 @@ export default function GameManagement() {
                     {(() => {
                       const pages = [];
                       const maxVisiblePages = 5;
-                      
+
                       if (totalPages <= maxVisiblePages) {
                         // Show all pages if total is small
                         for (let i = 1; i <= totalPages; i++) {
@@ -677,7 +677,7 @@ export default function GameManagement() {
                         // Smart truncation for many pages
                         const startPage = Math.max(1, page - 2);
                         const endPage = Math.min(totalPages, page + 2);
-                        
+
                         // First page
                         if (startPage > 1) {
                           pages.push(
@@ -701,7 +701,7 @@ export default function GameManagement() {
                             );
                           }
                         }
-                        
+
                         // Current range
                         for (let i = startPage; i <= endPage; i++) {
                           pages.push(
@@ -718,7 +718,7 @@ export default function GameManagement() {
                             </button>
                           );
                         }
-                        
+
                         // Last page
                         if (endPage < totalPages) {
                           if (endPage < totalPages - 1) {
@@ -743,7 +743,7 @@ export default function GameManagement() {
                           );
                         }
                       }
-                      
+
                       return pages;
                     })()}
                   </div>
@@ -872,7 +872,7 @@ export default function GameManagement() {
                     {(() => {
                       const pages = [];
                       const maxVisiblePages = 5;
-                      
+
                       if (historyTotalPages <= maxVisiblePages) {
                         // Show all pages if total is small
                         for (let i = 1; i <= historyTotalPages; i++) {
@@ -894,7 +894,7 @@ export default function GameManagement() {
                         // Smart truncation for many pages
                         const startPage = Math.max(1, historyPage - 2);
                         const endPage = Math.min(historyTotalPages, historyPage + 2);
-                        
+
                         // First page
                         if (startPage > 1) {
                           pages.push(
@@ -918,7 +918,7 @@ export default function GameManagement() {
                             );
                           }
                         }
-                        
+
                         // Current range
                         for (let i = startPage; i <= endPage; i++) {
                           pages.push(
@@ -935,7 +935,7 @@ export default function GameManagement() {
                             </button>
                           );
                         }
-                        
+
                         // Last page
                         if (endPage < historyTotalPages) {
                           if (endPage < historyTotalPages - 1) {
@@ -960,7 +960,7 @@ export default function GameManagement() {
                           );
                         }
                       }
-                      
+
                       return pages;
                     })()}
                   </div>
@@ -984,13 +984,7 @@ export default function GameManagement() {
         </Card>
       )}
 
-      {editOpen && selectedGameId && (
-        <EditSheet
-          open={editOpen}
-          onOpenChange={setEditOpen}
-          gameId={selectedGameId}
-        />
-      )}
+
 
       {/* Delete Confirmation Modal */}
       <DeleteConfirmationModal

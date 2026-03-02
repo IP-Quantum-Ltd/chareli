@@ -25,7 +25,7 @@ import { Label } from '../../components/ui/label';
 import { Checkbox } from '../../components/ui/checkbox';
 import { Eye, EyeOff, User, Mail } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { getVisitorSessionId } from '../../utils/sessionUtils';
+import { getOrCreateSessionId } from '../../utils/sessionUtils';
 import { useUserCountry } from '../../hooks/useUserCountry';
 import { WelcomeModal } from './WelcomeModal';
 
@@ -208,7 +208,7 @@ export function SignUpModal({
     try {
       // Track the final signup button click with session ID
       trackSignup({
-        sessionId: getVisitorSessionId(),
+        sessionId: getOrCreateSessionId(),
         type: 'signup-modal',
       });
 

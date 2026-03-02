@@ -1,7 +1,6 @@
 import { useState, useEffect, Suspense, lazy } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
-import { BackendRoute } from "../../backend/constants";
 
 const PopularSection = lazy(
   () => import("../../components/single/PopularSection")
@@ -65,40 +64,6 @@ function Home() {
       setSearchParams(newSearchParams, { replace: true });
     }
   }, [searchParams, setSearchParams]);
-
-  // Track homepage visit (non-blocking, after page load)
-  useEffect(() => {
-    const trackHomepageVisit = () => {
-      // Get or generate session ID for anonymous users
-      let sessionId = sessionStorage.getItem('analytics_session_id');
-      if (!sessionId) {
-        sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        sessionStorage.setItem('analytics_session_id', sessionId);
-      }
-
-      const apiUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:5000';
-      const url = `${apiUrl}${BackendRoute.ANALYTICS_HOMEPAGE_VISIT}`;
-      const data = JSON.stringify({ sessionId });
-
-      // Use sendBeacon for non-blocking request (doesn't delay page)
-      if (navigator.sendBeacon) {
-        const blob = new Blob([data], { type: 'application/json' });
-        navigator.sendBeacon(url, blob);
-      } else {
-        // Fallback for older browsers
-        fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: data,
-          keepalive: true,
-        }).catch(() => {}); // Silently ignore errors
-      }
-    };
-
-    // Delay slightly to ensure page is fully loaded
-    const timer = setTimeout(trackHomepageVisit, 100);
-    return () => clearTimeout(timer);
-  }, []); // Run once on mount
 
   const handleOpenSignUpModal = () => {
     setIsSignUpModalOpen(true);

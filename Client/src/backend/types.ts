@@ -13,6 +13,18 @@ export interface Category {
   description?: string;
   isDefault: boolean;
   games?: Game[];
+  gameCount?: number;
+  topGames?: {
+    id: string;
+    title: string;
+    thumbnailUrl?: string;
+    sessionCount: number;
+  }[];
+  metrics?: {
+    gameCount: number;
+    sessionCount: number;
+    averageSessions: number;
+  };
   createdAt: string;
   updatedAt: string;
 }
@@ -21,6 +33,7 @@ export interface FileMetadata {
   id: string;
   name: string;
   url: string;
+  s3Key: string;
   type: string;
   size: number;
   createdAt: string;
@@ -129,7 +142,23 @@ export interface GameData {
   createdAt: string;
   updatedAt: string;
   slug: string;
-  similarGames?: SimilarGame[];
+  metadata?: {
+    developer?: string;
+    howToPlay?: string;
+    features?: string[];
+    tags?: string[];
+    seoKeywords?: string;
+    schemaVersion?: string;
+    releaseDate?: string;
+    platform?: string[];
+    faqOverride?: string;
+  };
+  statistics?: {
+    totalSessions: number;
+    uniquePlayers: number;
+    averageSessionDuration: number;
+  };
+  recommendedGames?: SimilarGame[];
 }
 
 export type GameResponse = GameData;
@@ -204,6 +233,12 @@ export interface Analytics {
   endTime?: Date;
   duration?: number;
   sessionCount?: number;
+  exitReason?: string;
+  loadTime?: number;
+  milestone?: string;
+  errorMessage?: string;
+  lastSeenAt?: string;
+  endedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -222,3 +257,39 @@ export interface GameProcessingStatusResponse {
     };
   };
 }
+
+export const GameProposalStatus = {
+  PENDING: 'pending',
+  APPROVED: 'approved',
+  DECLINED: 'declined',
+  SUPERSEDED: 'superseded',
+} as const;
+
+export type GameProposalStatus = (typeof GameProposalStatus)[keyof typeof GameProposalStatus];
+
+export const GameProposalType = {
+  CREATE: 'create',
+  UPDATE: 'update',
+} as const;
+
+export type GameProposalType = (typeof GameProposalType)[keyof typeof GameProposalType];
+
+export interface GameProposal {
+  id: string;
+  type: GameProposalType;
+  gameId?: string;
+  game?: Game;
+  editorId: string;
+  editor?: User;
+  status: GameProposalStatus;
+  previousProposalId?: string | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  proposedData: any;
+  adminFeedback?: string;
+  reviewedBy?: string;
+  reviewer?: User;
+  createdAt: string;
+  updatedAt: string;
+  feedbackDismissedAt?: string | null;
+}
+

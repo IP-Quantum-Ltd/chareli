@@ -19,6 +19,17 @@ export const createGameSchema = yup.object({
     .number()
     .integer('Position must be an integer')
     .min(1, 'Position must be at least 1'),
+  metadata: yup.object({
+    developer: yup.string().trim().nullable(),
+    howToPlay: yup.string().nullable(), // Remove .trim() to preserve HTML
+    features: yup.array().of(yup.string().trim()).nullable(),
+    tags: yup.array().of(yup.string().trim()).nullable(),
+    seoKeywords: yup.string().trim().nullable(),
+    schemaVersion: yup.string().trim().nullable(),
+    faqOverride: yup.string().nullable(), // Allow HTML content
+    platform: yup.array().of(yup.string().trim()).nullable(), // Support multi-platform
+    releaseDate: yup.string().nullable(),
+  }).nullable(),
 });
 
 /**
@@ -42,6 +53,17 @@ export const updateGameSchema = yup
       .number()
       .integer('Position must be an integer')
       .min(1, 'Position must be at least 1'),
+    metadata: yup.object({
+      developer: yup.string().trim().nullable(),
+      howToPlay: yup.string().nullable(), // Remove .trim() to preserve HTML
+      features: yup.array().of(yup.string().trim()).nullable(),
+      tags: yup.array().of(yup.string().trim()).nullable(),
+      seoKeywords: yup.string().trim().nullable(),
+      schemaVersion: yup.string().trim().nullable(),
+      faqOverride: yup.string().nullable(), // Allow HTML content
+      platform: yup.array().of(yup.string().trim()).nullable(), // Support multi-platform
+      releaseDate: yup.string().nullable(),
+    }).nullable(),
   })
   .test(
     'at-least-one-field',

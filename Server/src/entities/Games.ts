@@ -110,6 +110,19 @@ export class Game {
   @Column({ type: 'varchar', nullable: true })
   jobId: string;
 
+  @Column({ type: 'jsonb', nullable: true })
+  metadata: {
+    howToPlay?: string;
+    features?: string[];
+    tags?: string[];
+    seoKeywords?: string;
+    developer?: string;
+    platform?: string[];
+    releaseDate?: string;
+    faqOverride?: string;
+    schemaVersion?: string;
+  } | null;
+
   @CreateDateColumn()
   @Index()
   createdAt: Date;

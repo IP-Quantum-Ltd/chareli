@@ -9,11 +9,19 @@ import { cdnFetch } from '../utils/cdnFetch';
  * Attempts to fetch from CDN first, falls back to API
  * @returns Query result with categories data
  */
-export const useCategories = () => {
+export const useCategories = (options?: { sortBy?: string; skipCdn?: boolean }) => {
   return useQuery<Category[]>({
-    queryKey: [BackendRoute.CATEGORIES],
+    queryKey: [BackendRoute.CATEGORIES, options],
     queryFn: async () => {
-      // Try CDN first
+      // If custom sort or skip CDN requested, use API directly
+      if (options?.skipCdn || options?.sortBy) {
+        const response = await backendService.get(BackendRoute.CATEGORIES, {
+          params: { sortBy: options?.sortBy },
+        });
+        return response.data as Category[];
+      }
+
+      // Try CDN first for default view
       if (cdnFetch.isEnabled()) {
         try {
           const result = await cdnFetch.fetch<Category[]>({

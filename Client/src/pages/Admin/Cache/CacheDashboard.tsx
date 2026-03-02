@@ -131,7 +131,7 @@ export default function CacheDashboard() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 bg-[#F1F5F9] dark:bg-[#121C2D] p-4">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

@@ -41,7 +41,7 @@ const AdminNavbar: React.FC = () => {
   }, [showSearch]);
 
   return (
-    <header className="relative flex justify-between items-center bg-white dark:bg-[#0f1221] transition-colors duration-300">
+    <header className="relative flex justify-between items-center bg-[#fef7ed] dark:bg-[#0f1221] transition-colors duration-300">
       {/* Logo */}
       <div
         onClick={() => navigate("/")}

@@ -12,6 +12,13 @@ import {
 } from 'typeorm';
 import { User } from './User';
 import { Game } from './Games';
+import {
+  IsInt,
+  Min,
+  ValidateIf,
+  MaxLength,
+  validateOrReject,
+} from 'class-validator';
 
 @Entity('analytics', { schema: 'internal' })
 @Index(['userId', 'activityType'])
@@ -61,10 +68,39 @@ export class Analytics {
 
   @Column({ type: 'int', nullable: true })
   @Index()
+  @ValidateIf((o) => o.duration !== null && o.duration !== undefined)
+  @IsInt()
+  @Min(0)
   duration: number | null; // Duration in seconds
 
   @Column({ type: 'int', nullable: true, default: null })
   sessionCount: number | null;
+
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  @Index()
+  @MaxLength(50)
+  exitReason: string | null;
+
+  @Column({ type: 'int', nullable: true })
+  @ValidateIf((o) => o.loadTime !== null && o.loadTime !== undefined)
+  @IsInt()
+  @Min(0)
+  loadTime: number | null;
+
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  @MaxLength(50)
+  milestone: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  errorMessage: string | null;
+
+  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+  @Index()
+  lastSeenAt: Date;
+
+  @Column({ type: 'timestamp', nullable: true })
+  @Index()
+  endedAt: Date | null;
 
   @CreateDateColumn()
   @Index()
@@ -75,15 +111,14 @@ export class Analytics {
 
   @BeforeInsert()
   @BeforeUpdate()
-  calculateDuration() {
-    if (this.startTime && this.endTime) {
-      // Calculate duration in seconds only if both startTime and endTime are present
-      this.duration = Math.floor(
-        (this.endTime.getTime() - this.startTime.getTime()) / 1000
-      );
-    } else {
-      // Set duration to null if either startTime or endTime is missing
-      this.duration = null;
+  async validate() {
+    // Semantic checks - Invariants ONLY
+    if (this.startTime && this.endedAt) {
+      if (this.endedAt < this.startTime) {
+        throw new Error('endedAt cannot be before startTime');
+      }
     }
+
+    await validateOrReject(this, { skipMissingProperties: true });
   }
 }

@@ -13,6 +13,7 @@ import { cacheService } from '../services/cache.service';
 import { PerformanceTimer } from '../utils/performance';
 import logger from '../utils/logger';
 import { toZonedTime } from 'date-fns-tz';
+import { AdminExclusionService } from '../services/adminExclusion.service';
 
 const userRepository = AppDataSource.getRepository(User);
 const gameRepository = AppDataSource.getRepository(Game);
@@ -47,6 +48,7 @@ export const getDashboardAnalytics = async (
   const overallTimer = new PerformanceTimer('getDashboardAnalytics', {
     period: req.query.period,
   });
+  const excludedRoles = AdminExclusionService.getNonTrackedRoles();
   try {
     const { period, startDate, endDate, country, timezone } = req.query;
     const userTimezone = (timezone as string) || 'UTC';
@@ -167,7 +169,7 @@ export const getDashboardAnalytics = async (
       .andWhere('analytics.startTime IS NOT NULL')
       .andWhere('analytics.endTime IS NOT NULL')
       .andWhere('analytics.duration >= :minDuration', { minDuration: 30 })
-      .andWhere("(role.name = 'player' OR analytics.userId IS NULL)");
+      .andWhere("(role.name NOT IN (:...excludedRoles) OR analytics.userId IS NULL)", { excludedRoles });
 
     // Add country filter if provided
     if (countries.length > 0) {
@@ -195,7 +197,7 @@ export const getDashboardAnalytics = async (
       .andWhere('a1.startTime IS NOT NULL')
       .andWhere('a1.endTime IS NOT NULL')
       .andWhere('a1.duration >= :minDuration', { minDuration: 30 })
-      .andWhere("(role1.name = 'player' OR a1.userId IS NULL)")
+      .andWhere("(role1.name NOT IN (:...excludedRoles) OR a1.userId IS NULL)", { excludedRoles })
       .andWhere(`EXISTS (
         SELECT 1 FROM internal.analytics a2
         LEFT JOIN public.users user2 ON a2.user_id = user2.id
@@ -206,11 +208,12 @@ export const getDashboardAnalytics = async (
         AND a2."startTime" IS NOT NULL
         AND a2."endTime" IS NOT NULL
         AND a2.duration >= 30
-        AND (role2.name = 'player' OR a2.user_id IS NULL)
+        AND (role2.name NOT IN (:...excludedRoles) OR a2.user_id IS NULL)
         ${countries.length > 0 ? 'AND user2.country = ANY(:countries)' : ''}
       )`, {
         start: fortyEightHoursAgo,
         end: twentyFourHoursAgo,
+        excludedRoles,
         ...(countries.length > 0 ? { countries } : {}),
       });
 
@@ -247,10 +250,10 @@ export const getDashboardAnalytics = async (
       .where('analytics.gameId IS NOT NULL')
       .andWhere('analytics.duration >= :minDuration', { minDuration: 30 })
       .andWhere('analytics.createdAt BETWEEN :start AND :end', {
-        start: dailyActiveUsers24HoursAgo,
-        end: dailyActiveUsersNow,
+        start: twentyFourHoursAgo,
+        end: now,
       })
-      .andWhere("(role.name = 'player' OR analytics.userId IS NULL)");
+      .andWhere("(role.name NOT IN (:...excludedRoles) OR analytics.userId IS NULL)", { excludedRoles });
 
     // Add country filter if provided
     if (countries.length > 0) {
@@ -375,7 +378,7 @@ export const getDashboardAnalytics = async (
         start: twentyFourHoursAgo,
         end: now,
       })
-      .andWhere("(role.name = 'player' OR analytics.userId IS NULL)");
+      .andWhere("(role.name NOT IN (:...excludedRoles) OR analytics.userId IS NULL)", { excludedRoles });
 
     // Get games played in previous period
     let previousPlayedGamesQuery = analyticsRepository
@@ -389,7 +392,7 @@ export const getDashboardAnalytics = async (
         start: fortyEightHoursAgo,
         end: twentyFourHoursAgo,
       })
-      .andWhere("(role.name = 'player' OR analytics.userId IS NULL)");
+      .andWhere("(role.name NOT IN (:...excludedRoles) OR analytics.userId IS NULL)", { excludedRoles });
 
     // Add country filter if provided
     if (countries.length > 0) {
@@ -447,7 +450,7 @@ export const getDashboardAnalytics = async (
         start: twentyFourHoursAgo,
         end: now,
       })
-      .andWhere("(role.name = 'player' OR analytics.userId IS NULL)");
+      .andWhere("(role.name NOT IN (:...excludedRoles) OR analytics.userId IS NULL)", { excludedRoles });
 
     let previousTotalActiveUsersQuery = analyticsRepository
       .createQueryBuilder('analytics')
@@ -460,7 +463,7 @@ export const getDashboardAnalytics = async (
         start: fortyEightHoursAgo,
         end: twentyFourHoursAgo,
       })
-      .andWhere("(role.name = 'player' OR analytics.userId IS NULL)");
+      .andWhere("(role.name NOT IN (:...excludedRoles) OR analytics.userId IS NULL)", { excludedRoles });
 
     // Add country filter if provided
     if (countries.length > 0) {
@@ -510,7 +513,7 @@ export const getDashboardAnalytics = async (
         start: twentyFourHoursAgo,
         end: now,
       })
-      .andWhere("(role.name = 'player' OR analytics.userId IS NULL)");
+      .andWhere("(role.name NOT IN (:...excludedRoles) OR analytics.userId IS NULL)", { excludedRoles });
 
     let previousTotalSessionsQuery = analyticsRepository
       .createQueryBuilder('analytics')
@@ -524,7 +527,7 @@ export const getDashboardAnalytics = async (
         start: fortyEightHoursAgo,
         end: twentyFourHoursAgo,
       })
-      .andWhere("(role.name = 'player' OR analytics.userId IS NULL)");
+      .andWhere("(role.name NOT IN (:...excludedRoles) OR analytics.userId IS NULL)", { excludedRoles });
 
     let actualSessionsQuery = analyticsRepository
       .createQueryBuilder('analytics')
@@ -534,7 +537,7 @@ export const getDashboardAnalytics = async (
       .andWhere('analytics.startTime IS NOT NULL')
       .andWhere('analytics.endTime IS NOT NULL')
       .andWhere('analytics.duration >= :minDuration', { minDuration: 30 })
-      .andWhere("(role.name = 'player' OR analytics.userId IS NULL)");
+      .andWhere("(role.name NOT IN (:...excludedRoles) OR analytics.userId IS NULL)", { excludedRoles });
 
     // Add country filter if provided
     if (countries.length > 0) {
@@ -589,7 +592,7 @@ export const getDashboardAnalytics = async (
         start: twentyFourHoursAgo,
         end: now,
       })
-      .andWhere("(role.name = 'player' OR analytics.userId IS NULL)");
+      .andWhere("(role.name NOT IN (:...excludedRoles) OR analytics.userId IS NULL)", { excludedRoles });
 
     let previousTotalTimePlayedQuery = analyticsRepository
       .createQueryBuilder('analytics')
@@ -604,7 +607,7 @@ export const getDashboardAnalytics = async (
         start: fortyEightHoursAgo,
         end: twentyFourHoursAgo,
       })
-      .andWhere("(role.name = 'player' OR analytics.userId IS NULL)");
+      .andWhere("(role.name NOT IN (:...excludedRoles) OR analytics.userId IS NULL)", { excludedRoles });
 
     let actualTimePlayedQuery = analyticsRepository
       .createQueryBuilder('analytics')
@@ -615,7 +618,7 @@ export const getDashboardAnalytics = async (
       .andWhere('analytics.startTime IS NOT NULL')
       .andWhere('analytics.endTime IS NOT NULL')
       .andWhere('analytics.duration >= :minDuration', { minDuration: 30 })
-      .andWhere("(role.name = 'player' OR analytics.userId IS NULL)");
+      .andWhere("(role.name NOT IN (:...excludedRoles) OR analytics.userId IS NULL)", { excludedRoles });
 
     // Add country filter if provided
     if (countries.length > 0) {
@@ -685,7 +688,7 @@ export const getDashboardAnalytics = async (
         start: twentyFourHoursAgo,
         end: now,
       })
-      .andWhere("(role.name = 'player' OR analytics.userId IS NULL)");
+      .andWhere("(role.name NOT IN (:...excludedRoles) OR analytics.userId IS NULL)", { excludedRoles });
 
     // Add country filter if provided
     if (countries.length > 0) {
@@ -727,7 +730,7 @@ export const getDashboardAnalytics = async (
             .andWhere('analytics.createdAt > :twentyFourHoursAgo', {
               twentyFourHoursAgo,
             })
-            .andWhere("(role.name = 'player' OR analytics.userId IS NULL)");
+            .andWhere("(role.name NOT IN (:...excludedRoles) OR analytics.userId IS NULL)", { excludedRoles });
 
           // Get previous period sessions for this game
           let previousSessionsQuery = analyticsRepository
@@ -743,7 +746,7 @@ export const getDashboardAnalytics = async (
               start: fortyEightHoursAgo,
               end: twentyFourHoursAgo,
             })
-            .andWhere("(role.name = 'player' OR analytics.userId IS NULL)");
+            .andWhere("(role.name NOT IN (:...excludedRoles) OR analytics.userId IS NULL)", { excludedRoles });
 
           // Add country filter if provided
           if (countries.length > 0) {
@@ -806,7 +809,7 @@ export const getDashboardAnalytics = async (
         start: twentyFourHoursAgo,
         end: now,
       })
-      .andWhere("(role.name = 'player' OR analytics.userId IS NULL)");
+      .andWhere("(role.name NOT IN (:...excludedRoles) OR analytics.userId IS NULL)", { excludedRoles });
 
     let previousAvgDurationQuery = analyticsRepository
       .createQueryBuilder('analytics')
@@ -823,7 +826,7 @@ export const getDashboardAnalytics = async (
         start: fortyEightHoursAgo,
         end: twentyFourHoursAgo,
       })
-      .andWhere("(role.name = 'player' OR analytics.userId IS NULL)");
+      .andWhere("(role.name NOT IN (:...excludedRoles) OR analytics.userId IS NULL)", { excludedRoles });
 
     // Add country filter if provided
     if (countries.length > 0) {
@@ -927,7 +930,7 @@ export const getDashboardAnalytics = async (
         '(user.hasCompletedFirstLogin = :hasCompleted OR analytics.userId IS NULL)',
         { hasCompleted: true }
       )
-      .andWhere("(role.name = 'player' OR analytics.userId IS NULL)");
+      .andWhere("(role.name NOT IN (:...excludedRoles) OR analytics.userId IS NULL)", { excludedRoles });
 
     let previousTotalVisitorsQuery = analyticsRepository
       .createQueryBuilder('analytics')
@@ -949,7 +952,7 @@ export const getDashboardAnalytics = async (
         '(user.hasCompletedFirstLogin = :hasCompleted OR analytics.userId IS NULL)',
         { hasCompleted: true }
       )
-      .andWhere("(role.name = 'player' OR analytics.userId IS NULL)");
+      .andWhere("(role.name NOT IN (:...excludedRoles) OR analytics.userId IS NULL)", { excludedRoles });
 
     // Add country filter if provided (only applies to authenticated users with country data)
     if (countries.length > 0) {
@@ -1088,44 +1091,38 @@ export const getDashboardAnalytics = async (
         : 0;
 
     // 5. User Type Breakdown (Authenticated vs Anonymous)
-    const totalSessionsInPeriod =
-      currentTotalSessions + currentAnonymousSessions;
-    const totalTimePlayedInPeriod =
-      currentTotalTimePlayed + currentAnonymousTimePlayed;
+    // 5. User Type Breakdown (Authenticated vs Anonymous)
+    // Note: currentTotalSessions and currentTotalTimePlayed include BOTH authenticated and anonymous users
+    // So we need to subtract anonymous counts to get authenticated counts
+
+    // Sessions breakdown
+    const totalSessions = currentTotalSessions; // This is already the total
+    const anonymousSessions = currentAnonymousSessions;
+    const authenticatedSessions = Math.max(0, totalSessions - anonymousSessions);
+
+    // Time breakdown
+    const totalTime = currentTotalTimePlayed; // This is already the total
+    const anonymousTime = currentAnonymousTimePlayed;
+    const authenticatedTime = Math.max(0, totalTime - anonymousTime);
 
     const authenticatedSessionsPercentage =
-      totalSessionsInPeriod > 0
-        ? Number(
-            ((currentTotalSessions / totalSessionsInPeriod) * 100).toFixed(2)
-          )
+      totalSessions > 0
+        ? Number(((authenticatedSessions / totalSessions) * 100).toFixed(2))
         : 0;
 
     const anonymousSessionsPercentage =
-      totalSessionsInPeriod > 0
-        ? Number(
-            ((currentAnonymousSessions / totalSessionsInPeriod) * 100).toFixed(
-              2
-            )
-          )
+      totalSessions > 0
+        ? Number(((anonymousSessions / totalSessions) * 100).toFixed(2))
         : 0;
 
     const authenticatedTimePercentage =
-      totalTimePlayedInPeriod > 0
-        ? Number(
-            ((currentTotalTimePlayed / totalTimePlayedInPeriod) * 100).toFixed(
-              2
-            )
-          )
+      totalTime > 0
+        ? Number(((authenticatedTime / totalTime) * 100).toFixed(2))
         : 0;
 
     const anonymousTimePercentage =
-      totalTimePlayedInPeriod > 0
-        ? Number(
-            (
-              (currentAnonymousTimePlayed / totalTimePlayedInPeriod) *
-              100
-            ).toFixed(2)
-          )
+      totalTime > 0
+        ? Number(((anonymousTime / totalTime) * 100).toFixed(2))
         : 0;
 
     // Build response object
@@ -1185,12 +1182,12 @@ export const getDashboardAnalytics = async (
           ),
         },
         userTypeBreakdown: {
-          authenticatedSessions: currentTotalSessions,
-          anonymousSessions: currentAnonymousSessions,
+          authenticatedSessions,
+          anonymousSessions,
           authenticatedSessionsPercentage,
           anonymousSessionsPercentage,
-          authenticatedTimePlayed: currentTotalTimePlayed,
-          anonymousTimePlayed: currentAnonymousTimePlayed,
+          authenticatedTimePlayed: authenticatedTime,
+          anonymousTimePlayed: anonymousTime,
           authenticatedTimePercentage,
           anonymousTimePercentage,
         },
@@ -1648,6 +1645,7 @@ export const getGamesWithAnalytics = async (
   res: Response,
   next: NextFunction
 ): Promise<void> => {
+  const excludedRoles = AdminExclusionService.getNonTrackedRoles();
   try {
     const { page, limit, categoryId, status, search } = req.query;
 
@@ -1716,7 +1714,7 @@ export const getGamesWithAnalytics = async (
         .andWhere('analytics.startTime IS NOT NULL')
         .andWhere('analytics.endTime IS NOT NULL')
         .andWhere('analytics.duration >= :minDuration', { minDuration: 30 })
-        .andWhere("(role.name = 'player' OR analytics.userId IS NULL)")
+        .andWhere("(role.name NOT IN (:...excludedRoles) OR analytics.userId IS NULL)", { excludedRoles })
         .groupBy('analytics.gameId')
         .getRawMany();
     }
@@ -1827,6 +1825,7 @@ export const getGameAnalyticsById = async (
   res: Response,
   next: NextFunction
 ): Promise<void> => {
+  const excludedRoles = AdminExclusionService.getNonTrackedRoles();
   try {
     const { id } = req.params;
     const { startDate, endDate } = req.query;
@@ -1873,7 +1872,7 @@ export const getGameAnalyticsById = async (
       .andWhere('analytics.startTime IS NOT NULL')
       .andWhere('analytics.endTime IS NOT NULL')
       .andWhere('analytics.duration >= :minDuration', { minDuration: 30 })
-      .andWhere("(role.name = 'player' OR analytics.userId IS NULL)")
+      .andWhere("(role.name NOT IN (:...excludedRoles) OR analytics.userId IS NULL)", { excludedRoles })
       .getRawOne();
 
     // Get top players for this game
@@ -1895,7 +1894,7 @@ export const getGameAnalyticsById = async (
       .leftJoin('analytics.user', 'user')
       .leftJoin('user.role', 'role')
       .where(whereConditions)
-      .andWhere("role.name = 'player'")
+      .andWhere("role.name NOT IN (:...excludedRoles)", { excludedRoles })
       .groupBy('analytics.userId')
       .addGroupBy('user.email')
       .addGroupBy('user.firstName')
@@ -1936,7 +1935,7 @@ export const getGameAnalyticsById = async (
       .leftJoin('analytics.user', 'user')
       .leftJoin('user.role', 'role')
       .where(whereConditions)
-      .andWhere("(role.name = 'player' OR analytics.userId IS NULL)")
+      .andWhere("(role.name NOT IN (:...excludedRoles) OR analytics.userId IS NULL)", { excludedRoles })
       .groupBy('DATE(analytics.startTime)')
       .orderBy('date', 'ASC')
       .getRawMany();
@@ -2169,6 +2168,7 @@ export const getGamesPopularityMetrics = async (
   res: Response,
   next: NextFunction
 ): Promise<void> => {
+  const excludedRoles = AdminExclusionService.getNonTrackedRoles();
   try {
     const { period, startDate, endDate, timezone } = req.query;
     const userTimezone = (timezone as string) || 'UTC';
@@ -2271,7 +2271,7 @@ export const getGamesPopularityMetrics = async (
           .andWhere('analytics.endTime IS NOT NULL')
           .andWhere('analytics.duration >= :minDuration', { minDuration: 30 })
           .andWhere('analytics.createdAt > :currentPeriodStart', { currentPeriodStart })
-          .andWhere("(role.name = 'player' OR analytics.userId IS NULL)")
+          .andWhere("(role.name NOT IN (:...excludedRoles) OR analytics.userId IS NULL)", { excludedRoles })
           .getRawOne();
 
         // Get plays in current period (duration >= 30 seconds)
@@ -2287,7 +2287,7 @@ export const getGamesPopularityMetrics = async (
           .andWhere('analytics.createdAt > :currentPeriodStart', {
             currentPeriodStart,
           })
-          .andWhere("(role.name = 'player' OR analytics.userId IS NULL)")
+          .andWhere("(role.name NOT IN (:...excludedRoles) OR analytics.userId IS NULL)", { excludedRoles })
           .getRawOne();
 
         // Get plays in previous period (duration >= 30 seconds)
@@ -2304,7 +2304,7 @@ export const getGamesPopularityMetrics = async (
             start: previousPeriodStart,
             end: previousPeriodEnd,
           })
-          .andWhere("(role.name = 'player' OR analytics.userId IS NULL)")
+          .andWhere("(role.name NOT IN (:...excludedRoles) OR analytics.userId IS NULL)", { excludedRoles })
           .getRawOne();
 
         // Get position with highest click count for this game

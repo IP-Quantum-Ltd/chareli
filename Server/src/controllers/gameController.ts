@@ -26,7 +26,10 @@ import { cacheService } from '../services/cache.service';
 import { cacheInvalidationService } from '../services/cache-invalidation.service';
 import { redisService } from '../services/redis.service';
 import { multipartUploadHelpers } from '../utils/multipartUpload';
+import { calculateLikeCount } from '../utils/gameUtils';
 // import { processImage } from '../services/file.service';
+
+import { GameProposal, GameProposalStatus, GameProposalType } from '../entities/GameProposal';
 
 const gameRepository = AppDataSource.getRepository(Game);
 const gamePositionHistoryRepository =
@@ -34,6 +37,7 @@ const gamePositionHistoryRepository =
 const categoryRepository = AppDataSource.getRepository(Category);
 const fileRepository = AppDataSource.getRepository(File);
 const gameLikeRepository = AppDataSource.getRepository(GameLike);
+const gameProposalRepository = AppDataSource.getRepository(GameProposal);
 
 // Helper function to get the maximum position
 const getMaxPosition = async (): Promise<number> => {
@@ -133,45 +137,7 @@ const assignPositionForNewGame = async (
   }
 };
 
-/**
- * Calculate current like count for a game based on days elapsed and deterministic random increments
- * @param game - The game object with baseLikeCount and lastLikeIncrement
- * @param userLikesCount - Number of user likes for this game
- * @returns Current like count (auto-increment + user likes)
- */
-const calculateLikeCount = (game: Game, userLikesCount: number = 0): number => {
-  const now = new Date();
-  const lastIncrement = new Date(game.lastLikeIncrement);
 
-  // Calculate days elapsed since last increment
-  const msPerDay = 24 * 60 * 60 * 1000;
-  const daysElapsed = Math.floor(
-    (now.getTime() - lastIncrement.getTime()) / msPerDay
-  );
-
-  let autoIncrement = 0;
-  if (daysElapsed > 0) {
-    // Calculate total increment using deterministic random for each day
-    for (let day = 1; day <= daysElapsed; day++) {
-      // Create deterministic seed from gameId + date
-      const incrementDate = new Date(lastIncrement);
-      incrementDate.setDate(incrementDate.getDate() + day);
-      const dateStr = incrementDate.toISOString().split('T')[0]; // YYYY-MM-DD
-      const seed = game.id + dateStr;
-
-      // Simple hash function for deterministic random (1, 2, or 3)
-      let hash = 0;
-      for (let i = 0; i < seed.length; i++) {
-        hash = (hash << 5) - hash + seed.charCodeAt(i);
-        hash = hash & hash; // Convert to 32bit integer
-      }
-      const increment = (Math.abs(hash) % 3) + 1; // 1, 2, or 3
-      autoIncrement += increment;
-    }
-  }
-
-  return game.baseLikeCount + autoIncrement + userLikesCount;
-};
 
 /**
  * @swagger
@@ -458,12 +424,15 @@ export const getAllGames = async (
           .leftJoinAndSelect('game.thumbnailFile', 'thumbnailFile')
           .leftJoinAndSelect('game.gameFile', 'gameFile')
           .leftJoinAndSelect('game.createdBy', 'createdBy')
-          .leftJoin('analytics', 'a', 'a.gameId = game.id')
+          .leftJoin(Analytics, 'a', 'a.gameId = game.id')
+          .leftJoin('a.user', 'user')
+          .leftJoin('user.role', 'role')
           .addSelect([
             'COUNT(DISTINCT a.userId) as playerCount',
             'SUM(a.duration) as totalPlayTime',
             'COUNT(a.id) as sessionCount',
           ])
+          .andWhere("(role.name = 'player' OR a.userId IS NULL OR a.id IS NULL)")
           .groupBy('game.id')
           .addGroupBy('category.id')
           .addGroupBy('thumbnailFile.id')
@@ -594,13 +563,7 @@ export const getAllGames = async (
       );
     }
 
-    // Get total count for pagination
-    const total = await queryBuilder.getCount();
-
-    // Apply pagination (middleware ensures limitNumber is always set)
-    queryBuilder.skip((pageNumber - 1) * limitNumber).take(limitNumber);
-
-    // Apply ordering based on filter type
+    // Apply ordering BEFORE pagination (critical for correct sorting)
     if (orderByRecent) {
       // For recently_added filter, order only by creation date (newest first)
       queryBuilder.orderBy('game.createdAt', 'DESC');
@@ -613,6 +576,12 @@ export const getAllGames = async (
         .orderBy('game.position', 'ASC')
         .addOrderBy('game.createdAt', 'DESC');
     }
+
+    // Get total count for pagination (after ordering is applied)
+    const total = await queryBuilder.getCount();
+
+    // Apply pagination (middleware ensures limitNumber is always set)
+    queryBuilder.skip((pageNumber - 1) * limitNumber).take(limitNumber);
 
     const games = await queryBuilder.getMany();
 
@@ -751,6 +720,8 @@ export const getGameById = async (
       relations: ['category', 'thumbnailFile', 'gameFile', 'createdBy'],
     });
 
+
+
     if (!game) {
       return next(
         ApiError.notFound(`Game with ${isUUID ? 'id' : 'slug'} ${id} not found`)
@@ -767,33 +738,86 @@ export const getGameById = async (
       game.thumbnailFile.s3Key = storageService.getPublicUrl(s3Key);
     }
 
-    // Find similar games (same category, different ID, active status)
-    let similarGames: Game[] = [];
+    // Find recommended games (2 from same category + 3 from different categories)
+    let recommendedGames: Game[] = [];
 
     if (game.categoryId) {
-      similarGames = await gameRepository.find({
-        where: {
-          categoryId: game.categoryId,
-          id: Not(game.id), // Exclude the current game using its actual UUID
-          status: GameStatus.ACTIVE,
-        },
-        relations: ['thumbnailFile', 'gameFile'],
-        take: 5, // Limit to 5 similar games
-        order: { createdAt: 'DESC' }, // Get the newest games first
-      });
+      // Get 2 random games from the same category
+      // Using subquery to avoid DISTINCT + ORDER BY RANDOM() conflict
+      const sameCategoryGames = await gameRepository
+        .createQueryBuilder('game')
+        .leftJoinAndSelect('game.thumbnailFile', 'thumbnailFile')
+        .leftJoinAndSelect('game.gameFile', 'gameFile')
+        .where('game.categoryId = :categoryId', { categoryId: game.categoryId })
+        .andWhere('game.id != :gameId', { gameId: game.id })
+        .andWhere('game.status = :status', { status: GameStatus.ACTIVE })
+        .orderBy('game.createdAt', 'DESC') // Use deterministic ordering
+        .take(10) // Get more than needed
+        .getMany();
 
-      // Transform similar games' file and thumbnail URLs to direct storage URLs
-      similarGames.forEach((similarGame) => {
-        if (similarGame.gameFile) {
-          const s3Key = similarGame.gameFile.s3Key;
-          similarGame.gameFile.s3Key = storageService.getPublicUrl(s3Key);
+      // Shuffle and take 2 (Fisher-Yates shuffle)
+      const shuffledSame = sameCategoryGames.sort(() => Math.random() - 0.5).slice(0, 2);
+
+      // Get 3 random games from different categories
+      const differentCategoryGames = await gameRepository
+        .createQueryBuilder('game')
+        .leftJoinAndSelect('game.thumbnailFile', 'thumbnailFile')
+        .leftJoinAndSelect('game.gameFile', 'gameFile')
+        .where('game.categoryId != :categoryId', { categoryId: game.categoryId })
+        .andWhere('game.id != :gameId', { gameId: game.id })
+        .andWhere('game.status = :status', { status: GameStatus.ACTIVE })
+        .orderBy('game.createdAt', 'DESC') // Use deterministic ordering
+        .take(15) // Get more than needed
+        .getMany();
+
+      // Shuffle and take 3
+      const shuffledDifferent = differentCategoryGames.sort(() => Math.random() - 0.5).slice(0, 3);
+
+      // Combine the results
+      recommendedGames = [...shuffledSame, ...shuffledDifferent];
+
+      // Transform recommended games' file and thumbnail URLs to direct storage URLs
+      recommendedGames.forEach((recommendedGame) => {
+        if (recommendedGame.gameFile) {
+          const s3Key = recommendedGame.gameFile.s3Key;
+          recommendedGame.gameFile.s3Key = storageService.getPublicUrl(s3Key);
         }
-        if (similarGame.thumbnailFile) {
-          const s3Key = similarGame.thumbnailFile.s3Key;
-          similarGame.thumbnailFile.s3Key = storageService.getPublicUrl(s3Key);
+        if (recommendedGame.thumbnailFile) {
+          const s3Key = recommendedGame.thumbnailFile.s3Key;
+          recommendedGame.thumbnailFile.s3Key = storageService.getPublicUrl(s3Key);
         }
       });
     }
+
+    // Calculate game statistics from Analytics table (excluding admin plays)
+    const analyticsRepository = AppDataSource.getRepository(Analytics);
+    const statsQuery = analyticsRepository
+      .createQueryBuilder('analytics')
+      .leftJoin('analytics.user', 'user')
+      .leftJoin('user.role', 'role')
+      .where('analytics.gameId = :gameId', { gameId: game.id })
+      .andWhere("(role.name = 'player' OR analytics.userId IS NULL)"); // Exclude admin plays
+
+    const [totalSessions, uniquePlayersResult, avgDurationResult] = await Promise.all([
+      // Total sessions count
+      statsQuery.getCount(),
+
+      // Unique players count - use database column names (user_id, session_id)
+      statsQuery
+        .select('COUNT(DISTINCT COALESCE(analytics.user_id::text, analytics.session_id))', 'count')
+        .getRawOne(),
+
+      // Average session duration (in seconds)
+      statsQuery
+        .select('AVG(analytics.duration)', 'avgDuration')
+        .getRawOne(),
+    ]);
+
+    const statistics = {
+      totalSessions,
+      uniquePlayers: parseInt(uniquePlayersResult?.count || '0', 10),
+      averageSessionDuration: Math.round(parseFloat(avgDurationResult?.avgDuration || '0')),
+    };
 
     // Get cached like count (avoid CPU-intensive calculation)
     const gameLikeCacheRepository = AppDataSource.getRepository(GameLikeCache);
@@ -824,7 +848,8 @@ export const getGameById = async (
       ...game,
       likeCount,
       hasLiked,
-      similarGames: similarGames,
+      statistics,
+      recommendedGames,
     };
 
     // Cache the response for future requests
@@ -936,6 +961,7 @@ export const createGame = async (
       position,
       thumbnailFileKey: rawThumbnailFileKey,
       gameFileKey: rawGameFileKey,
+      metadata, // Destructure metadata
     } = req.body;
 
     // Decode HTML entities in file keys
@@ -1016,6 +1042,55 @@ export const createGame = async (
     });
 
     await queryRunner.manager.save(thumbnailFileRecord);
+
+    // [EDITOR FLOW] Intercept and create proposal instead of Game
+    if (req.user?.role === RoleType.EDITOR) {
+      logger.info('Editor user detected, creating Game Proposal...');
+
+      // Handle Game File Persistence (Move key to permanent storage to ensure it persists until approval)
+      let permanentGameFileKey = gameFileKey;
+      if (gameFileKey) {
+        // Move to a 'proposals' folder or similar to keep it safe
+        permanentGameFileKey = await moveFileToPermanentStorage(
+          gameFileKey,
+          'proposals/game-files'
+        );
+      }
+
+      const proposal = gameProposalRepository.create({
+        type: GameProposalType.CREATE,
+        editorId: req.user.userId,
+        status: GameProposalStatus.PENDING,
+        proposedData: {
+          title,
+          description,
+          categoryId: finalCategoryId,
+          status: GameStatus.DISABLED, // Default for new proposals
+          config,
+          position, // Pass requested position, Admin/System will reconcile on approve
+          thumbnailFileId: thumbnailFileRecord.id,
+          gameFileKey: permanentGameFileKey,
+          metadata: metadata || undefined,
+        }
+      });
+
+      await queryRunner.manager.save(proposal);
+      await queryRunner.commitTransaction();
+
+      // We still queue the thumbnail image processing since the file record exists
+       await queueService.addImageProcessingJob({
+        fileId: thumbnailFileRecord.id,
+        s3Key: permanentThumbnailKey,
+      });
+
+      res.status(200).json({
+        success: true,
+        message: 'Game creation submitted for review',
+        data: proposal
+      });
+      return;
+    }
+
     // Assign position for the new game
     logger.info('Assigning position for new game...');
     const assignedPosition = await assignPositionForNewGame(
@@ -1041,6 +1116,7 @@ export const createGame = async (
       position: assignedPosition,
       processingStatus: GameProcessingStatus.PENDING,
       createdById: req.user?.userId,
+      metadata: metadata || undefined,
     });
 
     await queryRunner.manager.save(game);
@@ -1063,28 +1139,64 @@ export const createGame = async (
       s3Key: permanentThumbnailKey,
     });
 
-    // Queue background job for ZIP processing
-    logger.info('Queuing background job for ZIP processing...');
-    console.log('🚀 [CREATE GAME] Queuing job for game:', {
-      gameId: game.id,
-      title,
-      gameFileKey,
-    });
+    // ============================================================================
+    // ZIP PROCESSING - Feature Flag (Cloudflare Worker vs Local BullMQ)
+    // ============================================================================
+    const useCloudflareWorker = process.env.ZIP_PROCESSING_MODE === 'cloudflare';
 
-    const job = await queueService.addGameZipProcessingJob({
-      gameId: game.id,
-      gameFileKey,
-      userId: req.user?.userId,
-    });
+    if (useCloudflareWorker) {
+      // ============================================================================
+      // [NEW] Cloudflare Worker handles ZIP processing automatically
+      // R2 event notification triggers worker when ZIP is uploaded to temp-games/
+      // Worker will send webhook to /api/internal/game-processed when complete
+      // ============================================================================
+      
+      // Store the temp file path in metadata so webhook can find it
+      game.metadata = {
+        ...game.metadata,
+        _tempGameFileKey: gameFileKey,
+        _uploadedAt: new Date().toISOString(),
+      } as any; // Casting to any since metadata is JSONB and can store arbitrary fields
+      await queryRunner.manager.save(game);
+      
+      logger.info('[CLOUDFLARE WORKER] ZIP will be processed by edge worker', {
+        gameId: game.id,
+        gameFileKey,
+      });
+      console.log('☁️  [CLOUDFLARE WORKER] Queued for edge processing:', {
+        gameId: game.id,
+        gameFileKey,
+      });
+      
+      // No job ID needed - worker processes automatically
+      // Game will be activated via webhook when processing completes
+    } else {
+      // ============================================================================
+      // [LEGACY] Local BullMQ Worker - Original system (kept for rollback)
+      // Can be re-enabled by setting ZIP_PROCESSING_MODE=local in .env
+      // ============================================================================
+      logger.info('[LOCAL WORKER] Queuing background job for ZIP processing...');
+      console.log('🚀 [CREATE GAME] Queuing job for game:', {
+        gameId: game.id,
+        title,
+        gameFileKey,
+      });
 
-    // Update game with job ID
-    game.jobId = job.id as string;
-    await queryRunner.manager.save(game);
+      const job = await queueService.addGameZipProcessingJob({
+        gameId: game.id,
+        gameFileKey,
+        userId: req.user?.userId,
+      });
 
-    console.log('✅ [CREATE GAME] Job queued successfully:', {
-      gameId: game.id,
-      jobId: job.id,
-    });
+      // Update game with job ID
+      game.jobId = job.id as string;
+      await queryRunner.manager.save(game);
+
+      console.log('✅ [CREATE GAME] Job queued successfully:', {
+        gameId: game.id,
+        jobId: job.id,
+      });
+    }
 
     // Note: Cleanup of temporary files will be handled by background workers
 
@@ -1223,7 +1335,21 @@ export const updateGame = async (
       position,
       thumbnailFileKey: rawThumbnailFileKey,
       gameFileKey: rawGameFileKey,
+      metadata, // Add metadata to destructured fields
     } = req.body;
+
+    // Check if user is trying to update status and has permission
+    if (status !== undefined) {
+      const userRole = req.user?.role;
+      if (
+        userRole !== RoleType.ADMIN &&
+        userRole !== RoleType.SUPERADMIN
+      ) {
+        return next(
+          ApiError.forbidden('Editors cannot change game status. Please contact an Admin.')
+        );
+      }
+    }
 
     // Decode HTML entities in file keys if provided
     const thumbnailFileKey = rawThumbnailFileKey?.replace(/&#x2F;/g, '/');
@@ -1327,34 +1453,125 @@ export const updateGame = async (
       });
     }
 
+    // [EDITOR FLOW] Intercept and create proposal instead of updating Game
+    if (req.user?.role === RoleType.EDITOR) {
+       logger.info('Editor user detected, creating Update Proposal...');
+
+       // Handle Game File Persistence if provided
+       let permanentGameFileKey = undefined;
+       if (gameFileKey) {
+          permanentGameFileKey = await moveFileToPermanentStorage(
+            gameFileKey,
+            'proposals/game-files'
+          );
+       } else if (files?.gameFile && files.gameFile[0]) {
+          // If using multer upload for game file (old way), we're in a bit of a bind since we don't have a key to move.
+          // We'd need to upload it. But let's assume Editors use the new flow (Chunk/Presigned) primarily?
+          // Or just handle it:
+          const gameFile = files.gameFile[0];
+          const uploadResult = await storageService.uploadFile(
+             gameFile.buffer,
+             gameFile.originalname,
+             gameFile.mimetype,
+             'proposals/game-files'
+          );
+          permanentGameFileKey = uploadResult.key;
+       }
+
+       const proposedData: any = {};
+       if (title) proposedData.title = title;
+       if (description) proposedData.description = description;
+       if (categoryId) proposedData.categoryId = categoryId;
+       // Status change blocked for editors earlier, but if it wasn't, we'd capture it.
+       if (config) proposedData.config = config;
+       if (position !== undefined) proposedData.position = parseInt(position);
+       if (metadata) proposedData.metadata = metadata;
+
+       // Capture File Changes
+       // Note: game.thumbnailFileId was updated above if a new file was processed.
+       // We should include the NEW thumbnailFileId if it changed.
+       // How do we know? We can check if `thumbnailFileKey` or `files.thumbnailFile` was present.
+       if (thumbnailFileKey || (files?.thumbnailFile && files.thumbnailFile[0])) {
+           proposedData.thumbnailFileId = game.thumbnailFileId;
+       }
+
+       if (permanentGameFileKey) {
+           proposedData.gameFileKey = permanentGameFileKey;
+       }
+
+       const proposal = gameProposalRepository.create({
+         type: GameProposalType.UPDATE,
+         gameId: game.id,
+         editorId: req.user.userId,
+         status: GameProposalStatus.PENDING,
+         proposedData
+       });
+
+       await queryRunner.manager.save(proposal);
+       await queryRunner.commitTransaction();
+
+       res.status(200).json({
+         success: true,
+         message: 'Game update submitted for review',
+         data: proposal
+       });
+       return;
+    }
+
     // Handle game file upload - New presigned URL approach
     if (gameFileKey) {
       logger.info(`Updating game file from temporary storage: ${gameFileKey}`);
-
-      // Queue background job for ZIP processing (same as create flow)
-      console.log('🚀 [UPDATE GAME] Queuing job for game:', {
-        gameId: game.id,
-        gameFileKey,
-      });
 
       // Set game to processing status and disabled until processing completes
       game.processingStatus = GameProcessingStatus.PENDING;
       game.status = GameStatus.DISABLED; // Disable until processing completes
       // processingError will be cleared by worker on successful completion
 
-      const job = await queueService.addGameZipProcessingJob({
-        gameId: game.id,
-        gameFileKey,
-        userId: req.user?.userId,
-      });
+      // ============================================================================
+      // ZIP PROCESSING - Feature Flag (Cloudflare Worker vs Local BullMQ)
+      // ============================================================================
+      const useCloudflareWorker = process.env.ZIP_PROCESSING_MODE === 'cloudflare';
 
-      // Update game with job ID
-      game.jobId = job.id as string;
+      if (useCloudflareWorker) {
+        // ============================================================================
+        // [NEW] Cloudflare Worker handles ZIP processing automatically
+        // R2 event notification triggers worker when ZIP is uploaded to temp-games/
+        // Worker will send webhook to /api/internal/game-processed when complete
+        // ============================================================================
+        logger.info('[CLOUDFLARE WORKER] ZIP will be processed by edge worker', {
+          gameId: game.id,
+          gameFileKey,
+        });
+        console.log('☁️  [CLOUDFLARE WORKER] Queued for edge processing:', {
+          gameId: game.id,
+          gameFileKey,
+        });
+        
+        // No job ID needed - worker processes automatically
+      } else {
+        // ============================================================================
+        // [LEGACY] Local BullMQ Worker - Original system (kept for rollback)
+        // Can be re-enabled by setting ZIP_PROCESSING_MODE=local in .env
+        // ============================================================================
+        console.log('🚀 [UPDATE GAME] Queuing job for game:', {
+          gameId: game.id,
+          gameFileKey,
+        });
 
-      console.log('✅ [UPDATE GAME] Job queued successfully:', {
-        gameId: game.id,
-        jobId: job.id,
-      });
+        const job = await queueService.addGameZipProcessingJob({
+          gameId: game.id,
+          gameFileKey,
+          userId: req.user?.userId,
+        });
+
+        // Update game with job ID
+        game.jobId = job.id as string;
+
+        console.log('✅ [UPDATE GAME] Job queued successfully:', {
+          gameId: game.id,
+          jobId: job.id,
+        });
+      }
     }
     // Handle game file upload - Old multer approach (for backward compatibility)
     else if (files?.gameFile && files.gameFile[0]) {
@@ -1424,6 +1641,7 @@ export const updateGame = async (
     // Handle position update if provided
     if (position !== undefined && position !== game.position) {
       const newPosition = parseInt(position);
+      const currentPosition = game.position;
 
       // Check if target position is occupied
       const gameAtTargetPosition = await queryRunner.manager.findOne(Game, {
@@ -1431,37 +1649,30 @@ export const updateGame = async (
       });
 
       if (gameAtTargetPosition) {
-        // Swap positions
-        const currentPosition = game.position;
-
-        // Update positions
-        game.position = newPosition;
+        // Swap positions: Move the game at target position to the current position
+        logger.info(
+          `Swapping position for game ${gameAtTargetPosition.id} from ${newPosition} to ${currentPosition}`
+        );
         gameAtTargetPosition.position = currentPosition;
-
         await queryRunner.manager.save(gameAtTargetPosition);
 
-        // Create or update position history for both games
-        await createOrUpdatePositionHistoryRecord(
-          game.id,
-          newPosition,
-          queryRunner
-        );
+        // Update position history for the swapped game
         await createOrUpdatePositionHistoryRecord(
           gameAtTargetPosition.id,
           currentPosition,
           queryRunner
         );
-      } else {
-        // Position is free, just move there
-        game.position = newPosition;
-
-        // Create or update position history
-        await createOrUpdatePositionHistoryRecord(
-          game.id,
-          newPosition,
-          queryRunner
-        );
       }
+
+      // Update the position of the current game
+      game.position = newPosition;
+
+      // Update position history for updated game
+      await createOrUpdatePositionHistoryRecord(
+        game.id,
+        newPosition,
+        queryRunner
+      );
     }
 
     // Update basic game properties
@@ -1473,6 +1684,33 @@ export const updateGame = async (
     if (description !== undefined) game.description = description;
     if (status) game.status = status as GameStatus;
     if (config !== undefined) game.config = config;
+
+    // Update metadata if provided
+    if (metadata !== undefined) {
+      // Parse metadata if it's a string (common with multipart/form-data)
+      const parsedMetadata = typeof metadata === 'string' ? JSON.parse(metadata) : metadata;
+
+      // Ensure tags is always an array (not an object)
+      if (parsedMetadata.tags) {
+        if (Array.isArray(parsedMetadata.tags)) {
+          // Already an array, ensure it's a proper array (not object with numeric keys)
+          parsedMetadata.tags = [...parsedMetadata.tags];
+        } else if (typeof parsedMetadata.tags === 'object' && parsedMetadata.tags !== null) {
+          // Convert object with numeric keys back to array
+          parsedMetadata.tags = Object.values(parsedMetadata.tags).filter((v): v is string => typeof v === 'string');
+        } else {
+          // Invalid format, set to empty array
+          parsedMetadata.tags = [];
+        }
+      }
+
+      // Merge with existing metadata to preserve other fields
+      // This will correctly merge faqOverride from the new metadata
+      game.metadata = {
+        ...game.metadata,
+        ...parsedMetadata,
+      };
+    }
 
     await queryRunner.manager.save(game);
 

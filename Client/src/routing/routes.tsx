@@ -1,5 +1,6 @@
-import { Suspense, lazy } from 'react';
+import { lazy } from 'react';
 import { createBrowserRouter } from 'react-router-dom';
+import { SuspenseWrapper, ConfigProtectedRoute } from './RouteWrappers';
 import { ProtectedRoute } from './ProtectedRoute';
 
 const RootLayout = lazy(() => import('../layout/RootLayout'));
@@ -32,6 +33,8 @@ const Configuration = lazy(
   () => import('../pages/Admin/Configuration/Configuration')
 );
 const ViewGame = lazy(() => import('../pages/Admin/ViewGame'));
+const CreateGame = lazy(() => import('../pages/Admin/CreateGame'));
+const EditGame = lazy(() => import('../pages/Admin/EditGame'));
 const GameCategories = lazy(
   () => import('../pages/Admin/Category/GameCategories')
 );
@@ -39,6 +42,9 @@ const CategoryDetail = lazy(
   () => import('../pages/Admin/Category/CategoryDetail')
 );
 const UserManagementView = lazy(() => import('../pages/Admin/UserMgtView'));
+const MyProposals = lazy(() => import('../pages/Admin/Proposals/MyProposals'));
+const AdminProposals = lazy(() => import('../pages/Admin/Proposals/AdminProposals'));
+const ProposalReview = lazy(() => import('../pages/Admin/Proposals/ProposalReview'));
 const TeamManagement = lazy(() => import('../pages/Admin/Team/TeamManagement'));
 const Settings = lazy(() => import('../pages/Admin/Settings'));
 const ViewProfile = lazy(() => import('../pages/Admin/ViewProfile'));
@@ -51,23 +57,6 @@ const ImageReprocessing = lazy(
   () => import('../pages/Admin/ImageReprocessing/ImageReprocessing')
 );
 
-const RouteFallback = () => (
-  <div className="flex min-h-screen items-center justify-center bg-[#0F1221] text-white">
-    <span className="text-lg font-dmmono">Loading...</span>
-  </div>
-);
-
-// Wrapper component to provide Suspense for lazy-loaded routes
-const SuspenseWrapper = ({ children }: { children: React.ReactNode }) => (
-  <Suspense fallback={<RouteFallback />}>{children}</Suspense>
-);
-
-// Config-protected route wrapper
-const ConfigProtectedRoute = () => (
-  <SuspenseWrapper>
-    <ProtectedRoute requireAdmin={true} requireConfig={true} />
-  </SuspenseWrapper>
-);
 
 // Route configuration using object format for createBrowserRouter
 export const routes = [
@@ -121,8 +110,14 @@ export const routes = [
               { path: 'management', element: <SuspenseWrapper><UserManagement /></SuspenseWrapper> },
               { path: 'management/:userId', element: <SuspenseWrapper><UserManagementView /></SuspenseWrapper> },
               { path: 'team', element: <SuspenseWrapper><TeamManagement /></SuspenseWrapper> },
+              { path: 'my-proposals', element: <SuspenseWrapper><MyProposals /></SuspenseWrapper> },
+              { path: 'proposals', element: <SuspenseWrapper><AdminProposals /></SuspenseWrapper> },
+              { path: 'proposals/:id/review', element: <SuspenseWrapper><ProposalReview /></SuspenseWrapper> },
               { path: 'analytics', element: <SuspenseWrapper><Analytics /></SuspenseWrapper> },
               { path: 'view-game/:gameId', element: <SuspenseWrapper><ViewGame /></SuspenseWrapper> },
+              { path: 'create-game', element: <SuspenseWrapper><CreateGame /></SuspenseWrapper> },
+              { path: 'edit-game/:gameId', element: <SuspenseWrapper><EditGame /></SuspenseWrapper> },
+              { path: 'edit-proposal/:proposalId', element: <SuspenseWrapper><EditGame /></SuspenseWrapper> },
               { path: 'view-profile', element: <SuspenseWrapper><ViewProfile /></SuspenseWrapper> },
               { path: 'cache', element: <SuspenseWrapper><CacheDashboard /></SuspenseWrapper> },
               { path: 'image-reprocessing', element: <SuspenseWrapper><ImageReprocessing /></SuspenseWrapper> },

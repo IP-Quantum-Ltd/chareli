@@ -2,7 +2,7 @@ import { useTrackSignupClick } from '../../backend/signup.analytics.service';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useSystemConfigByKey } from '../../backend/configuration.service';
-import { getVisitorSessionId } from '../../utils/sessionUtils';
+import { getOrCreateSessionId } from '../../utils/sessionUtils';
 import { decodeHtmlEntities } from '../../utils/main';
 
 interface KeepPlayingModalProps {
@@ -17,16 +17,16 @@ export default function KeepPlayingModal({ open, isGameLoading }: KeepPlayingMod
   const { setKeepPlayingRedirect } = useAuth();
 
   const handleSignupClick = () => {
-    trackSignup({ 
-      sessionId: getVisitorSessionId(),
-      type: 'keep-playing' 
+    trackSignup({
+      sessionId: getOrCreateSessionId(),
+      type: 'keep-playing'
     });
     setKeepPlayingRedirect(true);
     navigate('/');
   };
 
   const { data: popupConfig } = useSystemConfigByKey('popup');
-  
+
   if (!open || isGameLoading) return null;
 
   const title = popupConfig?.value?.title ? decodeHtmlEntities(popupConfig.value.title) : "Time's Up!";

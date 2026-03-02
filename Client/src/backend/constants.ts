@@ -27,6 +27,15 @@ export const BackendRoute = {
   CATEGORIES: '/api/categories',
   CATEGORY_BY_ID: '/api/categories/:id',
 
+  // Game Proposal Routes
+  GAME_PROPOSALS: '/api/game-proposals',
+  GAME_PROPOSAL_BY_ID: '/api/game-proposals/:id',
+  MY_PROPOSALS: '/api/game-proposals/my',
+  APPROVE_PROPOSAL: '/api/game-proposals/:id/approve',
+  DECLINE_PROPOSAL: '/api/game-proposals/:id/decline',
+  DISMISS_PROPOSAL: '/api/game-proposals/:id/dismiss',
+  REVISE_PROPOSAL: '/api/game-proposals/:id/revise',
+
   // Game Position History Routes
   GAME_POSITION_HISTORY: '/api/game-position-history',
   GAME_POSITION_HISTORY_BY_GAME: '/api/game-position-history/:gameId',

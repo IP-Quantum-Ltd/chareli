@@ -1,17 +1,27 @@
-/**
- * Utility functions for session management
- */
+const SESSION_ID_KEY = 'visitor_session_id';
 
 /**
- * Generate or retrieve a visitor session ID
- * This ID persists across browser sessions and is used for analytics tracking
- * @returns {string} The visitor session ID
+ * Get existing session ID or create a new one
  */
-export const getVisitorSessionId = (): string => {
-  let sessionId = sessionStorage.getItem('visitor_session_id');
+export const getOrCreateSessionId = (): string => {
+  let sessionId = sessionStorage.getItem(SESSION_ID_KEY);
   if (!sessionId) {
     sessionId = crypto.randomUUID();
-    sessionStorage.setItem('visitor_session_id', sessionId);
+    sessionStorage.setItem(SESSION_ID_KEY, sessionId);
   }
   return sessionId;
+};
+
+/**
+ * Clear the session ID (call on login)
+ */
+export const clearSessionId = (): void => {
+  sessionStorage.removeItem(SESSION_ID_KEY);
+};
+
+/**
+ * Get session ID without creating one
+ */
+export const getSessionId = (): string | null => {
+  return sessionStorage.getItem(SESSION_ID_KEY);
 };

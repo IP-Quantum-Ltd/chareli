@@ -7,6 +7,7 @@ import {
   deleteAnalytics,
   updateAnalyticsEndTime,
   trackHomepageVisit,
+  heartbeatAnalytics,
 } from '../controllers/analyticsController';
 import {
   authenticate,
@@ -54,6 +55,15 @@ router.put(
   validateParams(analyticsIdParamSchema),
   validateBody(updateAnalyticsSchema),
   updateAnalytics
+);
+
+// Heartbeat - accessible by all (to keep safe session alive)
+router.post(
+  '/:id/heartbeat',
+  optionalAuthenticate,
+  analyticsLimiter,
+  validateParams(analyticsIdParamSchema),
+  heartbeatAnalytics
 );
 
 // All other analytics routes require authentication

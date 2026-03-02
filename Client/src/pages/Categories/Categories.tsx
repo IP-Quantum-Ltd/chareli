@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useCategories } from '../../backend/category.service';
 import { useGames } from '../../backend/games.service';
 import { useGameClickHandler } from '../../hooks/useGameClickHandler';
@@ -20,6 +21,15 @@ export default function Categories() {
   const [screenSize, setScreenSize] = useState<'mobile' | 'tablet' | 'desktop'>(
     'mobile'
   );
+  const [searchParams] = useSearchParams();
+
+  // Initialize selectedCategory from URL query param if present
+  useEffect(() => {
+    const categoryId = searchParams.get('category');
+    if (categoryId) {
+      setSelectedCategory(categoryId);
+    }
+  }, [searchParams]);
 
   const {
     data: categoriesData,

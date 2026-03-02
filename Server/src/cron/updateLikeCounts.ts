@@ -1,10 +1,13 @@
 import { AppDataSource } from '../config/database';
 import { GameLikeCache } from '../entities/GameLikeCache';
 import { Game } from '../entities/Games';
+import { GameLike } from '../entities/GameLike';
+import { calculateLikeCount } from '../utils/gameUtils';
 import logger from '../utils/logger';
 
 const gameLikeCacheRepository = AppDataSource.getRepository(GameLikeCache);
 const gameRepository = AppDataSource.getRepository(Game);
+const gameLikeRepository = AppDataSource.getRepository(GameLike);
 
 /**
  * Daily cron job to update cached like counts
@@ -23,33 +26,13 @@ export async function updateLikeCounts(): Promise<void> {
     let created = 0;
 
     for (const game of games) {
-      // Calculate like count using existing logic
-      const now = new Date();
-      const lastIncrement = new Date(game.lastLikeIncrement);
-      const msPerDay = 24 * 60 * 60 * 1000;
-      const daysElapsed = Math.floor(
-        (now.getTime() - lastIncrement.getTime()) / msPerDay
-      );
 
-      let autoIncrement = 0;
-      if (daysElapsed > 0) {
-        for (let day = 1; day <= daysElapsed; day++) {
-          const incrementDate = new Date(lastIncrement);
-          incrementDate.setDate(incrementDate.getDate() + day);
-          const dateStr = incrementDate.toISOString().split('T')[0];
-          const seed = game.id + dateStr;
+      // Fetch user likes
+      const userLikesCount = await gameLikeRepository.count({
+        where: { gameId: game.id },
+      });
 
-          let hash = 0;
-          for (let i = 0; i < seed.length; i++) {
-            hash = (hash << 5) - hash + seed.charCodeAt(i);
-            hash = hash & hash;
-          }
-          const increment = (Math.abs(hash) % 3) + 1;
-          autoIncrement += increment;
-        }
-      }
-
-      const cachedLikeCount = game.baseLikeCount + autoIncrement;
+      const cachedLikeCount = calculateLikeCount(game, userLikesCount);
 
       // Upsert cache entry
       let cacheEntry = await gameLikeCacheRepository.findOne({

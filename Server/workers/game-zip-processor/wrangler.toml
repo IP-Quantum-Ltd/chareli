@@ -1,0 +1,46 @@
+name = "${WORKER_SCRIPT_NAME}"
+main = "src/index.ts"
+compatibility_date = "2026-02-17"
+compatibility_flags = ["nodejs_compat"]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# These values are injected at CI time via envsubst from GitHub secrets/vars.
+# They must match exactly what Terraform provisions to prevent drift.
+# See: iac-arcadesbox/worker.tf for the Terraform source of truth.
+# ─────────────────────────────────────────────────────────────────────────────
+
+[[r2_buckets]]
+binding    = "GAMES_BUCKET"
+bucket_name = "${GAMES_BUCKET_NAME}"
+
+[[kv_namespaces]]
+binding = "GAME_STATUS"
+id      = "${CLOUDFLARE_KV_NAMESPACE_ID}"
+
+[[queues.consumers]]
+binding           = "GAME_ZIP_QUEUE"
+queue             = "${GAME_ZIP_QUEUE_NAME}"
+max_batch_size    = 10
+max_batch_timeout = 30
+max_retries       = 3
+dead_letter_queue = "${GAME_ZIP_DLQ_NAME}"
+
+[vars]
+BACKEND_WEBHOOK_URL = "${WORKER_BACKEND_WEBHOOK_URL}"
+WEBHOOK_SECRET       = "${WEBHOOK_SECRET}"
+
+[observability]
+enabled = false
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+persist = true
+invocation_logs = true
+
+[observability.traces]
+enabled = true
+persist = true
+head_sampling_rate = 1
+

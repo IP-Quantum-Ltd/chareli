@@ -348,7 +348,7 @@ export const UppyUpload: React.FC<UppyUploadProps> = ({
           }
 
           const result = await response.json();
-          
+
           logger.debug(
             `✅ [SINGLE-PART] Got presigned URL, took ${
               Date.now() - uploadStartTime
@@ -385,7 +385,7 @@ export const UppyUpload: React.FC<UppyUploadProps> = ({
       // Multipart upload options
       limit: 4, // Upload 4 parts in parallel
       retryDelays: [0, 1000, 3000, 5000], // Retry delays in ms
-      companionHeaders: {},
+      headers: {},
     } as any);
 
     // Handle upload start
@@ -431,7 +431,7 @@ export const UppyUpload: React.FC<UppyUploadProps> = ({
             2
           )} MB/s`
       );
-      
+
       const uploadedFile: UploadedFile = {
         name: file.name || '',
         publicUrl: file.meta?.publicUrl || '',

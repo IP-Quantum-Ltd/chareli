@@ -4,8 +4,10 @@ export const usePermissions = () => {
   const { user } = useAuth();
   const userRole = user?.role?.name?.toLowerCase();
 
+  const isSuperAdmin = userRole === 'superadmin';
+
   const permissions = {
-    isSuperAdmin: userRole === 'superadmin',
+    isSuperAdmin,
     isAdmin: userRole === 'admin',
     isEditor: userRole === 'editor',
     isViewer: userRole === 'viewer',
@@ -30,11 +32,14 @@ export const usePermissions = () => {
       userRole === 'editor',
     canExport:
       userRole === 'superadmin' ||
-      userRole === 'admin' ||
-      userRole === 'editor',
+      userRole === 'admin',
     canRevokeRoles: userRole === 'superadmin',
     canEditTeam: userRole === 'superadmin' || userRole === 'admin',
     canAccessCacheDashboard: userRole === 'superadmin', // Cache dashboard (dev/test only)
+    canViewAnalytics:
+      userRole === 'superadmin' ||
+      userRole === 'admin' ||
+      userRole === 'viewer',
 
     // Admin panel access
     hasAdminAccess:

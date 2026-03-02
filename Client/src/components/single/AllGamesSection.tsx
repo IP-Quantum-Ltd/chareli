@@ -23,6 +23,7 @@ const AllGamesSection = ({ searchQuery }: AllGamesSectionProps) => {
     'mobile'
   );
   const containerRef = useRef<HTMLDivElement>(null);
+  const gridTopRef = useRef<HTMLDivElement | null>(null);
   const savedScrollPosition = useRef<number>(0);
   const loadMoreRef = useRef<HTMLDivElement>(null);
 
@@ -35,8 +36,12 @@ const AllGamesSection = ({ searchQuery }: AllGamesSectionProps) => {
   const isLoadingMoreRef = useRef(false);
   const isFetchingRef = useRef(false);
 
+  // Track which category the accumulatedGames belong to, to avoid cross-category leaks
+  const accumulatedCategoryRef = useRef<string>('all');
+
   // Flag to control scroll restoration
   const [shouldRestoreScroll, setShouldRestoreScroll] = useState(false);
+  const [showBackToTop, setShowBackToTop] = useState(false);
 
   const { data: categoriesData, isLoading: categoriesLoading } =
     useCategories();
@@ -96,6 +101,9 @@ const AllGamesSection = ({ searchQuery }: AllGamesSectionProps) => {
 
   // 1. Reset Effect: Handles Category/Search changes
   useEffect(() => {
+    // Update ref so accumulation effect can ignore stale responses
+    accumulatedCategoryRef.current = selectedCategory;
+
     setCurrentPage(1);
     setAccumulatedGames([]); // Clear data immediately to prevent ID conflicts
     setIsLoadingMore(false);
@@ -109,6 +117,11 @@ const AllGamesSection = ({ searchQuery }: AllGamesSectionProps) => {
       return;
     }
 
+    // Ignore data that was fetched for a previous category
+    if (accumulatedCategoryRef.current !== selectedCategory) {
+      return;
+    }
+
     // Always reset loading spinner when data arrives
     setIsLoadingMore(false);
 
@@ -118,6 +131,11 @@ const AllGamesSection = ({ searchQuery }: AllGamesSectionProps) => {
     } else {
       // Subsequent pages: strictly append
       setAccumulatedGames((prev) => {
+        // Double-check category still matches before mutating state
+        if (accumulatedCategoryRef.current !== selectedCategory) {
+          return prev;
+        }
+
         // Safety: If prev is empty but we are on page > 1,
         // it means state was lost; recover by showing current chunk.
         if (prev.length === 0) return gamesData.data;
@@ -129,16 +147,64 @@ const AllGamesSection = ({ searchQuery }: AllGamesSectionProps) => {
         return [...prev, ...newGames];
       });
     }
-  }, [gamesData, currentPage, isFetching]);
+  }, [gamesData, currentPage, isFetching, selectedCategory]);
 
   const handleSeeMoreGames = useCallback(() => {
+    // Prevent multiple concurrent loads or loading when no more games
+    if (isLoadingMore || isFetching || !hasMoreGames) {
+      return;
+    }
+
     const nextPage = currentPage + 1;
     setIsLoadingMore(true);
     trackInteraction.seeMoreGames(nextPage, sectionHeader, games.length);
     setCurrentPage(nextPage);
-  }, [currentPage, sectionHeader, games.length]);
+    setShowBackToTop(true);
+  }, [currentPage, sectionHeader, games.length, isLoadingMore, isFetching, hasMoreGames]);
 
   const { handleGameClick } = useGameClickHandler();
+
+  const handleBackToTop = useCallback(() => {
+    const container = gridTopRef.current || containerRef.current;
+    if (container) {
+      const rect = container.getBoundingClientRect();
+      const scrollTop = window.pageYOffset || document.documentElement.scrollTop || 0;
+      const target = scrollTop + rect.top - 80; // offset for any fixed header
+      window.scrollTo({ top: target < 0 ? 0 : target, behavior: 'smooth' });
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    trackInteraction.backToTop(sectionHeader, games.length);
+  }, [sectionHeader, games.length]);
+
+  // Monitor scroll position to show/hide back-to-top button
+  useEffect(() => {
+    // Only enable this behavior after "See more" has been clicked at least once
+    if (currentPage === 1) return;
+
+    const handleScroll = () => {
+      const container = gridTopRef.current;
+      if (!container) {
+        // Fallback: show if scrolled down, hide if near top
+        const scrolled = window.pageYOffset || document.documentElement.scrollTop;
+        setShowBackToTop(scrolled > 300);
+        return;
+      }
+
+      const rect = container.getBoundingClientRect();
+      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      const containerTop = scrollTop + rect.top;
+
+      // Show button if scrolled more than 200px past container top, hide if within 200px
+      setShowBackToTop(scrollTop >= containerTop + 200);
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    // Initial check
+    handleScroll();
+
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [currentPage]);
 
   useEffect(() => {
     const updateScreenSize = () => {
@@ -327,8 +393,8 @@ const AllGamesSection = ({ searchQuery }: AllGamesSectionProps) => {
         )}
       </div>
 
-      <div className="">
-        <Card className="border-hidden shadow-none p-0 dark:bg-[#0f1221]">
+      <div className="" ref={gridTopRef}>
+        <Card className="border-hidden shadow-none p-0 bg-transparent dark:bg-[#0f1221]">
           {gamesLoading || (isFetching && games.length === 0) ? (
             <GamesSkeleton count={9} showCategories={true} />
           ) : gamesError ? (
@@ -388,22 +454,56 @@ const AllGamesSection = ({ searchQuery }: AllGamesSectionProps) => {
             </div>
           )}
 
-          {/* Infinite scroll sentinel */}
+          {/* See more button */}
           {!gamesLoading && !gamesError && games.length > 0 && hasMoreGames && (
-            <div
-              ref={loadMoreRef}
-              className="flex justify-center mt-8 mb-4 py-4"
-            >
-              {(isLoadingMore || isFetching) && (
-                <div className="flex items-center gap-2 text-[#64748A]">
-                  <svg className="animate-spin h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  <span className="font-worksans">Loading more games...</span>
-                </div>
-              )}
+            <div className="flex justify-center mt-8 mb-4 py-4">
+              <Button
+                onClick={handleSeeMoreGames}
+                disabled={isLoadingMore || isFetching}
+                className="see-more-button font-worksans disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isLoadingMore || isFetching ? (
+                  <div className="flex items-center gap-2">
+                    <svg
+                      className="animate-spin h-6 w-6"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      ></circle>
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      ></path>
+                    </svg>
+                    <span className="font-worksans">Loading more games...</span>
+                  </div>
+                ) : (
+                  <span className="font-worksans">See more games</span>
+                )}
+              </Button>
             </div>
+          )}
+
+          {/* Back to top floating button (shown after user has loaded more games) */}
+          {showBackToTop && (
+            <button
+              type="button"
+              className="back-to-top-button"
+              onClick={handleBackToTop}
+              aria-label="Back to top of games"
+            >
+              <span className="back-to-top-icon">↑</span>
+              <span className="back-to-top-label">Back to top</span>
+            </button>
           )}
         </Card>
       </div>

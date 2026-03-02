@@ -85,7 +85,7 @@ export default function StatsCard({ filters }: StatsCardProps) {
   // Metrics that include both authenticated + guest data
   const allUsersCards = [
     {
-      title: 'Total Visitors',
+      title: 'Total Unique Visitors',
       value: data.totalVisitors.current,
       icon: <Users size={32} />,
       change: `${data.totalVisitors.percentageChange ?? 0}%`,

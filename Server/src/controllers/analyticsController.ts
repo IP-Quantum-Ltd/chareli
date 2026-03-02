@@ -1,13 +1,17 @@
 import { Request, Response, NextFunction } from 'express';
 import { AppDataSource } from '../config/database';
 import { Analytics } from '../entities/Analytics';
+import { User } from '../entities/User';
 import { ApiError } from '../middlewares/errorHandler';
 import { Between, FindOptionsWhere } from 'typeorm';
 import { cacheService } from '../services/cache.service';
 import { queueService } from '../services/queue.service';
 import logger from '../utils/logger';
+import { validate } from 'class-validator';
+import { AdminExclusionService } from '../services/adminExclusion.service';
 
 const analyticsRepository = AppDataSource.getRepository(Analytics);
+const userRepository = AppDataSource.getRepository(User);
 
 /**
  * @swagger
@@ -374,7 +378,14 @@ export const updateAnalytics = async (
 ): Promise<void> => {
   try {
     const { id } = req.params;
-    const { endTime, sessionCount } = req.body;
+    const {
+      endTime,
+      sessionCount,
+      exitReason,
+      loadTime,
+      milestone,
+      errorMessage,
+    } = req.body;
 
     const analytics = await analyticsRepository.findOne({
       where: { id },
@@ -384,15 +395,175 @@ export const updateAnalytics = async (
       return next(ApiError.notFound(`Analytics entry with id ${id} not found`));
     }
 
+    // Always update lastSeenAt on any update
+    analytics.lastSeenAt = new Date();
+
     // Update fields
     if (endTime !== undefined) {
       if (endTime) {
         analytics.endTime = new Date(endTime);
+        // If we are setting endTime, we can populate endedAt as well if not already set,
+        // or let the inferencing logic handle it.
+        // For now, let's treat explicit endTime as endedAt too for consistency.
+        analytics.endedAt = new Date(endTime);
       }
     }
 
-    if (sessionCount !== undefined) {
-      analytics.sessionCount = sessionCount;
+    if (sessionCount !== undefined) analytics.sessionCount = sessionCount;
+    if (exitReason !== undefined) analytics.exitReason = exitReason;
+    if (loadTime !== undefined) analytics.loadTime = loadTime;
+    if (milestone !== undefined) analytics.milestone = milestone;
+    if (errorMessage !== undefined) analytics.errorMessage = errorMessage;
+
+    // Calculate duration before saving
+    if (analytics.startTime && analytics.endTime) {
+      const duration = Math.floor(
+        (analytics.endTime.getTime() - analytics.startTime.getTime()) / 1000
+      );
+
+      // For game sessions, only save if duration >= 30 seconds
+      if (analytics.gameId && duration < 30) {
+        // Delete the analytics record if it's a game session with duration < 30 seconds
+        await analyticsRepository.remove(analytics);
+
+        res.status(200).json({
+          success: true,
+          message:
+            'Analytics entry removed due to insufficient duration (< 30 seconds)',
+          data: null,
+        });
+        return;
+      }
+    }
+
+    // Validate updated entity
+    const errors = await validate(analytics, { skipMissingProperties: true });
+    if (errors.length > 0) {
+      res.status(400).json({
+        error: 'Validation failed',
+        details: errors.map((e) => ({
+          field: e.property,
+          messages: Object.values(e.constraints || {}),
+        })),
+      });
+      return;
+    }
+
+    await analyticsRepository.save(analytics);
+
+    res.status(200).json({
+      success: true,
+      data: analytics,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @swagger
+ * /analytics/{id}/heartbeat:
+ *   post:
+ *     summary: Update analytics lastSeenAt (heartbeat)
+ *     tags: [Analytics]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Analytics entry ID
+ *     responses:
+ *       204:
+ *         description: Heartbeat received
+ *       404:
+ *         description: Analytics entry not found
+ *       500:
+ *         description: Internal server error
+ */
+export const heartbeatAnalytics = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+
+    // Use update for efficiency (avoid fetch if possible, but typeorm update won't check existance/ownership strictly unless we check result)
+    // For simplicity and correctness with entities, fetch then save
+    // Or simpler: update directly
+    const result = await analyticsRepository.update(id, {
+      lastSeenAt: new Date(),
+    });
+
+    if (result.affected === 0) {
+       // Optional: return 404 if we want strict checking, but usually for heartbeat
+       // we can just return 204.
+       // However, if the ID doesn't exist, we probably shouldn't return 204 success.
+       // But the plan says "Lightweight endpoint", so maybe just ignore.
+       // Let's stick to 204.
+    }
+
+    res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+/**
+ * @swagger
+ * /analytics/{id}/end:
+ *   post:
+ *     summary: Update analytics end time during page unload
+ *     tags: [Analytics]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - endTime
+ *             properties:
+ *               endTime:
+ *                 type: string
+ *                 format: date-time
+ */
+export const updateAnalyticsEndTime = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { endTime, exitReason } = req.body;
+
+    const analytics = await analyticsRepository.findOne({
+      where: { id },
+    });
+
+    if (!analytics) {
+      return next(ApiError.notFound(`Analytics entry with id ${id} not found`));
+    }
+
+    analytics.endTime = new Date(endTime);
+    analytics.endedAt = new Date(endTime); // Explicit end implies endedAt
+    analytics.lastSeenAt = new Date(); // Always update lastSeenAt
+    if (exitReason) {
+      analytics.exitReason = exitReason;
     }
 
     // Calculate duration before saving
@@ -453,85 +624,6 @@ export const updateAnalytics = async (
  *       500:
  *         description: Internal server error
  */
-/**
- * @swagger
- * /analytics/{id}/end:
- *   post:
- *     summary: Update analytics end time during page unload
- *     tags: [Analytics]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - endTime
- *             properties:
- *               endTime:
- *                 type: string
- *                 format: date-time
- */
-export const updateAnalyticsEndTime = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-): Promise<void> => {
-  try {
-    const { id } = req.params;
-    const { endTime } = req.body;
-
-    const analytics = await analyticsRepository.findOne({
-      where: { id },
-    });
-
-    if (!analytics) {
-      return next(ApiError.notFound(`Analytics entry with id ${id} not found`));
-    }
-
-    analytics.endTime = new Date(endTime);
-
-    // Calculate duration before saving
-    if (analytics.startTime && analytics.endTime) {
-      const duration = Math.floor(
-        (analytics.endTime.getTime() - analytics.startTime.getTime()) / 1000
-      );
-
-      // For game sessions, only save if duration >= 30 seconds
-      if (analytics.gameId && duration < 30) {
-        // Delete the analytics record if it's a game session with duration < 30 seconds
-        await analyticsRepository.remove(analytics);
-
-        res.status(200).json({
-          success: true,
-          message:
-            'Analytics entry removed due to insufficient duration (< 30 seconds)',
-          data: null,
-        });
-        return;
-      }
-    }
-
-    await analyticsRepository.save(analytics);
-
-    res.status(200).json({
-      success: true,
-      data: analytics,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
 export const deleteAnalytics = async (
   req: Request,
   res: Response,
@@ -598,6 +690,26 @@ export const trackHomepageVisit = async (
       return next(
         ApiError.badRequest('Either authentication or sessionId is required')
       );
+    }
+
+    // Additional safeguard: Check if authenticated user is admin
+    // This provides triple-layer protection:
+    // 1. Controller level (here) - prevents queueing
+    // 2. Worker level - prevents saving if somehow queued
+    // 3. Query level - filters out if somehow saved
+    if (userId) {
+      const shouldTrack = await AdminExclusionService.shouldTrack(userId);
+
+      if (!shouldTrack) {
+        logger.debug(
+          `[Analytics Controller] Skipping homepage visit for user ${userId} - admin activities excluded from analytics`
+        );
+        res.status(202).json({
+          success: true,
+          message: 'Admin activities excluded from analytics',
+        });
+        return;
+      }
     }
 
     // Enqueue homepage visit tracking job (non-blocking)

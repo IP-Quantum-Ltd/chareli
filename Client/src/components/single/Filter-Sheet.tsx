@@ -55,7 +55,7 @@ export function FilterSheet({ children, onFilter, onReset }: FilterSheetProps) {
               </Label>
               <SearchableSelect
                 value={selectedCategory}
-                onValueChange={setSelectedCategory}
+                onValueChange={(value) => setSelectedCategory(value as string)}
                 options={[
                   { value: "all", label: "All Categories" },
                   ...(categories?.map((category) => ({
@@ -77,7 +77,7 @@ export function FilterSheet({ children, onFilter, onReset }: FilterSheetProps) {
               </Label>
               <SearchableSelect
                 value={selectedStatus}
-                onValueChange={setSelectedStatus}
+                onValueChange={(value) => setSelectedStatus(value as string)}
                 options={[
                   { value: "all", label: "All Status" },
                   { value: "active", label: "Active" },

@@ -11,12 +11,15 @@ import logger from './utils/logger';
 import { specs } from './config/swagger';
 import config from './config/config';
 import { redisService } from './services/redis.service';
-// import { cloudFrontService } from './services/cloudfront.service';
+
 
 const app: Express = express();
 
 // Request logging middleware
 app.use(requestLogger);
+
+import { crawlProtection } from './middlewares/crawlProtection';
+app.use(crawlProtection);
 
 
 // Security middleware
@@ -59,7 +62,14 @@ const corsOptions = {
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  allowedHeaders: [
+    'Content-Type', 
+    'Authorization', 
+    'X-Requested-With',
+    'X-Webhook-Secret',      // For Cloudflare Worker webhooks
+    'X-Idempotency-Key',     // For webhook idempotency
+    'X-Attempt',             // For webhook retry tracking
+  ],
 };
 app.use(cors(corsOptions));
 
@@ -103,6 +113,24 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs, {
 app.get('/robots.txt', (req, res) => {
   res.type('text/plain');
   res.send('User-agent: *\nDisallow: /');
+});
+
+// Sitemap.xml proxy - Serve dynamic sitemap from CDN
+import axios from 'axios';
+app.get('/sitemap.xml', async (req, res) => {
+  try {
+    const sitemapUrl = `${config.jsonCdn.baseUrl}/sitemap.xml`;
+    const response = await axios.get(sitemapUrl, {
+      responseType: 'stream',
+      timeout: 5000, // 5 second timeout
+    });
+
+    res.setHeader('Content-Type', 'application/xml');
+    response.data.pipe(res);
+  } catch (error) {
+    logger.error('Failed to proxy sitemap.xml:', error);
+    res.status(404).send('Sitemap not found');
+  }
 });
 
 // API Routes

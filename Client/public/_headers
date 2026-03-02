@@ -2,6 +2,16 @@
 # Fix MIME type issues and set proper headers
 
 # --------------------------------------------------
+# Global Headers (CSP, Security)
+# --------------------------------------------------
+# /*
+#   Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://connect.facebook.net https://www.googletagmanager.com https://www.google-analytics.com https://assets.speedvitals.com https://static.cloudflareinsights.com data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://cdn.arcadesbox.org https://www.facebook.com https://www.google-analytics.com https://stats.g.doubleclick.net https://www.googletagmanager.com https://static.cloudflareinsights.com https://*.speedvitals.com; connect-src 'self' https://api.arcadesbox.com https://api-staging.arcadesbox.com https://cdn.arcadesbox.org https://connect.facebook.net https://www.google-analytics.com https://stats.g.doubleclick.net https://rum.speedvitals.com https://cloudflareinsights.com; media-src 'self' https://cdn.arcadesbox.org; object-src 'none'; base-uri 'self'; frame-ancestors 'self';
+#   X-Frame-Options: SAMEORIGIN
+#   X-Content-Type-Options: nosniff
+#   Referrer-Policy: strict-origin-when-cross-origin
+#   Permissions-Policy: camera=(), microphone=(), geolocation=()
+
+# --------------------------------------------------
 # robots.txt
 # --------------------------------------------------
 /robots.txt

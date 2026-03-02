@@ -1,10 +1,12 @@
 import { Job } from 'bullmq';
 import { AppDataSource } from '../config/database';
 import { Analytics } from '../entities/Analytics';
+import { User } from '../entities/User';
 import logger from '../utils/logger';
 import { AnalyticsProcessingJobData } from '../services/queue.service';
 
 const analyticsRepository = AppDataSource.getRepository(Analytics);
+const userRepository = AppDataSource.getRepository(User);
 
 /**
  * Worker processor for analytics processing jobs
@@ -34,6 +36,37 @@ export async function processAnalyticsJob(
     // Validate that at least one identifier is present
     if (!userId && !sessionId) {
       throw new Error('Either userId or sessionId must be provided');
+    }
+
+    // Check if user is admin - skip analytics for admin users
+    if (userId) {
+      const user = await userRepository.findOne({
+        where: { id: userId },
+        relations: ['role'],
+      });
+
+      // Exclude all admin-type roles from analytics
+      const adminRoles = ['superadmin', 'admin', 'editor', 'viewer'];
+      if (user && user.role && adminRoles.includes(user.role.name)) {
+        logger.debug(
+          `[Analytics Worker] Skipping analytics for ${user.role.name} user ${userId} - admin activities are excluded from analytics`
+        );
+        // Return a placeholder analytics object to maintain API compatibility
+        // This will not be saved to the database
+        return {
+          id: 'admin-excluded',
+          userId,
+          sessionId,
+          gameId,
+          activityType,
+          startTime,
+          endTime,
+          duration: 0,
+          sessionCount: 0,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        } as Analytics;
+      }
     }
 
     // Create analytics entry

@@ -125,7 +125,7 @@ export default function TeamManagement() {
   );
 
   return (
-    <div className="px-4 sm:px-8">
+    <div className="px-4 sm:px-8 bg-[#F1F5F9] dark:bg-[#121C2D]">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
         <h1 className="text-[#6A7282] dark:text-white text-2xl sm:text-3xl font-worksans ">
           Team Management

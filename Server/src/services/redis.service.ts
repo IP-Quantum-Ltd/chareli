@@ -506,6 +506,133 @@ class RedisService {
 
     return result ?? 0;
   }
+
+  // ============= ETAG MANAGEMENT METHODS =============
+
+  /**
+   * Store ETag for a CDN file
+   * @param filename - The CDN file name (e.g., 'categories.json', 'games_active.json')
+   * @param etag - The ETag value from R2
+   * @param ttl - TTL in seconds (default: 3600 = 1 hour)
+   */
+  async setCdnETag(filename: string, etag: string, ttl: number = 3600): Promise<void> {
+    await this.executeWithTimeout(async () => {
+      const key = `cdn:etag:${filename}`;
+      await this.redis.setex(key, ttl, etag);
+      logger.debug(`Stored ETag for ${filename}: ${etag}`);
+    }, 'setCdnETag');
+  }
+
+  /**
+   * Get ETag for a specific CDN file
+   * @param filename - The CDN file name
+   * @returns The ETag value or null if not found
+   */
+  async getCdnETag(filename: string): Promise<string | null> {
+    const result = await this.executeWithTimeout(async () => {
+      const key = `cdn:etag:${filename}`;
+      return await this.redis.get(key);
+    }, 'getCdnETag');
+
+    return result;
+  }
+
+  /**
+   * Get all CDN ETags at once
+   * @returns Map of filename -> etag
+   */
+  async getAllCdnETags(): Promise<Record<string, string>> {
+    const result = await this.executeWithTimeout(async () => {
+      const pattern = 'cdn:etag:*';
+      let cursor = '0';
+      const etags: Record<string, string> = {};
+
+      do {
+        const [nextCursor, keys] = await this.redis.scan(
+          cursor,
+          'MATCH',
+          pattern,
+          'COUNT',
+          100
+        );
+
+        cursor = nextCursor;
+
+        if (keys.length > 0) {
+          const values = await this.redis.mget(...keys);
+          keys.forEach((key, index) => {
+            // Extract filename from key format: cdn:etag:filename
+            const filename = key.replace('cdn:etag:', '');
+            const etag = values[index];
+            if (etag) {
+              etags[filename] = etag;
+            }
+          });
+        }
+      } while (cursor !== '0');
+
+      return etags;
+    }, 'getAllCdnETags');
+
+    return result ?? {};
+  }
+
+  /**
+   * Delete ETag for a specific CDN file
+   * @param filename - The CDN file name
+   */
+  async deleteCdnETag(filename: string): Promise<void> {
+    await this.executeWithTimeout(async () => {
+      const key = `cdn:etag:${filename}`;
+      await this.redis.del(key);
+    }, 'deleteCdnETag');
+  }
+
+  /**
+   * Delete all CDN ETags
+   */
+  async deleteAllCdnETags(): Promise<number> {
+    return await this.deletePattern('cdn:etag:*');
+  }
+
+  // ============= IDEMPOTENCY METHODS =============
+
+  /**
+   * Atomically set a key only if it doesn't exist (idempotency check)
+   * Uses Redis SET NX EX for atomic operation across distributed systems
+   * @param key - The idempotency key
+   * @param value - The value to store (typically gameId or metadata)
+   * @param ttl - TTL in seconds (default: 3600 = 1 hour)
+   * @returns true if the key was set (first time), false if it already existed
+   */
+  async setIfNotExists(key: string, value: any, ttl: number = 3600): Promise<boolean> {
+    const result = await this.executeWithTimeout(async () => {
+      const serialized = JSON.stringify(value);
+      // SET key value EX ttl NX
+      // NX = Only set if key doesn't exist (atomic check-and-set)
+      // EX = Set expiry time in seconds
+      // ioredis requires EX and ttl before NX
+      const response = await this.redis.set(key, serialized, 'EX', ttl, 'NX');
+      // Returns 'OK' if set successfully (first time), null if key already exists
+      return response === 'OK';
+    }, 'setIfNotExists');
+
+    // If executeWithTimeout returns null (circuit breaker or error), treat as "new"
+    // This ensures webhook processing continues even if Redis is temporarily down
+    return result ?? true;
+  }
+
+
+  /**
+   * Check if an idempotency key has been processed and get its value
+   * @param key - The idempotency key to check
+   * @returns The stored value if exists, null otherwise
+   */
+  async getIdempotencyKey<T>(key: string): Promise<T | null> {
+    return await this.get<T>(key);
+  }
 }
 
 export const redisService = new RedisService();
+
+

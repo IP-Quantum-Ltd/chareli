@@ -20,10 +20,13 @@ import GameActivity from '../Analytics/GameActivity';
 import { DonutChart } from '../../../components/charts/donutChart';
 import HorizontalBarChart from '../../../components/charts/barChart';
 import { UserTypeBreakdown } from '../../../components/charts/UserTypeBreakdown';
+import { Navigate } from 'react-router-dom';
 // import { RecentUserActivity } from './RecentUserActivity';
 
-export default function Home() {
+function DashboardContent() {
   const permissions = usePermissions();
+  // Redirection logic moved to wrapper component
+
   const [isAcceptInviteOpen, setIsAcceptInviteOpen] = useState(false);
   const [statsTimeRange, setStatsTimeRange] = useState<DashboardTimeRange>({
     period: 'last24hours',
@@ -44,7 +47,7 @@ export default function Home() {
 
   const { data: analyticsData } = useSignupAnalyticsData();
   return (
-    <div>
+    <div className="bg-[#F1F5F9] dark:bg-[#121C2D]">
       {/* stats cards */}
       <div className="px-6 pb-3">
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
@@ -205,6 +208,17 @@ export default function Home() {
       />
     </div>
   );
+}
+
+export default function Home() {
+  const permissions = usePermissions();
+
+  // If user is Editor (can manage games but not view analytics), redirect to game management
+  if (!permissions.canViewAnalytics && permissions.canManageGames) {
+    return <Navigate to="/admin/game-management" replace />;
+  }
+
+  return <DashboardContent />;
 }
 
 // Separate component for signup click insights

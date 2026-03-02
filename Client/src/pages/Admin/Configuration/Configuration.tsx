@@ -295,7 +295,7 @@ export default function Configuration() {
   };
 
   return (
-    <div className="min-h-screen p-4 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 relative">
+    <div className="min-h-screen p-4 bg-[#F1F5F9] dark:bg-[#121C2D] text-gray-800 dark:text-gray-200 relative">
       {/* Unsaved Changes Modal for in-app navigation */}
       <UnsavedChangesModal
         open={blocker.state === 'blocked'}

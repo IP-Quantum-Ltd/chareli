@@ -91,6 +91,14 @@ export const startJsonCdnRefreshJob = async (): Promise<void> => {
   // Schedule initial generation on startup (after 5s delay)
   setTimeout(async () => {
     try {
+      // Guard clause: Prevent running if system time is invalid (e.g. 1970)
+      if (new Date().getFullYear() < 2025) {
+        logger.warn(
+          `[JSON CDN] System time invalid (${new Date().toISOString()}), skipping initial generation`
+        );
+        return;
+      }
+
       logger.info('Scheduling initial JSON CDN generation...');
       await queueService.addJsonCdnJob({ type: 'full' });
       logger.info('Initial JSON CDN generation scheduled');

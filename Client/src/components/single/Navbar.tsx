@@ -6,7 +6,7 @@ import { ProfileModal } from "../modals/ProfileModal";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
 import { useTrackSignupClick } from "../../backend/signup.analytics.service";
-import { getVisitorSessionId } from "../../utils/sessionUtils";
+import { getOrCreateSessionId } from "../../utils/sessionUtils";
 import { usePermissions } from "../../hooks/usePermissions";
 import Logo from "../../assets/logo.svg";
 import aboutIcon from "../../assets/about.svg";
@@ -45,7 +45,7 @@ const Navbar: React.FC = () => {
       ) {
         setIsMobileMenuOpen(false);
       }
-      
+
       // Close desktop menu when clicking outside
       // Desktop menu functionality removed
     };
@@ -57,7 +57,7 @@ const Navbar: React.FC = () => {
   }, []);
 
   return (
-    <header className="relative flex justify-between items-center bg-white dark:bg-[#0f1221] transition-colors duration-300">
+    <header className="relative flex justify-between items-center bg-[#fef7ed] dark:bg-[#0f1221] transition-colors duration-300">
       {/* Logo */}
       <div
         onClick={() => navigate("/")}
@@ -100,7 +100,7 @@ const Navbar: React.FC = () => {
             className="w-5 h-5"
           />
         </button>
-        
+
         <button
           ref={menuButtonRef}
           className="text-white bg-[#6A7282] py-2 px-3 pt-4 rounded-md flex items-center justify-center hover:bg-[#5A626F] transition-colors"
@@ -150,7 +150,7 @@ const Navbar: React.FC = () => {
                     Admin Dashboard
                   </Button>
                 )}
-                
+
                 {/* <div className="grid grid-cols-2 gap-4">
                   <button
                     onClick={() => {
@@ -176,7 +176,7 @@ const Navbar: React.FC = () => {
                     Profile
                   </button>
                 </div> */}
-                
+
                 <button
                   onClick={() => {
                     setIsProfileModalOpen(true);
@@ -211,7 +211,7 @@ const Navbar: React.FC = () => {
                 <Button
                   onClick={() => {
                     trackSignup({
-                      sessionId: getVisitorSessionId(),
+                      sessionId: getOrCreateSessionId(),
                       type: "navbar",
                     });
                     setIsSignUpModalOpen(true);
@@ -308,7 +308,7 @@ const Navbar: React.FC = () => {
             <Button
               onClick={() => {
                 trackSignup({
-                  sessionId: getVisitorSessionId(),
+                  sessionId: getOrCreateSessionId(),
                   type: "navbar",
                 });
                 setIsSignUpModalOpen(true);

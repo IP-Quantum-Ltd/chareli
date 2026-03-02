@@ -102,16 +102,16 @@ export default function UserManagement() {
 
   const confirmDeleteUser = async () => {
     if (!userToDelete) return;
-    
+
     // Check if admin is deleting themselves
     const isDeletingSelf = currentUser?.id === userToDelete.id;
-    
+
     try {
       await deleteUser.mutateAsync(userToDelete.id);
-      
+
       toast.success(`User ${userToDelete.firstName} ${userToDelete.lastName} deleted successfully`);
       setUserToDelete(null);
-      
+
       // If admin deleted themselves, log them out and redirect
       if (isDeletingSelf) {
         setTimeout(() => {
@@ -132,9 +132,9 @@ export default function UserManagement() {
   // Filter users based on search query
   const getFilteredUsers = () => {
     if (!users) return [];
-    
+
     if (!searchQuery.trim()) return users;
-    
+
     const query = searchQuery.toLowerCase();
     return users.filter(user => {
       const fullName = `${user.firstName || ""} ${user.lastName || ""}`.toLowerCase();
@@ -142,10 +142,10 @@ export default function UserManagement() {
       const phone = (user.phoneNumber || "").toLowerCase();
       const country = (user.country || "").toLowerCase();
       const id = user.id.toLowerCase();
-      
-      return fullName.includes(query) || 
-             email.includes(query) || 
-             phone.includes(query) || 
+
+      return fullName.includes(query) ||
+             email.includes(query) ||
+             phone.includes(query) ||
              country.includes(query) ||
              id.includes(query);
     });
@@ -154,7 +154,7 @@ export default function UserManagement() {
   const filteredUsers = getFilteredUsers();
 
   return (
-    <div className="px-3">
+    <div className="px-3 bg-[#F1F5F9] dark:bg-[#121C2D]">
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6">
         <h1 className="text-[#6A7282] dark:text-white text-2xl sm:text-3xl font-worksans">
           User Management
@@ -174,7 +174,7 @@ export default function UserManagement() {
                   className="pl-10 bg-white dark:bg-[#1E293B] border-gray-300 dark:border-gray-600 h-12"
                 />
               </div>
-              
+
               <UserManagementFilterSheet
                 filters={filters}
                 onFiltersChange={handleFiltersChange}
@@ -202,7 +202,7 @@ export default function UserManagement() {
               </UserManagementFilterSheet>
             </>
           )}
-          
+
           {permissions.canExport && (
             <ExportModal
               data={filteredUsers || []}
@@ -219,7 +219,7 @@ export default function UserManagement() {
             <p className="text-xl text-[#6A7282] dark:text-white">Recent User Activity</p>
             {/* <p className="text-xl cursor-pointer">View All</p> */}
           </div>
-          
+
           {/* table */}
           <div className="px-4 pb-4">
             {isLoading ? (
@@ -368,7 +368,7 @@ export default function UserManagement() {
                           const pages = [];
                           const totalPages = Math.ceil((filteredUsers?.length || 0) / usersPerPage);
                           const maxVisiblePages = 5;
-                          
+
                           if (totalPages <= maxVisiblePages) {
                             // Show all pages if total is small
                             for (let i = 1; i <= totalPages; i++) {
@@ -390,7 +390,7 @@ export default function UserManagement() {
                             // Smart truncation for many pages
                             const startPage = Math.max(1, page - 2);
                             const endPage = Math.min(totalPages, page + 2);
-                            
+
                             // First page
                             if (startPage > 1) {
                               pages.push(
@@ -414,7 +414,7 @@ export default function UserManagement() {
                                 );
                               }
                             }
-                            
+
                             // Current range
                             for (let i = startPage; i <= endPage; i++) {
                               pages.push(
@@ -431,7 +431,7 @@ export default function UserManagement() {
                                 </button>
                               );
                             }
-                            
+
                             // Last page
                             if (endPage < totalPages) {
                               if (endPage < totalPages - 1) {
@@ -456,7 +456,7 @@ export default function UserManagement() {
                               );
                             }
                           }
-                          
+
                           return pages;
                         })()}
                       </div>

@@ -12,6 +12,7 @@ import * as bcrypt from 'bcrypt';
 import { getCountryFromIP, extractClientIP } from '../utils/ipUtils';
 import { detectDeviceType } from '../utils/deviceUtils';
 import logger from '../utils/logger';
+import { AdminExclusionService } from '../services/adminExclusion.service';
 
 // Section: Core Authentication
 // This controller handles core authentication functions like registration, login, and OTP verification
@@ -57,8 +58,8 @@ const systemConfigRepository = AppDataSource.getRepository(SystemConfig);
  *         description: Internal server error
  */
 export const registerPlayer = async (
-  req: Request, 
-  res: Response, 
+  req: Request,
+  res: Response,
   next: NextFunction
 ): Promise<void> => {
   try {
@@ -94,11 +95,18 @@ export const registerPlayer = async (
       deviceType
     );
 
-    // Create analytics entry for signup
-    const signupAnalytics = new Analytics();
-    signupAnalytics.userId = user.id;
-    signupAnalytics.activityType = 'Signed up';
-    await analyticsRepository.save(signupAnalytics);
+    // Create analytics entry for signup - only for players
+    const userWithRole = await userRepository.findOne({
+      where: { id: user.id },
+      relations: ['role']
+    });
+
+    if (AdminExclusionService.shouldTrackUser(userWithRole || undefined)) {
+      const signupAnalytics = new Analytics();
+      signupAnalytics.userId = user.id;
+      signupAnalytics.activityType = 'Signed up';
+      await analyticsRepository.save(signupAnalytics);
+    }
 
     res.status(201).json({
       success: true,
@@ -158,8 +166,8 @@ export const registerPlayer = async (
  *         description: Internal server error
  */
 export const registerFromInvitation = async (
-  req: Request, 
-  res: Response, 
+  req: Request,
+  res: Response,
   next: NextFunction
 ): Promise<void> => {
   try {
@@ -196,13 +204,20 @@ export const registerFromInvitation = async (
       deviceType
     );
 
-    // Create analytics entry for signup from invitation
-    const signupAnalytics = new Analytics();
-    signupAnalytics.userId = user.id;
-    signupAnalytics.activityType = 'Signed up from invitation';
-    // Don't set startTime for non-game activities
-    // Don't set sessionCount for non-game activities
-    await analyticsRepository.save(signupAnalytics);
+    // Create analytics entry for signup from invitation - only for players
+    const userWithRole = await userRepository.findOne({
+      where: { id: user.id },
+      relations: ['role']
+    });
+
+    if (AdminExclusionService.shouldTrackUser(userWithRole || undefined)) {
+      const signupAnalytics = new Analytics();
+      signupAnalytics.userId = user.id;
+      signupAnalytics.activityType = 'Signed up from invitation';
+      // Don't set startTime for non-game activities
+      // Don't set sessionCount for non-game activities
+      await analyticsRepository.save(signupAnalytics);
+    }
 
     res.status(201).json({
       success: true,
@@ -273,11 +288,19 @@ export const login = async (
       const tokens = await authService.generateTokens(user);
       user.lastLoggedIn = new Date();
       await userRepository.save(user);
-      
-      const loginAnalytics = new Analytics();
-      loginAnalytics.userId = user.id;
-      loginAnalytics.activityType = 'Logged in';
-      await analyticsRepository.save(loginAnalytics);
+
+      // Only track login analytics for players, not admins
+      const userWithRole = await userRepository.findOne({
+        where: { id: user.id },
+        relations: ['role']
+      });
+
+      if (AdminExclusionService.shouldTrackUser(userWithRole || undefined)) {
+        const loginAnalytics = new Analytics();
+        loginAnalytics.userId = user.id;
+        loginAnalytics.activityType = 'Logged in';
+        await analyticsRepository.save(loginAnalytics);
+      }
 
       res.status(200).json({
         success: true,
@@ -297,18 +320,25 @@ export const login = async (
     // For first-time login, check if OTP is required based on admin configuration
     try {
       const otpType = await authService.determineOtpDeliveryMethod(user);
-    
+
       if (otpType === OtpType.NONE) {
         const tokens = await authService.generateTokens(user);
         user.lastLoggedIn = new Date();
         user.hasCompletedFirstLogin = true;
         await userRepository.save(user);
-        
-        // Create analytics entry for login
-        const loginAnalytics = new Analytics();
-        loginAnalytics.userId = user.id;
-        loginAnalytics.activityType = 'Logged in';
-        await analyticsRepository.save(loginAnalytics);
+
+        // Create analytics entry for login - only for players
+        const userWithRole = await userRepository.findOne({
+          where: { id: user.id },
+          relations: ['role']
+        });
+
+        if (AdminExclusionService.shouldTrackUser(userWithRole || undefined)) {
+          const loginAnalytics = new Analytics();
+          loginAnalytics.userId = user.id;
+          loginAnalytics.activityType = 'Logged in';
+          await analyticsRepository.save(loginAnalytics);
+        }
 
         res.status(200).json({
           success: true,
@@ -324,7 +354,7 @@ export const login = async (
         });
         return;
       }
-      
+
       // OTP is required - send OTP
       const otpResult = await authService.sendOtp(user, otpType);
       res.status(200).json({
@@ -342,9 +372,9 @@ export const login = async (
       if (error instanceof Error) {
         // Check if it's a configuration error (user missing required contact info)
         if (error.message.includes('We couldn’t send a verification')) {
-          
+
           logger.error('OTP Configuration Error:', error.message);
-          
+
           res.status(200).json({
             success: false,
             message: "Your account needs additional verification information. Please contact support for assistance.",
@@ -361,15 +391,15 @@ export const login = async (
           });
           return;
         }
-        
+
         // Check if it's a service error (Twilio, email service, etc.)
-        if (error.message.includes('Twilio') || 
-            error.message.includes('SMTP') || 
+        if (error.message.includes('Twilio') ||
+            error.message.includes('SMTP') ||
             error.message.includes('email service') ||
             error.message.includes('SMS service')) {
-          
+
           logger.error('OTP Service Error:', error.message);
-          
+
           res.status(200).json({
             success: false,
             message: "We're experiencing technical difficulties with our verification system. Please try again in a few minutes.",
@@ -386,10 +416,10 @@ export const login = async (
           });
           return;
         }
-        
+
         // Generic OTP error
         logger.error('OTP Error:', error.message);
-        
+
         res.status(200).json({
           success: false,
           message: "Verification system temporarily unavailable. Please contact support if this continues.",
@@ -456,7 +486,7 @@ export const verifyOtp = async (
 
     // Verify OTP and generate tokens
     const tokens = await authService.verifyOtp(userId, otp);
-    
+
     // Update user after successful OTP verification
     const user = await userRepository.findOne({ where: { id: userId, isDeleted: false } });
     if (user) {
@@ -464,12 +494,19 @@ export const verifyOtp = async (
       // Mark user as having completed first login
       user.hasCompletedFirstLogin = true;
       await userRepository.save(user);
-      
-      // Create analytics entry for login
-      const loginAnalytics = new Analytics();
-      loginAnalytics.userId = user.id;
-      loginAnalytics.activityType = 'Logged in';
-      await analyticsRepository.save(loginAnalytics);
+
+      // Create analytics entry for login - only for players
+      const userWithRole = await userRepository.findOne({
+        where: { id: user.id },
+        relations: ['role']
+      });
+
+      if (AdminExclusionService.shouldTrackUser(userWithRole || undefined)) {
+        const loginAnalytics = new Analytics();
+        loginAnalytics.userId = user.id;
+        loginAnalytics.activityType = 'Logged in';
+        await analyticsRepository.save(loginAnalytics);
+      }
     }
 
     res.status(200).json({
@@ -567,7 +604,7 @@ export const forgotPassword = async (
 ): Promise<void> => {
   try {
     const { email } = req.body;
-    
+
     if (!email) {
       return next(ApiError.badRequest('Email is required'));
     }
@@ -694,14 +731,14 @@ export const forgotPasswordPhone = async (
 ): Promise<void> => {
   try {
     const { phoneNumber } = req.body;
-    
+
     if (!phoneNumber) {
       return next(ApiError.badRequest('Phone number is required'));
     }
 
     // Find user by phone number
     const user = await userRepository.findOne({ where: { phoneNumber, isDeleted: false } });
-    
+
     // Always return success to prevent phone number enumeration
     if (!user) {
       res.status(200).json({
