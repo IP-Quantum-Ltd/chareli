@@ -234,6 +234,22 @@ async function processGameZip(gameId: string, zipKey: string, env: Env): Promise
         totalFiles: fileEntries.length,
       });
     }
+
+    // Send progress webhook every 20 files for real-time UI updates
+    if (uploaded % 20 === 0 && uploaded < fileEntries.length) {
+      console.log(`[${gameId}] 📡 Sending progress webhook (${uploaded}/${fileEntries.length})`);
+      try {
+        await notifyBackendProgress(env, gameId, {
+          progress,
+          currentFile: filePath,
+          filesUploaded: uploaded,
+          totalFiles: fileEntries.length,
+        });
+      } catch (error) {
+        console.warn(`[${gameId}] ⚠️ Progress webhook failed (non-critical):`, error);
+        // Continue processing even if progress webhook fails
+      }
+    }
   }
 
   // STEP 6: Mark as ready in KV
@@ -289,6 +305,50 @@ function findIndexHtml(fileEntries: [string, Uint8Array][]): string | null {
  */
 async function updateStatus(env: Env, gameId: string, status: Partial<GameStatus>): Promise<void> {
   await env.GAME_STATUS.put(`game:${gameId}`, JSON.stringify(status));
+}
+
+/**
+ * Notify backend of progress updates (fire-and-forget, no retries)
+ */
+async function notifyBackendProgress(
+  env: Env,
+  gameId: string,
+  progressData: {
+    progress: number;
+    currentFile: string;
+    filesUploaded: number;
+    totalFiles: number;
+  }
+): Promise<void> {
+  try {
+    const idempotencyKey = `${gameId}-progress-${progressData.filesUploaded}`;
+
+    const response = await fetch(env.BACKEND_WEBHOOK_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Webhook-Secret': env.WEBHOOK_SECRET || '',
+        'X-Idempotency-Key': idempotencyKey,
+        'X-Attempt': '1',
+      },
+      body: JSON.stringify({
+        gameId,
+        status: 'progress',
+        progress: progressData.progress,
+        currentFile: progressData.currentFile,
+        filesUploaded: progressData.filesUploaded,
+        fileCount: progressData.totalFiles,
+        processedAt: new Date().toISOString(),
+      }),
+    });
+
+    if (!response.ok) {
+      console.warn(`[${gameId}] ⚠️ Progress webhook returned ${response.status}`);
+    }
+  } catch (error) {
+    // Don't throw - progress updates are non-critical
+    console.warn(`[${gameId}] ⚠️ Progress webhook error:`, error);
+  }
 }
 
 /**

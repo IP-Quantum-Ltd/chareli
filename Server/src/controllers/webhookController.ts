@@ -28,13 +28,16 @@ const IDEMPOTENCY_TTL = 3600;
 
 interface WebhookPayload {
   gameId: string;
-  status: 'completed' | 'failed';
+  status: 'completed' | 'failed' | 'progress';
   entryPoint?: string;
   s3Key?: string;
   fileCount?: number;
   totalSize?: number;
   processedAt: string;
   error?: string;
+  progress?: number;
+  currentFile?: string;
+  filesUploaded?: number;
 }
 
 /**
@@ -119,7 +122,7 @@ export async function handleGameProcessed(req: Request, res: Response): Promise<
     }
 
     // STEP 3: Parse remaining payload fields
-    const { status, entryPoint, s3Key, fileCount, totalSize, processedAt, error } = payload;
+    const { status, entryPoint, s3Key, fileCount, totalSize, processedAt, error, progress, currentFile, filesUploaded } = payload;
 
     logger.info('[WEBHOOK] Processing webhook', {
       gameId,
@@ -127,35 +130,38 @@ export async function handleGameProcessed(req: Request, res: Response): Promise<
       entryPoint,
       fileCount,
       totalSize,
+      progress,
+      filesUploaded,
       idempotencyKey,
     });
 
     // STEP 4: Find game in database
     let game = await gameRepository.findOne({ where: { id: gameId } });
     
-    // FALLBACK: If game not found by ID, search by the source ZIP path in metadata
-    // This handles cases where gameId extraction from path failed
-    if (!game && s3Key) {
-      logger.warn('[WEBHOOK] Game not found by ID, searching by source path', { gameId, s3Key });
+    // FALLBACK: If game not found by ID, search PENDING or PROCESSING games by temp path in metadata
+    // This handles cases where worker uses folder UUID instead of real game ID
+    if (!game) {
+      logger.warn('[WEBHOOK] Game not found by ID, searching by metadata', { gameId });
       
-      // Extract the source path (the original temp ZIP path would be in metadata)
-      // The s3Key is the final path (games/xxx/yyy), we need the original temp path
-      // Let's search all pending games for one with matching metadata
+      // Search pending OR processing games for one with matching temp path
       const games = await gameRepository.find({
-        where: {
-          processingStatus: GameProcessingStatus.PENDING
-        }
+        where: [
+          { processingStatus: GameProcessingStatus.PENDING },
+          { processingStatus: GameProcessingStatus.PROCESSING }
+        ]
       });
       
       // Find game with matching temp path in metadata
+      // The gameId from worker is actually the folder UUID (e.g., 66201f4c-b1e8-4176-9519-8c26e031c1bf)
       for (const g of games) {
         if (g.metadata && (g.metadata as any)._tempGameFileKey) {
           const tempKey = (g.metadata as any)._tempGameFileKey;
-          // Check if this matches the source (the temp key contains the folder we're looking for)
-          if (tempKey.includes(gameId)) { // gameId here is actually the folder UUID
+          // Check if temp path contains the folder UUID
+          if (tempKey.includes(gameId)) {
             game = g;
             logger.info('[WEBHOOK] Found game by metadata search', {
-              gameId: game.id,
+              actualGameId: game.id,
+              folderUUID: gameId,
               tempPath: tempKey
             });
             break;
@@ -170,11 +176,14 @@ export async function handleGameProcessed(req: Request, res: Response): Promise<
       return;
     }
 
-    // STEP 5: Handle completion or failure
+    // STEP 5: Handle completion, failure, or progress
     if (status === 'completed') {
       await handleSuccessfulProcessing(game, { entryPoint, s3Key, fileCount, totalSize, processedAt });
     } else if (status === 'failed') {
       await handleFailedProcessing(game, error || 'Unknown error');
+    } else if (status === 'progress') {
+      // Handle progress updates - emit WebSocket event only
+      await handleProgressUpdate(game, { progress, currentFile, filesUploaded, fileCount });
     } else {
       logger.warn('[WEBHOOK] Unknown status', { status, gameId });
       res.status(400).json({ error: 'Invalid status' });
@@ -293,6 +302,55 @@ async function handleSuccessfulProcessing(
       stack: error.stack,
     });
     throw error;
+  }
+}
+
+/**
+ * Handle progress updates during game processing
+ */
+async function handleProgressUpdate(
+  game: Game,
+  data: {
+    progress?: number;
+    currentFile?: string;
+    filesUploaded?: number;
+    fileCount?: number;
+  }
+): Promise<void> {
+  const gameId = game.id;
+
+  try {
+    logger.info('[WEBHOOK] Progress update received', {
+      gameId,
+      progress: data.progress,
+      filesUploaded: data.filesUploaded,
+      fileCount: data.fileCount,
+    });
+
+    // Emit WebSocket event for progress
+    if (data.progress !== undefined) {
+      websocketService.emitGameProcessingProgress(gameId, data.progress);
+    }
+
+    // Optionally update game status to "processing" if still "pending"
+    if (game.processingStatus === GameProcessingStatus.PENDING) {
+      await gameRepository.update(gameId, {
+        processingStatus: GameProcessingStatus.PROCESSING,
+      });
+
+      // Emit status change
+      websocketService.emitGameStatusUpdate(gameId, {
+        processingStatus: GameProcessingStatus.PROCESSING,
+      });
+    }
+
+  } catch (error: any) {
+    logger.error('[WEBHOOK] Error handling progress update', {
+      gameId,
+      error: error.message,
+      stack: error.stack,
+    });
+    // Don't throw - progress updates are non-critical
   }
 }
 
