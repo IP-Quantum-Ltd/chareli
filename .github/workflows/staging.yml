@@ -276,6 +276,7 @@ jobs:
           GAME_ZIP_DLQ_NAME: ${{ vars.GAME_ZIP_DLQ_NAME }}
           # Backend webhook URL for this environment
           WORKER_BACKEND_WEBHOOK_URL: ${{ vars.WORKER_BACKEND_WEBHOOK_URL }}
+          WEBHOOK_SECRET: ${{ secrets.WORKER_WEBHOOK_SECRET }}
         run: |
           echo "Substituting binding values into wrangler.toml..."
           # envsubst replaces all ${VAR} tokens in wrangler.toml with real values.

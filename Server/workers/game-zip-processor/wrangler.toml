@@ -27,6 +27,7 @@ dead_letter_queue = "${GAME_ZIP_DLQ_NAME}"
 
 [vars]
 BACKEND_WEBHOOK_URL = "${WORKER_BACKEND_WEBHOOK_URL}"
+WEBHOOK_SECRET       = "${WORKER_WEBHOOK_SECRET}"
 
 [observability]
 enabled = false
