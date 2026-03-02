@@ -249,7 +249,7 @@ jobs:
     environment: ${{ github.ref_name == 'release' && 'production' || github.ref_name == 'dev' && 'development' || github.ref_name == 'main' && 'staging' || 'development' }}
     if: |
       github.event_name == 'push' &&
-      github.ref == 'refs/heads/release' &&
+      github.ref == 'refs/heads/main' &&
       needs.detect-changes.outputs.backend == 'true'
 
     steps:
@@ -260,34 +260,36 @@ jobs:
         working-directory: Server/workers/game-zip-processor
         run: npm ci
 
-      - name: Build & Deploy Worker Script (Content Only)
+      - name: Build & Deploy Worker
         working-directory: Server/workers/game-zip-processor
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          WORKER_NAME: ${{ vars.WORKER_SCRIPT_NAME }}
+          # Script name provisioned by Terraform
+          WORKER_SCRIPT_NAME: ${{ vars.WORKER_SCRIPT_NAME }}
+          # From: terraform output -raw kv_namespace_id  → store as secret
+          CLOUDFLARE_KV_NAMESPACE_ID: ${{ secrets.CLOUDFLARE_KV_NAMESPACE_ID }}
+          # R2 bucket name: arcadesbox-games-cdn-{env}-v1
+          GAMES_BUCKET_NAME: ${{ vars.GAMES_BUCKET_NAME }}
+          # Queue names provisioned by Terraform
+          GAME_ZIP_QUEUE_NAME: ${{ vars.GAME_ZIP_QUEUE_NAME }}
+          GAME_ZIP_DLQ_NAME: ${{ vars.GAME_ZIP_DLQ_NAME }}
+          # Backend webhook URL for this environment
+          WORKER_BACKEND_WEBHOOK_URL: ${{ vars.WORKER_BACKEND_WEBHOOK_URL }}
+          WEBHOOK_SECRET: ${{ secrets.WORKER_WEBHOOK_SECRET }}
         run: |
-          echo "🏗️ Building worker..."
-          # Build specifically for production-like environment (transpiling TS to JS)
-          # We use --dry-run to trigger the build process and --outdir to capture the output
-          npx wrangler deploy --dry-run --outdir dist --name $WORKER_NAME
+          echo "Substituting binding values into wrangler.toml..."
+          # envsubst replaces all ${VAR} tokens in wrangler.toml with real values.
+          # The result is a fully populated wrangler.toml that matches Terraform exactly.
+          envsubst < wrangler.toml > wrangler.substituted.toml
+          mv wrangler.substituted.toml wrangler.toml
 
-          echo "🚀 Uploading script content to Cloudflare..."
-          # The `/content` endpoint updates only the script, preserving all Provisioned Bindings
-          # Cloudflare usually names the bundled file index.js or worker.js
-          BUNDLE_FILE=$(find dist -name "*.js" | head -n 1)
+          cat wrangler.toml  # Print for debugging
 
-          if [ -z "$BUNDLE_FILE" ]; then
-            echo "❌ Error: Could not find bundled script in dist/"
-            exit 1
-          fi
+          echo "🚀 Deploying worker via wrangler..."
+          npx wrangler deploy
 
-          curl -X PUT "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$WORKER_NAME/content" \
-               -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-               -H "Content-Type: application/javascript+module" \
-               --data-binary "@$BUNDLE_FILE"
-
-          echo "✅ Worker script updated successfully (bindings preserved)"
+          echo "✅ Worker deployed successfully"
 
   notify-discord:
     name: Notify Discord
