@@ -156,10 +156,11 @@ export const analyticsLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req: Request) => {
-    // Priority: userId (authenticated) > sessionId (anonymous) > IP (fallback)
+    // Priority: userId (authenticated) > sessionId (anonymous) > record id (from params) > IP (fallback)
     const userId = (req as any).user?.id;
     const sessionId = req.body?.sessionId;
-    return userId || sessionId || req.ip || 'unknown';
+    const recordId = req.params?.id;
+    return userId || sessionId || recordId || req.ip || 'unknown';
   },
   store: new RedisStore({
     // @ts-expect-error - Known issue with ioredis types
