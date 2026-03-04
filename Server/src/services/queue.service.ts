@@ -14,6 +14,7 @@ export enum JobType {
   IMAGE_PROCESSING = 'image-processing',
   CLICK_TRACKING = 'click-tracking',
   HOMEPAGE_VISIT = 'homepage-visit',
+  CACHE_REFRESH = 'cache-refresh',
 }
 
 // Job data interfaces
@@ -63,6 +64,11 @@ export interface ClickTrackingJobData {
 export interface HomepageVisitJobData {
   userId: string | null;
   sessionId: string | null;
+}
+
+export interface CacheRefreshJobData {
+  cacheKey: string; // e.g., 'filter:popular'
+  cacheType: 'games' | 'categories' | 'analytics';
 }
 
 class QueueService {
@@ -212,6 +218,22 @@ class QueueService {
     });
 
     this.queues.set(JobType.HOMEPAGE_VISIT, homepageVisitQueue);
+
+    // Create cache refresh queue
+    const cacheRefreshQueue = new Queue(JobType.CACHE_REFRESH, {
+      connection: redisConfig,
+      defaultJobOptions: {
+        removeOnComplete: 50,
+        removeOnFail: 100,
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 1000,
+        },
+      },
+    });
+
+    this.queues.set(JobType.CACHE_REFRESH, cacheRefreshQueue);
 
     // Create QueueEvents for analytics queue to listen for job completion
     this.queueEvents = new QueueEvents(JobType.ANALYTICS_PROCESSING, {
@@ -398,6 +420,29 @@ class QueueService {
 
     logger.debug(
       `Added homepage visit tracking job with job ID: ${job.id}`
+    );
+    return job;
+  }
+
+  async addCacheRefreshJob(
+    data: CacheRefreshJobData,
+    options?: {
+      delay?: number;
+      priority?: number;
+    }
+  ): Promise<Job<CacheRefreshJobData>> {
+    const queue = this.queues.get(JobType.CACHE_REFRESH);
+    if (!queue) {
+      throw new Error('Cache refresh queue not found');
+    }
+
+    const job = await queue.add('refresh-cache', data, {
+      ...options,
+      jobId: `cache-refresh-${data.cacheKey}-${Date.now()}`,
+    });
+
+    logger.info(
+      `Added cache refresh job for ${data.cacheKey} with job ID: ${job.id}`
     );
     return job;
   }

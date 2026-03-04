@@ -16,6 +16,7 @@ import { initializeJsonCdnWorker } from './workers/jsonCdnProcessor';
 import { initializeImageWorker } from './workers/imageProcessor';
 import { initializeClickTrackingWorker } from './workers/clickTrackingProcessor';
 import { initializeHomepageVisitWorker } from './workers/homepageVisitProcessor';
+import { initializeCacheRefreshWorker } from './workers/cacheRefreshProcessor';
 import { createServer } from 'http';
 import { websocketService } from './services/websocket.service';
 
@@ -46,6 +47,7 @@ async function initializeBackgroundServices(): Promise<void> {
     initializeImageWorker(); // NEW: Process image variants asynchronously
     initializeClickTrackingWorker(); // NEW: Process click tracking asynchronously
     initializeHomepageVisitWorker(); // NEW: Process homepage visits asynchronously
+    initializeCacheRefreshWorker(); // NEW: Process cache refresh for SWR pattern
     logger.info('Background workers initialized successfully');
 
     // Verify worker is properly connected

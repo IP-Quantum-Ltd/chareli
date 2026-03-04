@@ -242,14 +242,37 @@ export const getAllGames = async (
       // Apply active status filter for recently_added
       queryBuilder.andWhere('game.status = :status', { status: GameStatus.ACTIVE });
     } else if (filter === 'popular') {
-      // Try cache first for popular filter
+      // SWR Pattern: Try fresh cache first (5 min TTL)
       const cacheKey = 'filter:popular';
       const cached = await cacheService.getGamesList(1, 20, cacheKey);
       if (cached) {
-        logger.debug('Cache hit for popular filter');
+        logger.debug('[SWR] Fresh cache hit for popular filter');
         res.status(200).json(cached);
         return;
       }
+
+      // SWR Pattern: Try stale cache (30 min TTL)
+      const staleCacheKey = 'filter:popular:stale';
+      const staleCached = await cacheService.getGamesList(1, 20, staleCacheKey);
+      if (staleCached) {
+        logger.debug('[SWR] Stale cache hit for popular filter - serving stale + queuing refresh');
+        
+        // Return stale data immediately (no blocking)
+        res.status(200).json(staleCached);
+        
+        // Queue background refresh job (non-blocking)
+        queueService.addCacheRefreshJob({
+          cacheKey: 'filter:popular',
+          cacheType: 'games'
+        }).catch(error => {
+          logger.error('[SWR] Failed to queue cache refresh job:', error);
+        });
+        
+        return;
+      }
+
+      // Cold start: Both caches empty, run expensive query
+      logger.debug('[SWR] Both caches empty for popular filter - running expensive query');
 
       const systemConfigRepository = AppDataSource.getRepository(SystemConfig);
       const popularConfig = await systemConfigRepository.findOne({
