@@ -631,6 +631,182 @@ class RedisService {
   async getIdempotencyKey<T>(key: string): Promise<T | null> {
     return await this.get<T>(key);
   }
+
+  // ============= ANALYTICS BUFFERING METHODS =============
+
+  /**
+   * Buffer analytics heartbeat update (lastSeenAt) in Redis
+   * Uses hash to store multiple fields per analytics session
+   */
+  async bufferAnalyticsHeartbeat(analyticsId: string, timestamp: Date): Promise<void> {
+    await this.executeWithTimeout(async () => {
+      const key = `analytics:buffer:${analyticsId}`;
+      await this.redis.hset(key, 'lastSeenAt', timestamp.toISOString());
+      // Set expiry for safety (2 hours) - buffer will be flushed every 60s
+      await this.redis.expire(key, 7200);
+    }, 'bufferAnalyticsHeartbeat');
+  }
+
+  /**
+   * Buffer analytics session end in Redis
+   */
+  async bufferAnalyticsEnd(
+    analyticsId: string,
+    endTime: Date,
+    exitReason?: string
+  ): Promise<void> {
+    await this.executeWithTimeout(async () => {
+      const key = `analytics:buffer:${analyticsId}`;
+      const fields: Record<string, string> = {
+        endTime: endTime.toISOString(),
+        endedAt: endTime.toISOString(),
+        lastSeenAt: endTime.toISOString(),
+      };
+      
+      if (exitReason) {
+        fields.exitReason = exitReason;
+      }
+      
+      await this.redis.hset(key, fields);
+      // Set expiry for safety (2 hours)
+      await this.redis.expire(key, 7200);
+    }, 'bufferAnalyticsEnd');
+  }
+
+  /**
+   * Get all buffered analytics updates
+   * Returns map of analyticsId -> fields
+   */
+  async getAllBufferedAnalytics(): Promise<Record<string, Record<string, string>>> {
+    const result = await this.executeWithTimeout(async () => {
+      const pattern = 'analytics:buffer:*';
+      let cursor = '0';
+      const buffers: Record<string, Record<string, string>> = {};
+
+      do {
+        const [nextCursor, keys] = await this.redis.scan(
+          cursor,
+          'MATCH',
+          pattern,
+          'COUNT',
+          100
+        );
+
+        cursor = nextCursor;
+
+        if (keys.length > 0) {
+          for (const key of keys) {
+            // Extract analyticsId from key format: analytics:buffer:{id}
+            const analyticsId = key.replace('analytics:buffer:', '');
+            const fields = await this.redis.hgetall(key);
+            if (Object.keys(fields).length > 0) {
+              buffers[analyticsId] = fields;
+            }
+          }
+        }
+      } while (cursor !== '0');
+
+      return buffers;
+    }, 'getAllBufferedAnalytics');
+
+    return result ?? {};
+  }
+
+  /**
+   * Clear buffered analytics for specific IDs
+   */
+  async clearBufferedAnalytics(analyticsIds: string[]): Promise<void> {
+    await this.executeWithTimeout(async () => {
+      if (analyticsIds.length === 0) return;
+      
+      const keys = analyticsIds.map(id => `analytics:buffer:${id}`);
+      await this.redis.del(...keys);
+    }, 'clearBufferedAnalytics');
+  }
+
+  /**
+   * Clear all buffered analytics
+   */
+  async clearAllBufferedAnalytics(): Promise<number> {
+    return await this.deletePattern('analytics:buffer:*');
+  }
+
+  // ============= CLICK TRACKING COUNTER METHODS =============
+
+  /**
+   * Increment click counter for a game position
+   * Uses atomic INCR for thread-safe increments
+   */
+  async incrementClickCounter(position: number): Promise<number> {
+    const result = await this.executeWithTimeout(async () => {
+      const key = `game:clicks:position:${position}`;
+      return await this.redis.incr(key);
+    }, 'incrementClickCounter');
+
+    return result ?? 0;
+  }
+
+  /**
+   * Get all click counters
+   * Returns map of position -> click count
+   */
+  async getAllClickCounters(): Promise<Record<number, number>> {
+    const result = await this.executeWithTimeout(async () => {
+      const pattern = 'game:clicks:position:*';
+      let cursor = '0';
+      const counters: Record<number, number> = {};
+
+      do {
+        const [nextCursor, keys] = await this.redis.scan(
+          cursor,
+          'MATCH',
+          pattern,
+          'COUNT',
+          100
+        );
+
+        cursor = nextCursor;
+
+        if (keys.length > 0) {
+          // Get all values in one MGET call for efficiency
+          const values = await this.redis.mget(...keys);
+          
+          keys.forEach((key, index) => {
+            // Extract position from key format: game:clicks:position:{position}
+            const position = parseInt(key.split(':')[3]);
+            const count = parseInt(values[index] || '0', 10);
+            
+            if (count > 0) {
+              counters[position] = count;
+            }
+          });
+        }
+      } while (cursor !== '0');
+
+      return counters;
+    }, 'getAllClickCounters');
+
+    return result ?? {};
+  }
+
+  /**
+   * Clear click counters for specific positions
+   */
+  async clearClickCounters(positions: number[]): Promise<void> {
+    await this.executeWithTimeout(async () => {
+      if (positions.length === 0) return;
+      
+      const keys = positions.map(pos => `game:clicks:position:${pos}`);
+      await this.redis.del(...keys);
+    }, 'clearClickCounters');
+  }
+
+  /**
+   * Clear all click counters
+   */
+  async clearAllClickCounters(): Promise<number> {
+    return await this.deletePattern('game:clicks:position:*');
+  }
 }
 
 export const redisService = new RedisService();

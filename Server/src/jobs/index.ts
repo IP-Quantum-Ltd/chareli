@@ -4,6 +4,8 @@ import { checkInactiveUsers } from './userInactivityCheck';
 import { updateLikeCounts } from '../cron/updateLikeCounts';
 
 export { startJsonCdnRefreshJob } from './jsonCdnRefresh.job';
+export { startAnalyticsFlushJob } from './analyticsFlush.job';
+export { startClickFlushJob } from './clickFlush.job';
 
 /**
  * Initialize all scheduled jobs
@@ -32,6 +34,7 @@ export function initializeScheduledJobs(): void {
     });
 
     logger.info('Scheduled jobs initialized successfully');
+    logger.info('Note: Analytics and Click flush jobs start separately via their respective functions');
   } catch (error) {
     logger.error('Failed to initialize scheduled jobs:', error);
   }

@@ -6,6 +6,7 @@ import { ApiError } from '../middlewares/errorHandler';
 import { Between, FindOptionsWhere } from 'typeorm';
 import { cacheService } from '../services/cache.service';
 import { queueService } from '../services/queue.service';
+import { redisService } from '../services/redis.service';
 import logger from '../utils/logger';
 import { validate } from 'class-validator';
 import { AdminExclusionService } from '../services/adminExclusion.service';
@@ -492,24 +493,16 @@ export const heartbeatAnalytics = async (
   try {
     const { id } = req.params;
 
-    // Use update for efficiency (avoid fetch if possible, but typeorm update won't check existance/ownership strictly unless we check result)
-    // For simplicity and correctness with entities, fetch then save
-    // Or simpler: update directly
-    const result = await analyticsRepository.update(id, {
-      lastSeenAt: new Date(),
-    });
+    // Buffer the heartbeat in Redis instead of hitting the database
+    // This converts 8,000 DB writes/min to ~1 bulk write/min
+    await redisService.bufferAnalyticsHeartbeat(id, new Date());
 
-    if (result.affected === 0) {
-       // Optional: return 404 if we want strict checking, but usually for heartbeat
-       // we can just return 204.
-       // However, if the ID doesn't exist, we probably shouldn't return 204 success.
-       // But the plan says "Lightweight endpoint", so maybe just ignore.
-       // Let's stick to 204.
-    }
-
+    // Return immediately - no database hit
     res.status(204).send();
   } catch (error) {
-    next(error);
+    // Don't fail the request even if Redis buffering fails
+    logger.error('Failed to buffer analytics heartbeat:', error);
+    res.status(204).send();
   }
 };
 
@@ -551,50 +544,26 @@ export const updateAnalyticsEndTime = async (
     const { id } = req.params;
     const { endTime, exitReason } = req.body;
 
-    const analytics = await analyticsRepository.findOne({
-      where: { id },
-    });
+    // Buffer the session end in Redis instead of hitting the database
+    // Duration validation will be done during flush
+    await redisService.bufferAnalyticsEnd(
+      id,
+      new Date(endTime),
+      exitReason
+    );
 
-    if (!analytics) {
-      return next(ApiError.notFound(`Analytics entry with id ${id} not found`));
-    }
-
-    analytics.endTime = new Date(endTime);
-    analytics.endedAt = new Date(endTime); // Explicit end implies endedAt
-    analytics.lastSeenAt = new Date(); // Always update lastSeenAt
-    if (exitReason) {
-      analytics.exitReason = exitReason;
-    }
-
-    // Calculate duration before saving
-    if (analytics.startTime && analytics.endTime) {
-      const duration = Math.floor(
-        (analytics.endTime.getTime() - analytics.startTime.getTime()) / 1000
-      );
-
-      // For game sessions, only save if duration >= 30 seconds
-      if (analytics.gameId && duration < 30) {
-        // Delete the analytics record if it's a game session with duration < 30 seconds
-        await analyticsRepository.remove(analytics);
-
-        res.status(200).json({
-          success: true,
-          message:
-            'Analytics entry removed due to insufficient duration (< 30 seconds)',
-          data: null,
-        });
-        return;
-      }
-    }
-
-    await analyticsRepository.save(analytics);
-
+    // Return immediately - no database hit
     res.status(200).json({
       success: true,
-      data: analytics,
+      message: 'Session end buffered successfully',
     });
   } catch (error) {
-    next(error);
+    // Don't fail the request even if Redis buffering fails
+    logger.error('Failed to buffer analytics end:', error);
+    res.status(200).json({
+      success: true,
+      message: 'Request acknowledged',
+    });
   }
 };
 

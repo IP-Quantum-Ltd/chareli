@@ -4,7 +4,8 @@ import { GamePositionHistory } from '../entities/GamePositionHistory';
 import { Game } from '../entities/Games';
 import { ApiError } from '../middlewares/errorHandler';
 import { storageService } from '../services/storage.service';
-import { queueService } from '../services/queue.service';
+import { redisService } from '../services/redis.service';
+import logger from '../utils/logger';
 
 const gamePositionHistoryRepository = AppDataSource.getRepository(GamePositionHistory);
 const gameRepository = AppDataSource.getRepository(Game);
@@ -129,19 +130,22 @@ export const recordGameClick = async (
       return next(ApiError.badRequest(`Game ${gameId} does not have a position assigned`));
     }
 
-    // Queue the click tracking job (non-blocking)
-    await queueService.addClickTrackingJob({
-      gameId,
-      position: game.position
-    });
+    // Increment click counter in Redis (atomic operation, < 2ms)
+    // This replaces the heavy BullMQ job queue approach
+    await redisService.incrementClickCounter(game.position);
 
-    // Return immediately without waiting for processing
+    // Return immediately - clicks are flushed to DB every 60 seconds via cron
     res.status(202).json({
       success: true,
-      message: 'Click tracking queued successfully',
+      message: 'Click tracked successfully',
     });
   } catch (error) {
-    next(error);
+    // Don't fail the request even if Redis increment fails
+    logger.error('Failed to increment click counter:', error);
+    res.status(202).json({
+      success: true,
+      message: 'Request acknowledged',
+    });
   }
 };
 

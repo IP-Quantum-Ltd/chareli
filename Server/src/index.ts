@@ -6,7 +6,7 @@ import logger from './utils/logger';
 import fs from 'fs';
 import path from 'path';
 import { authService } from './services/auth.service';
-import { initializeScheduledJobs, startJsonCdnRefreshJob } from './jobs';
+import { initializeScheduledJobs, startJsonCdnRefreshJob, startAnalyticsFlushJob, startClickFlushJob } from './jobs';
 import { redisService } from './services/redis.service';
 import { initializeGameZipWorker } from './workers/gameZipProcessor';
 import { initializeThumbnailWorker } from './workers/thumbnailProcessor';
@@ -90,6 +90,12 @@ const startServer = async () => {
 
       // Initialize JSON CDN refresh job
       startJsonCdnRefreshJob();
+
+      // Initialize Analytics flush job (runs every 60 seconds)
+      startAnalyticsFlushJob();
+
+      // Initialize Click tracking flush job (runs every 60 seconds)
+      startClickFlushJob();
     } catch (dbError) {
       if (config.env === 'development') {
         logger.warn(
