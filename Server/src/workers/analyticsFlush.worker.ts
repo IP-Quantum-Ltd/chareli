@@ -123,10 +123,10 @@ export async function flushBufferedAnalytics(): Promise<void> {
         const query = `
           UPDATE internal.analytics
           SET 
-            last_seen_at = COALESCE(v.last_seen_at, internal.analytics.last_seen_at),
-            end_time = COALESCE(v.end_time, internal.analytics.end_time),
-            ended_at = COALESCE(v.ended_at, internal.analytics.ended_at),
-            exit_reason = COALESCE(v.exit_reason, internal.analytics.exit_reason)
+            "lastSeenAt" = COALESCE(v.last_seen_at::timestamp, internal.analytics."lastSeenAt"),
+            "endTime" = COALESCE(v.end_time::timestamp, internal.analytics."endTime"),
+            "endedAt" = COALESCE(v.ended_at::timestamp, internal.analytics."endedAt"),
+            "exitReason" = COALESCE(v.exit_reason, internal.analytics."exitReason")
           FROM (VALUES ${values}) AS v(id, last_seen_at, end_time, ended_at, exit_reason)
           WHERE internal.analytics.id::text = v.id
         `;
