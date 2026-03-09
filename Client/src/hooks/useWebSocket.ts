@@ -38,7 +38,7 @@ export const useWebSocket = () => {
     console.log('🔌 [WebSocket] Connecting to:', BACKEND_URL);
 
     socketRef.current = io(BACKEND_URL, {
-      transports: ['websocket', 'polling'],
+      transports: ['websocket'], // Enforce websocket only to prevent polling drops in PM2 cluster
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,

@@ -26,7 +26,7 @@ if (!fs.existsSync(logDir)) {
 }
 
 // Initialize background services (Redis + Workers)
-async function initializeBackgroundServices(): Promise<void> {
+async function initializeBackgroundServices(isPrimaryWorker: boolean): Promise<void> {
   try {
     // Connect to Redis
     logger.info('Connecting to Redis...');
@@ -36,17 +36,21 @@ async function initializeBackgroundServices(): Promise<void> {
     // Wait a moment to ensure Redis is fully ready
     await new Promise((resolve) => setTimeout(resolve, 1000));
 
-    // Initialize background workers
-    logger.info('Initializing background workers...');
-    initializeGameZipWorker();
-    initializeThumbnailWorker();
-    initializeAnalyticsWorker(); // NEW: Process analytics asynchronously
-    initializeLikeWorker(); // NEW: Process likes asynchronously
-    initializeJsonCdnWorker(); // NEW: Process JSON CDN generation asynchronously
-    initializeImageWorker(); // NEW: Process image variants asynchronously
-    initializeClickTrackingWorker(); // NEW: Process click tracking asynchronously
-    initializeHomepageVisitWorker(); // NEW: Process homepage visits asynchronously
-    logger.info('Background workers initialized successfully');
+    if (isPrimaryWorker) {
+      // Initialize background workers
+      logger.info('Initializing background workers...');
+      initializeGameZipWorker();
+      initializeThumbnailWorker();
+      initializeAnalyticsWorker(); // NEW: Process analytics asynchronously
+      initializeLikeWorker(); // NEW: Process likes asynchronously
+      initializeJsonCdnWorker(); // NEW: Process JSON CDN generation asynchronously
+      initializeImageWorker(); // NEW: Process image variants asynchronously
+      initializeClickTrackingWorker(); // NEW: Process click tracking asynchronously
+      initializeHomepageVisitWorker(); // NEW: Process homepage visits asynchronously
+      logger.info('Background workers initialized successfully');
+    } else {
+      logger.info('Secondary worker - skipping background queue processing initialization');
+    }
 
     // Verify worker is properly connected
     const isRedisConnected = await redisService.isConnected();
@@ -76,18 +80,24 @@ const startServer = async () => {
     try {
       await initializeDatabase();
 
-      // Initialize superadmin account
-      logger.info('Initializing superadmin account...');
-      await authService.initializeSuperadmin();
+      const isPrimaryWorker = !process.env.NODE_APP_INSTANCE || process.env.NODE_APP_INSTANCE === '0';
 
-      // Initialize background services (Redis + Workers) after database is ready
-      await initializeBackgroundServices();
+      if (isPrimaryWorker) {
+        // Initialize superadmin account
+        logger.info('Initializing superadmin account...');
+        await authService.initializeSuperadmin();
+      }
 
-      // Initialize scheduled jobs
-      initializeScheduledJobs();
+      // Initialize background services (Redis required for all, Workers for primary only)
+      await initializeBackgroundServices(isPrimaryWorker);
 
-      // Initialize JSON CDN refresh job
-      startJsonCdnRefreshJob();
+      if (isPrimaryWorker) {
+        // Initialize scheduled jobs
+        initializeScheduledJobs();
+
+        // Initialize JSON CDN refresh job
+        startJsonCdnRefreshJob();
+      }
     } catch (dbError) {
       if (config.env === 'development') {
         logger.warn(
