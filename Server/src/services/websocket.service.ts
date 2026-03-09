@@ -1,7 +1,9 @@
 import { Server as SocketIOServer } from 'socket.io';
 import { Server as HTTPServer } from 'http';
+import { createAdapter } from '@socket.io/redis-adapter';
 import logger from '../utils/logger';
 import config from '../config/config';
+import { redisService } from './redis.service';
 
 class WebSocketService {
   private io: SocketIOServer | null = null;
@@ -16,8 +18,22 @@ class WebSocketService {
         methods: ['GET', 'POST'],
         credentials: true,
       },
-      transports: ['websocket', 'polling'],
+      transports: ['websocket'], // Enforced websocket to prevent PM2 cluster polling connection drops
     });
+
+    const redisClient = redisService.getClient();
+    if (redisClient) {
+      try {
+        const pubClient = redisClient.duplicate();
+        const subClient = redisClient.duplicate();
+        this.io.adapter(createAdapter(pubClient, subClient));
+        logger.info('Socket.io Redis adapter configured for PM2 cluster sync');
+      } catch (err) {
+        logger.error('Failed to configure Socket.io Redis adapter:', err);
+      }
+    } else {
+      logger.warn('Redis client not available, Socket.io will not sync across PM2 instances');
+    }
 
     this.io.on('connection', (socket) => {
       logger.info(`WebSocket client connected: ${socket.id}`);

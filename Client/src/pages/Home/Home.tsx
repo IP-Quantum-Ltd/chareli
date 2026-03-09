@@ -1,7 +1,7 @@
-import { useState, Suspense, lazy } from "react";
-// Login/signup modals hidden — public accounts removed
-// import { useSearchParams } from "react-router-dom";
-// import { useAuth } from "../../context/AuthContext";
+import { useState, Suspense, lazy, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
+import { useSystemConfigByKey } from "../../backend/configuration.service";
 
 const PopularSection = lazy(
   () => import("../../components/single/PopularSection")
@@ -9,16 +9,16 @@ const PopularSection = lazy(
 const AllGamesSection = lazy(
   () => import("../../components/single/AllGamesSection")
 );
-// const SignUpModal = lazy(() =>
-//   import("../../components/modals/SignUpModal").then((module) => ({
-//     default: module.SignUpModal,
-//   }))
-// );
-// const LoginModal = lazy(() =>
-//   import("../../components/modals/LoginModal").then((module) => ({
-//     default: module.LoginModal,
-//   }))
-// );
+const SignUpModal = lazy(() =>
+  import("../../components/modals/SignUpModal").then((module) => ({
+    default: module.SignUpModal,
+  }))
+);
+const LoginModal = lazy(() =>
+  import("../../components/modals/LoginModal").then((module) => ({
+    default: module.LoginModal,
+  }))
+);
 
 const SectionFallback = ({ title, count = 9 }: { title: string; count?: number }) => (
   <div className="p-4">
@@ -41,40 +41,52 @@ const SectionFallback = ({ title, count = 9 }: { title: string; count?: number }
 );
 
 function Home() {
-  // Login/signup state hidden — public accounts removed
-  // const [isSignUpModalOpen, setIsSignUpModalOpen] = useState(false);
-  // const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  // const [searchParams, setSearchParams] = useSearchParams();
-  // const { keepPlayingRedirect, setKeepPlayingRedirect } = useAuth();
+  const [isSignUpModalOpen, setIsSignUpModalOpen] = useState(false);
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  // useEffect(() => {
-  //   if (keepPlayingRedirect) {
-  //     setIsSignUpModalOpen(true);
-  //     setKeepPlayingRedirect(false);
-  //   }
-  // }, [keepPlayingRedirect, setKeepPlayingRedirect]);
+  // Derive search state from URL, provide custom setter to update URL
+  const searchQuery = searchParams.get("search") || "";
+  const setSearchQuery = (query: string) => {
+    const newParams = new URLSearchParams(searchParams);
+    if (query) {
+      newParams.set("search", query);
+    } else {
+      newParams.delete("search");
+    }
+    setSearchParams(newParams, { replace: true });
+  };
+  const { keepPlayingRedirect, setKeepPlayingRedirect } = useAuth();
+  const { data: publicAuthConfig } = useSystemConfigByKey("public_auth_settings");
+  const isPublicAuthEnabled = publicAuthConfig?.value?.enabled === true;
 
-  // // Check for openLogin URL parameter and auto-open login modal
-  // useEffect(() => {
-  //   const shouldOpenLogin = searchParams.get("openLogin");
-  //   if (shouldOpenLogin === "true") {
-  //     setIsLoginModalOpen(true);
-  //     // Clean up the URL parameter after opening the modal
-  //     const newSearchParams = new URLSearchParams(searchParams);
-  //     newSearchParams.delete("openLogin");
-  //     setSearchParams(newSearchParams, { replace: true });
-  //   }
-  // }, [searchParams, setSearchParams]);
+  useEffect(() => {
+    if (keepPlayingRedirect && isPublicAuthEnabled) {
+      setIsSignUpModalOpen(true);
+      setKeepPlayingRedirect(false);
+    }
+  }, [keepPlayingRedirect, setKeepPlayingRedirect, isPublicAuthEnabled]);
 
-  // const handleOpenSignUpModal = () => {
-  //   setIsSignUpModalOpen(true);
-  // };
+  // Check for openLogin URL parameter and auto-open login modal
+  useEffect(() => {
+    const shouldOpenLogin = searchParams.get("openLogin");
+    if (shouldOpenLogin === "true" && isPublicAuthEnabled) {
+      setIsLoginModalOpen(true);
+      // Clean up the URL parameter after opening the modal
+      const newSearchParams = new URLSearchParams(searchParams);
+      newSearchParams.delete("openLogin");
+      setSearchParams(newSearchParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams, isPublicAuthEnabled]);
 
-  // const handleOpenLoginModal = () => {
-  //   setIsSignUpModalOpen(false);
-  //   setIsLoginModalOpen(true);
-  // };
+  const handleOpenSignUpModal = () => {
+    setIsSignUpModalOpen(true);
+  };
+
+  const handleOpenLoginModal = () => {
+    setIsSignUpModalOpen(false);
+    setIsLoginModalOpen(true);
+  };
 
   return (
     <div className="font-dmmono">
@@ -83,26 +95,30 @@ function Home() {
         <PopularSection
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
+          isPublicAuthEnabled={isPublicAuthEnabled}
         />
       </Suspense>
       <Suspense fallback={<SectionFallback title="All games" count={9} />}>
         <AllGamesSection searchQuery={searchQuery} />
       </Suspense>
-      {/* Login/signup modals hidden — public accounts removed */}
-      {/* <Suspense fallback={null}>
-        <SignUpModal
-          open={isSignUpModalOpen}
-          onOpenChange={setIsSignUpModalOpen}
-          openLoginModal={handleOpenLoginModal}
-        />
-      </Suspense>
-      <Suspense fallback={null}>
-        <LoginModal
-          open={isLoginModalOpen}
-          onOpenChange={setIsLoginModalOpen}
-          openSignUpModal={handleOpenSignUpModal}
-        />
-      </Suspense> */}
+      {isPublicAuthEnabled && (
+        <>
+          <Suspense fallback={null}>
+            <SignUpModal
+              open={isSignUpModalOpen}
+              onOpenChange={setIsSignUpModalOpen}
+              openLoginModal={handleOpenLoginModal}
+            />
+          </Suspense>
+          <Suspense fallback={null}>
+            <LoginModal
+              open={isLoginModalOpen}
+              onOpenChange={setIsLoginModalOpen}
+              openSignUpModal={handleOpenSignUpModal}
+            />
+          </Suspense>
+        </>
+      )}
     </div>
   );
 }

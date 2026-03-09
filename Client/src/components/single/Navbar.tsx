@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams, useLocation } from "react-router-dom";
 import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
 import { StatsModal } from "../modals/StatsModal";
 import { ProfileModal } from "../modals/ProfileModal";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
-// import { useTrackSignupClick } from "../../backend/signup.analytics.service";
-// import { getOrCreateSessionId } from "../../utils/sessionUtils";
+import { useTrackSignupClick } from "../../backend/signup.analytics.service";
+import { getOrCreateSessionId } from "../../utils/sessionUtils";
 import { usePermissions } from "../../hooks/usePermissions";
+import { useSystemConfigByKey } from "../../backend/configuration.service";
 import Logo from "../../assets/logo.svg";
 import aboutIcon from "../../assets/about.svg";
 import categoryIcon from "../../assets/category.svg";
@@ -16,20 +18,25 @@ import sun from "../../assets/sun.svg";
 import moon from "../../assets/moon.svg";
 // import bolt from '../../assets/bolt.svg';
 
-
-// import { SignUpModal } from "../modals/SignUpModal";
-// import { LoginModal } from "../modals/LoginModal";
-import { CircleUserRound, Menu} from "lucide-react";
+import { SignUpModal } from "../modals/SignUpModal";
+import { LoginModal } from "../modals/LoginModal";
+import { CircleUserRound, Menu, Search} from "lucide-react";
+import { useUISettings } from "../../hooks/useUISettings";
 
 const Navbar: React.FC = () => {
   const { isAuthenticated, logout } = useAuth();
   const permissions = usePermissions();
   const { isDarkMode, toggleDarkMode } = useTheme();
-  // const { mutate: trackSignup } = useTrackSignupClick();
+  const { mutate: trackSignup } = useTrackSignupClick();
+  const { data: publicAuthConfig } = useSystemConfigByKey("public_auth_settings");
+  const isPublicAuthEnabled = publicAuthConfig?.value?.enabled === true;
+  const { uiSettings } = useUISettings();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
 
   const navigate = useNavigate();
-  // const [isSignUpModalOpen, setIsSignUpModalOpen] = useState(false);
-  // const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [isSignUpModalOpen, setIsSignUpModalOpen] = useState(false);
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [isStatsModalOpen, setIsStatsModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -55,6 +62,23 @@ const Navbar: React.FC = () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    if (location.pathname !== "/") {
+      // If we are not on the homepage, navigate to the homepage with the search query
+      navigate(value ? `/?search=${encodeURIComponent(value)}` : "/");
+    } else {
+      // If we are already on the homepage, just update the URL parameters
+      const newParams = new URLSearchParams(searchParams);
+      if (value) {
+        newParams.set("search", value);
+      } else {
+        newParams.delete("search");
+      }
+      setSearchParams(newParams, { replace: true });
+    }
+  };
 
   return (
     <header className="relative flex justify-between items-center bg-[#fef7ed] dark:bg-[#0f1221] transition-colors duration-300">
@@ -197,57 +221,58 @@ const Navbar: React.FC = () => {
                   Logout
                 </Button>
               </div>
-            ) : (
-              // Login/Signup buttons hidden — public accounts removed
-              // <div className="space-y-2">
-              //   <Button
-              //     onClick={() => {
-              //       setIsLoginModalOpen(true);
-              //       setIsMobileMenuOpen(false);
-              //     }}
-              //     className="bg-[#6A7282] text-white text-[15px] w-full py-3 rounded-lg font-semibold transition-all duration-300 transform hover:scale-[1.02] hover:bg-[#5A626F]"
-              //   >
-              //     Log in
-              //   </Button>
-              //   <Button
-              //     onClick={() => {
-              //       trackSignup({
-              //         sessionId: getOrCreateSessionId(),
-              //         type: "navbar",
-              //       });
-              //       setIsSignUpModalOpen(true);
-              //       setIsMobileMenuOpen(false);
-              //     }}
-              //     className="bg-transparent border border-[#6A7282] text-[#6A7282] text-[15px] w-full py-3 rounded-lg font-semibold transition-all duration-300 transform hover:scale-[1.02] hover:bg-[#6A7282] hover:text-white"
-              //   >
-              //     Sign up
-              //   </Button>
-              // </div>
-              null
-            )}
+            ) : isPublicAuthEnabled ? (
+              <div className="space-y-2">
+                <Button
+                  onClick={() => {
+                    setIsLoginModalOpen(true);
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className="bg-[#6A7282] text-white text-[15px] w-full py-3 rounded-lg font-semibold transition-all duration-300 transform hover:scale-[1.02] hover:bg-[#5A626F]"
+                >
+                  Log in
+                </Button>
+                <Button
+                  onClick={() => {
+                    trackSignup({
+                      sessionId: getOrCreateSessionId(),
+                      type: "navbar",
+                    });
+                    setIsSignUpModalOpen(true);
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className="bg-transparent border border-[#6A7282] text-[#6A7282] text-[15px] w-full py-3 rounded-lg font-semibold transition-all duration-300 transform hover:scale-[1.02] hover:bg-[#6A7282] hover:text-white"
+                >
+                  Sign up
+                </Button>
+              </div>
+            ) : null}
 
           </div>
         </div>
       )}
 
       {/* Modals - Available for both mobile and desktop */}
-      {/* Login/Signup modals hidden — public accounts removed */}
-      {/* <SignUpModal
-        open={isSignUpModalOpen}
-        onOpenChange={setIsSignUpModalOpen}
-        openLoginModal={() => {
-          setIsSignUpModalOpen(false);
-          setIsLoginModalOpen(true);
-        }}
-      />
-      <LoginModal
-        open={isLoginModalOpen}
-        onOpenChange={setIsLoginModalOpen}
-        openSignUpModal={() => {
-          setIsLoginModalOpen(false);
-          setIsSignUpModalOpen(true);
-        }}
-      /> */}
+      {isPublicAuthEnabled && (
+        <>
+          <SignUpModal
+            open={isSignUpModalOpen}
+            onOpenChange={setIsSignUpModalOpen}
+            openLoginModal={() => {
+              setIsSignUpModalOpen(false);
+              setIsLoginModalOpen(true);
+            }}
+          />
+          <LoginModal
+            open={isLoginModalOpen}
+            onOpenChange={setIsLoginModalOpen}
+            openSignUpModal={() => {
+              setIsLoginModalOpen(false);
+              setIsSignUpModalOpen(true);
+            }}
+          />
+        </>
+      )}
       <StatsModal
         open={isStatsModalOpen}
         onClose={() => setIsStatsModalOpen(false)}
@@ -259,6 +284,21 @@ const Navbar: React.FC = () => {
 
       {/* Desktop Actions */}
       <div className="hidden lg:flex space-x-4 items-center pt-2 pr-4">
+        {/* Render Search Bar if public auth is disabled so users can still search */}
+        {!isPublicAuthEnabled && uiSettings.showSearchBar && (
+          <div className="relative w-full lg:w-[350px]">
+            <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-[#64748A] w-5 h-5 pointer-events-none" />
+            <Input
+              className="pl-12 w-full h-10 rounded-2xl text-[#64748A] tracking-wider border-2 border-[#64748A] focus:border-[#64748A] focus:outline-none shadow-[0_0_8px_rgba(100,116,138,0.2)]
+                          placeholder:text-[#64748A] bg-white/5
+                          placeholder:text-[15px]"
+              placeholder="Which game do you want to search for?"
+              value={searchParams.get("search") || ""}
+              onChange={handleSearchChange}
+            />
+          </div>
+        )}
+
         <img
           onClick={toggleDarkMode}
           src={isDarkMode ? moon : sun}
@@ -302,26 +342,28 @@ const Navbar: React.FC = () => {
           </>
         ) : (
           <>
-            {/* Login/Signup buttons hidden — public accounts removed */}
-            {/* <Button
-              onClick={() => setIsLoginModalOpen(true)}
-              className="bg-[#6A7282] text-white hover:bg-[#5A626F] text-[15px] cursor-pointer transition-colors"
-            >
-              Log in
-            </Button>
-            <Button
-              onClick={() => {
-                trackSignup({
-                  sessionId: getOrCreateSessionId(),
-                  type: "navbar",
-                });
-                setIsSignUpModalOpen(true);
-              }}
-              className="bg-transparent border border-[#6A7282] text-[#6A7282] text-[15px] hover:bg-[#6A7282] hover:text-white cursor-pointer transition-colors"
-            >
-              Sign up
-            </Button> */}
-
+            {isPublicAuthEnabled && (
+              <>
+                <Button
+                  onClick={() => setIsLoginModalOpen(true)}
+                  className="bg-[#6A7282] text-white hover:bg-[#5A626F] text-[15px] cursor-pointer transition-colors"
+                >
+                  Log in
+                </Button>
+                <Button
+                  onClick={() => {
+                    trackSignup({
+                      sessionId: getOrCreateSessionId(),
+                      type: "navbar",
+                    });
+                    setIsSignUpModalOpen(true);
+                  }}
+                  className="bg-transparent border border-[#6A7282] text-[#6A7282] text-[15px] hover:bg-[#6A7282] hover:text-white cursor-pointer transition-colors"
+                >
+                  Sign up
+                </Button>
+              </>
+            )}
             {/* Desktop Menu Dropdown */}
             {/* <div className="relative desktop-menu-container">
               <Button
