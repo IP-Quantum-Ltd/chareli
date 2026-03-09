@@ -56,9 +56,10 @@ function Home() {
     }
     setSearchParams(newParams, { replace: true });
   };
-  const { keepPlayingRedirect, setKeepPlayingRedirect } = useAuth();
+  const { keepPlayingRedirect, setKeepPlayingRedirect, isAuthenticated } = useAuth();
   const { data: publicAuthConfig } = useSystemConfigByKey("public_auth_settings");
   const isPublicAuthEnabled = publicAuthConfig?.value?.enabled === true;
+  const showHomepageSearchBar = isPublicAuthEnabled || isAuthenticated;
 
   useEffect(() => {
     if (keepPlayingRedirect && isPublicAuthEnabled) {
@@ -95,7 +96,7 @@ function Home() {
         <PopularSection
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
-          isPublicAuthEnabled={isPublicAuthEnabled}
+          showHomepageSearchBar={showHomepageSearchBar}
         />
       </Suspense>
       <Suspense fallback={<SectionFallback title="All games" count={9} />}>

@@ -284,8 +284,8 @@ const Navbar: React.FC = () => {
 
       {/* Desktop Actions */}
       <div className="hidden lg:flex space-x-4 items-center pt-2 pr-4">
-        {/* Render Search Bar if public auth is disabled so users can still search */}
-        {!isPublicAuthEnabled && uiSettings.showSearchBar && (
+        {/* Render Search Bar if public auth is disabled AND user is logged out */}
+        {!isPublicAuthEnabled && !isAuthenticated && uiSettings.showSearchBar && (
           <div className="relative w-full lg:w-[350px]">
             <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-[#64748A] w-5 h-5 pointer-events-none" />
             <Input
