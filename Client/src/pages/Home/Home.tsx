@@ -1,6 +1,7 @@
-import { useState, useEffect, Suspense, lazy } from "react";
-import { useSearchParams } from "react-router-dom";
-import { useAuth } from "../../context/AuthContext";
+import { useState, Suspense, lazy } from "react";
+// Login/signup modals hidden — public accounts removed
+// import { useSearchParams } from "react-router-dom";
+// import { useAuth } from "../../context/AuthContext";
 
 const PopularSection = lazy(
   () => import("../../components/single/PopularSection")
@@ -8,16 +9,16 @@ const PopularSection = lazy(
 const AllGamesSection = lazy(
   () => import("../../components/single/AllGamesSection")
 );
-const SignUpModal = lazy(() =>
-  import("../../components/modals/SignUpModal").then((module) => ({
-    default: module.SignUpModal,
-  }))
-);
-const LoginModal = lazy(() =>
-  import("../../components/modals/LoginModal").then((module) => ({
-    default: module.LoginModal,
-  }))
-);
+// const SignUpModal = lazy(() =>
+//   import("../../components/modals/SignUpModal").then((module) => ({
+//     default: module.SignUpModal,
+//   }))
+// );
+// const LoginModal = lazy(() =>
+//   import("../../components/modals/LoginModal").then((module) => ({
+//     default: module.LoginModal,
+//   }))
+// );
 
 const SectionFallback = ({ title, count = 9 }: { title: string; count?: number }) => (
   <div className="p-4">
@@ -40,39 +41,40 @@ const SectionFallback = ({ title, count = 9 }: { title: string; count?: number }
 );
 
 function Home() {
-  const [isSignUpModalOpen, setIsSignUpModalOpen] = useState(false);
-  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  // Login/signup state hidden — public accounts removed
+  // const [isSignUpModalOpen, setIsSignUpModalOpen] = useState(false);
+  // const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchParams, setSearchParams] = useSearchParams();
-  const { keepPlayingRedirect, setKeepPlayingRedirect } = useAuth();
+  // const [searchParams, setSearchParams] = useSearchParams();
+  // const { keepPlayingRedirect, setKeepPlayingRedirect } = useAuth();
 
-  useEffect(() => {
-    if (keepPlayingRedirect) {
-      setIsSignUpModalOpen(true);
-      setKeepPlayingRedirect(false);
-    }
-  }, [keepPlayingRedirect, setKeepPlayingRedirect]);
+  // useEffect(() => {
+  //   if (keepPlayingRedirect) {
+  //     setIsSignUpModalOpen(true);
+  //     setKeepPlayingRedirect(false);
+  //   }
+  // }, [keepPlayingRedirect, setKeepPlayingRedirect]);
 
-  // Check for openLogin URL parameter and auto-open login modal
-  useEffect(() => {
-    const shouldOpenLogin = searchParams.get("openLogin");
-    if (shouldOpenLogin === "true") {
-      setIsLoginModalOpen(true);
-      // Clean up the URL parameter after opening the modal
-      const newSearchParams = new URLSearchParams(searchParams);
-      newSearchParams.delete("openLogin");
-      setSearchParams(newSearchParams, { replace: true });
-    }
-  }, [searchParams, setSearchParams]);
+  // // Check for openLogin URL parameter and auto-open login modal
+  // useEffect(() => {
+  //   const shouldOpenLogin = searchParams.get("openLogin");
+  //   if (shouldOpenLogin === "true") {
+  //     setIsLoginModalOpen(true);
+  //     // Clean up the URL parameter after opening the modal
+  //     const newSearchParams = new URLSearchParams(searchParams);
+  //     newSearchParams.delete("openLogin");
+  //     setSearchParams(newSearchParams, { replace: true });
+  //   }
+  // }, [searchParams, setSearchParams]);
 
-  const handleOpenSignUpModal = () => {
-    setIsSignUpModalOpen(true);
-  };
+  // const handleOpenSignUpModal = () => {
+  //   setIsSignUpModalOpen(true);
+  // };
 
-  const handleOpenLoginModal = () => {
-    setIsSignUpModalOpen(false);
-    setIsLoginModalOpen(true);
-  };
+  // const handleOpenLoginModal = () => {
+  //   setIsSignUpModalOpen(false);
+  //   setIsLoginModalOpen(true);
+  // };
 
   return (
     <div className="font-dmmono">
@@ -86,7 +88,8 @@ function Home() {
       <Suspense fallback={<SectionFallback title="All games" count={9} />}>
         <AllGamesSection searchQuery={searchQuery} />
       </Suspense>
-      <Suspense fallback={null}>
+      {/* Login/signup modals hidden — public accounts removed */}
+      {/* <Suspense fallback={null}>
         <SignUpModal
           open={isSignUpModalOpen}
           onOpenChange={setIsSignUpModalOpen}
@@ -99,7 +102,7 @@ function Home() {
           onOpenChange={setIsLoginModalOpen}
           openSignUpModal={handleOpenSignUpModal}
         />
-      </Suspense>
+      </Suspense> */}
     </div>
   );
 }

@@ -48,6 +48,7 @@ const ProposalReview = lazy(() => import('../pages/Admin/Proposals/ProposalRevie
 const TeamManagement = lazy(() => import('../pages/Admin/Team/TeamManagement'));
 const Settings = lazy(() => import('../pages/Admin/Settings'));
 const ViewProfile = lazy(() => import('../pages/Admin/ViewProfile'));
+const AdminLogin = lazy(() => import('../pages/Admin/AdminLogin'));
 const Terms = lazy(() => import('../pages/TermsOfService/Terms'));
 const Privacy = lazy(() => import('../pages/PrivacyPolicy/Privacy'));
 const CacheDashboard = lazy(
@@ -93,6 +94,12 @@ export const routes = [
       {
         path: 'register-invitation/:token',
         element: <SuspenseWrapper><RegisterInvitationPage /></SuspenseWrapper>,
+      },
+
+      // Admin login page (accessible without authentication)
+      {
+        path: 'admin/login',
+        element: <SuspenseWrapper><AdminLogin /></SuspenseWrapper>,
       },
 
       // Admin routes (general - for all admin users including viewers)

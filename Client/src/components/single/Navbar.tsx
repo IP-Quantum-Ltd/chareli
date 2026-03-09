@@ -5,8 +5,8 @@ import { StatsModal } from "../modals/StatsModal";
 import { ProfileModal } from "../modals/ProfileModal";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
-import { useTrackSignupClick } from "../../backend/signup.analytics.service";
-import { getOrCreateSessionId } from "../../utils/sessionUtils";
+// import { useTrackSignupClick } from "../../backend/signup.analytics.service";
+// import { getOrCreateSessionId } from "../../utils/sessionUtils";
 import { usePermissions } from "../../hooks/usePermissions";
 import Logo from "../../assets/logo.svg";
 import aboutIcon from "../../assets/about.svg";
@@ -17,19 +17,19 @@ import moon from "../../assets/moon.svg";
 // import bolt from '../../assets/bolt.svg';
 
 
-import { SignUpModal } from "../modals/SignUpModal";
-import { LoginModal } from "../modals/LoginModal";
+// import { SignUpModal } from "../modals/SignUpModal";
+// import { LoginModal } from "../modals/LoginModal";
 import { CircleUserRound, Menu} from "lucide-react";
 
 const Navbar: React.FC = () => {
   const { isAuthenticated, logout } = useAuth();
   const permissions = usePermissions();
   const { isDarkMode, toggleDarkMode } = useTheme();
-  const { mutate: trackSignup } = useTrackSignupClick();
+  // const { mutate: trackSignup } = useTrackSignupClick();
 
   const navigate = useNavigate();
-  const [isSignUpModalOpen, setIsSignUpModalOpen] = useState(false);
-  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  // const [isSignUpModalOpen, setIsSignUpModalOpen] = useState(false);
+  // const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [isStatsModalOpen, setIsStatsModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -198,30 +198,32 @@ const Navbar: React.FC = () => {
                 </Button>
               </div>
             ) : (
-              <div className="space-y-2">
-                <Button
-                  onClick={() => {
-                    setIsLoginModalOpen(true);
-                    setIsMobileMenuOpen(false);
-                  }}
-                  className="bg-[#6A7282] text-white text-[15px] w-full py-3 rounded-lg font-semibold transition-all duration-300 transform hover:scale-[1.02] hover:bg-[#5A626F]"
-                >
-                  Log in
-                </Button>
-                <Button
-                  onClick={() => {
-                    trackSignup({
-                      sessionId: getOrCreateSessionId(),
-                      type: "navbar",
-                    });
-                    setIsSignUpModalOpen(true);
-                    setIsMobileMenuOpen(false);
-                  }}
-                  className="bg-transparent border border-[#6A7282] text-[#6A7282] text-[15px] w-full py-3 rounded-lg font-semibold transition-all duration-300 transform hover:scale-[1.02] hover:bg-[#6A7282] hover:text-white"
-                >
-                  Sign up
-                </Button>
-              </div>
+              // Login/Signup buttons hidden — public accounts removed
+              // <div className="space-y-2">
+              //   <Button
+              //     onClick={() => {
+              //       setIsLoginModalOpen(true);
+              //       setIsMobileMenuOpen(false);
+              //     }}
+              //     className="bg-[#6A7282] text-white text-[15px] w-full py-3 rounded-lg font-semibold transition-all duration-300 transform hover:scale-[1.02] hover:bg-[#5A626F]"
+              //   >
+              //     Log in
+              //   </Button>
+              //   <Button
+              //     onClick={() => {
+              //       trackSignup({
+              //         sessionId: getOrCreateSessionId(),
+              //         type: "navbar",
+              //       });
+              //       setIsSignUpModalOpen(true);
+              //       setIsMobileMenuOpen(false);
+              //     }}
+              //     className="bg-transparent border border-[#6A7282] text-[#6A7282] text-[15px] w-full py-3 rounded-lg font-semibold transition-all duration-300 transform hover:scale-[1.02] hover:bg-[#6A7282] hover:text-white"
+              //   >
+              //     Sign up
+              //   </Button>
+              // </div>
+              null
             )}
 
           </div>
@@ -229,7 +231,8 @@ const Navbar: React.FC = () => {
       )}
 
       {/* Modals - Available for both mobile and desktop */}
-      <SignUpModal
+      {/* Login/Signup modals hidden — public accounts removed */}
+      {/* <SignUpModal
         open={isSignUpModalOpen}
         onOpenChange={setIsSignUpModalOpen}
         openLoginModal={() => {
@@ -244,7 +247,7 @@ const Navbar: React.FC = () => {
           setIsLoginModalOpen(false);
           setIsSignUpModalOpen(true);
         }}
-      />
+      /> */}
       <StatsModal
         open={isStatsModalOpen}
         onClose={() => setIsStatsModalOpen(false)}
@@ -299,7 +302,8 @@ const Navbar: React.FC = () => {
           </>
         ) : (
           <>
-            <Button
+            {/* Login/Signup buttons hidden — public accounts removed */}
+            {/* <Button
               onClick={() => setIsLoginModalOpen(true)}
               className="bg-[#6A7282] text-white hover:bg-[#5A626F] text-[15px] cursor-pointer transition-colors"
             >
@@ -316,7 +320,7 @@ const Navbar: React.FC = () => {
               className="bg-transparent border border-[#6A7282] text-[#6A7282] text-[15px] hover:bg-[#6A7282] hover:text-white cursor-pointer transition-colors"
             >
               Sign up
-            </Button>
+            </Button> */}
 
             {/* Desktop Menu Dropdown */}
             {/* <div className="relative desktop-menu-container">

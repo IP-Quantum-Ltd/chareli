@@ -7,9 +7,9 @@ interface ProtectedRouteProps {
   requireConfig?: boolean;
 }
 
-export const ProtectedRoute = ({ 
-  requireAdmin = false, 
-  requireConfig = false 
+export const ProtectedRoute = ({
+  requireAdmin = false,
+  requireConfig = false
 }: ProtectedRouteProps) => {
   const { isAuthenticated, isLoading } = useAuth();
   const permissions = usePermissions();
@@ -21,7 +21,7 @@ export const ProtectedRoute = ({
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/admin/login" replace />;
   }
 
   // Check admin panel access (includes viewers)
