@@ -11,11 +11,13 @@ import emptyGameImg from '../../assets/empty-game.png';
 interface PopularSectionProps {
   searchQuery: string;
   setSearchQuery: (query: string) => void;
+  isPublicAuthEnabled?: boolean;
 }
 
 const PopularSection = ({
   searchQuery,
   setSearchQuery,
+  isPublicAuthEnabled = false,
 }: PopularSectionProps) => {
   const { uiSettings } = useUISettings();
 
@@ -36,7 +38,7 @@ const PopularSection = ({
   if (!isLoading && !error && games.length === 0 && !searchQuery) {
     return (
       <div className="p-4">
-        {uiSettings.showSearchBar && (
+        {uiSettings.showSearchBar && isPublicAuthEnabled && (
           <div className="flex justify-end mb-8">
             <div className="relative w-full md:w-[400px]">
               <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-[#64748A] w-5 h-5 pointer-events-none" />
@@ -59,13 +61,13 @@ const PopularSection = ({
     <div className="p-4">
       <div
         className={`flex flex-col sm:flex-row items-start sm:items-center ${
-          uiSettings.showSearchBar ? 'justify-between' : 'justify-start'
+          uiSettings.showSearchBar && isPublicAuthEnabled ? 'justify-between' : 'justify-start'
         } gap-4 mb-8`}
       >
         <h2 className="text-[#6A7282] dark:text-[#FEFEFE] text-3xl font-worksans tracking-wide">
           Popular
         </h2>
-        {uiSettings.showSearchBar && (
+        {uiSettings.showSearchBar && isPublicAuthEnabled && (
           <div className="relative w-full md:w-[400px]">
             <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-[#64748A] w-5 h-5 pointer-events-none" />
             <Input

@@ -14,6 +14,7 @@ import UserInactivityConfiguration, { type UserInactivityConfigurationRef } from
 import PopularGamesConfiguration, { type PopularGamesConfigurationRef } from '../../../components/single/PopularGamesConfiguration';
 import AboutMissionConfiguration, { type AboutMissionConfigurationRef } from '../../../components/single/AboutMissionConfiguration';
 import BulkFreeTimeConfiguration, { type BulkFreeTimeConfigurationRef } from '../../../components/single/BulkFreeTimeConfiguration';
+import PublicAuthConfiguration, { type PublicAuthConfigurationRef } from '../../../components/single/PublicAuthConfiguration';
 import { UnsavedChangesModal } from '../../../components/modals/UnsavedChangesModal';
 
 interface AuthMethodSettings {
@@ -57,6 +58,7 @@ export default function Configuration() {
   const popularGamesConfigRef = useRef<PopularGamesConfigurationRef>(null);
   const aboutMissionConfigRef = useRef<AboutMissionConfigurationRef>(null);
   const bulkFreeTimeConfigRef = useRef<BulkFreeTimeConfigurationRef>(null);
+  const publicAuthConfigRef = useRef<PublicAuthConfigurationRef>(null);
   const queryClient = useQueryClient();
   const { mutateAsync: createConfig } = useCreateSystemConfig();
   const { data: configData, isLoading: isLoadingConfig } = useSystemConfigByKey('authentication_settings');
@@ -226,6 +228,16 @@ export default function Configuration() {
         });
       }
 
+      // Save Public Auth settings
+      if (publicAuthConfigRef.current) {
+        const publicAuthSettings = publicAuthConfigRef.current.getSettings();
+        await createConfig({
+          key: 'public_auth_settings',
+          value: publicAuthSettings,
+          description: 'Configuration for allowing public login and sign up'
+        });
+      }
+
       // Save user inactivity settings
       if (userInactivityConfigRef.current) {
         const inactivitySettings = userInactivityConfigRef.current.getSettings();
@@ -310,6 +322,7 @@ export default function Configuration() {
         </div>
       )}
 
+      <PublicAuthConfiguration ref={publicAuthConfigRef} disabled={isSubmitting} onChange={markDirty} />
       <SearchBarConfiguration ref={searchBarConfigRef} disabled={isSubmitting} onChange={markDirty} />
 
       <h1 className="text-lg sm:text-xl font-worksans text-[#6A7282] dark:text-white mb-4">User Sign Up Configuration</h1>
