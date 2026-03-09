@@ -1,5 +1,5 @@
 # Use Node.js 22 as the base image (LTS version)
-FROM node:22-alpine AS builder
+FROM node:24-alpine AS builder
 
 # Set working directory
 WORKDIR /app
@@ -27,7 +27,7 @@ RUN npm run build
 RUN npm ci --omit=dev
 
 # Production stage
-FROM node:22-alpine AS production
+FROM node:24-alpine AS production
 
 # Set working directory
 WORKDIR /app
@@ -58,5 +58,5 @@ EXPOSE 5000
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
   CMD ["/usr/local/bin/healthcheck.sh"]
 
-# Run migrations and start the app
-CMD ["sh", "-c", "npm run typeorm migration:run -- -d dist/config/database.js && npm start"]
+# Run migrations and start the app with PM2
+CMD ["sh", "-c", "npm run typeorm migration:run -- -d dist/config/database.js && npx pm2-runtime start dist/index.js -i max"]
