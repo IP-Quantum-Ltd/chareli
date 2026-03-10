@@ -3,6 +3,7 @@ import { RedisStore } from 'rate-limit-redis';
 import { Request, Response } from 'express';
 import { ApiError } from './errorHandler';
 import { redisService } from '../services/redis.service';
+import config from '../config/config';
 
 /**
  * Rate limiter for authentication endpoints
@@ -25,6 +26,9 @@ export const authLimiter = rateLimit({
     );
   },
   skip: (req) => {
+    if (config.loadTestBypassToken && req.headers['x-load-test-bypass'] === config.loadTestBypassToken) {
+      return true;
+    }
     // Skip rate limiting if Redis is down (graceful degradation)
     return (
       !redisService.getClient().status ||
@@ -51,6 +55,9 @@ export const apiLimiter = rateLimit({
     throw new ApiError(429, 'Too many requests, please try again later');
   },
   skip: (req) => {
+    if (config.loadTestBypassToken && req.headers['x-load-test-bypass'] === config.loadTestBypassToken) {
+      return true;
+    }
     // Skip rate limiting if Redis is down (graceful degradation)
     return (
       !redisService.getClient().status ||
@@ -80,6 +87,10 @@ export const createUserLimiter = rateLimit({
     );
   },
   skip: (req) => {
+    if (config.loadTestBypassToken && req.headers['x-load-test-bypass'] === config.loadTestBypassToken) {
+      return true;
+    }
+    // Skip rate limiting if Redis is down (graceful degradation)
     return (
       !redisService.getClient().status ||
       redisService.getClient().status !== 'ready'
@@ -107,6 +118,10 @@ export const uploadLimiter = rateLimit({
     );
   },
   skip: (req) => {
+    if (config.loadTestBypassToken && req.headers['x-load-test-bypass'] === config.loadTestBypassToken) {
+      return true;
+    }
+    // Skip rate limiting if Redis is down (graceful degradation)
     return (
       !redisService.getClient().status ||
       redisService.getClient().status !== 'ready'
@@ -134,6 +149,9 @@ export const likeLimiter = rateLimit({
     );
   },
   skip: (req) => {
+    if (config.loadTestBypassToken && req.headers['x-load-test-bypass'] === config.loadTestBypassToken) {
+      return true;
+    }
     return (
       !redisService.getClient().status ||
       redisService.getClient().status !== 'ready'
@@ -203,6 +221,9 @@ export const adminLimiter = rateLimit({
     throw new ApiError(429, 'Admin rate limit exceeded, please slow down');
   },
   skip: (req) => {
+    if (config.loadTestBypassToken && req.headers['x-load-test-bypass'] === config.loadTestBypassToken) {
+      return true;
+    }
     return (
       !redisService.getClient().status ||
       redisService.getClient().status !== 'ready'
