@@ -420,6 +420,9 @@ export const updateAnalytics = async (
       const duration = Math.floor(
         (analytics.endTime.getTime() - analytics.startTime.getTime()) / 1000
       );
+      
+      // Part 3: Explicitly assign duration (provides clarity + redundancy with entity hook)
+      analytics.duration = duration;
 
       // For game sessions, only save if duration >= 30 seconds
       if (analytics.gameId && duration < 30) {
@@ -571,6 +574,9 @@ export const updateAnalyticsEndTime = async (
       const duration = Math.floor(
         (analytics.endTime.getTime() - analytics.startTime.getTime()) / 1000
       );
+      
+      // Part 3: Explicitly assign duration (provides clarity + redundancy with entity hook)
+      analytics.duration = duration;
 
       // For game sessions, only save if duration >= 30 seconds
       if (analytics.gameId && duration < 30) {
