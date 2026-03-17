@@ -60,6 +60,10 @@ interface Config {
     tracesSampleRate: number;
     enabled: boolean;
   };
+  resend: {
+    apiKey: string;
+    fromEmail: string;
+  };
   s3: {
     region: string;
     accessKeyId: string;
@@ -195,6 +199,10 @@ const config: Config = {
       process.env.SENTRY_TRACES_SAMPLE_RATE || '0.2'
     ),
     enabled: false,
+  },
+  resend: {
+    apiKey: process.env.RESEND_API_KEY || '',
+    fromEmail: process.env.RESEND_FROM_EMAIL || 'no-reply@arcadesbox.com',
   },
   s3: {
     region: process.env.AWS_REGION || 'us-east-1',
