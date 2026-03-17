@@ -1,2 +1,39 @@
+# Main site - Allow search engines, disallow AI training bots
 User-agent: *
+Content-signal: search=yes,ai-train=no
+Allow: /
+
+# Block Amazon bot
+User-agent: Amazonbot
 Disallow: /
+
+# Block Apple Extended bot (AI training)
+User-agent: Applebot-Extended
+Disallow: /
+
+# Block ByteDance/TikTok bot
+User-agent: Bytespider
+Disallow: /
+
+# Block Common Crawl bot
+User-agent: CCBot
+Disallow: /
+
+# Block Anthropic's Claude bot
+User-agent: ClaudeBot
+Disallow: /
+
+# Block Google Extended (AI training)
+User-agent: Google-Extended
+Disallow: /
+
+# Block OpenAI's GPT bot
+User-agent: GPTBot
+Disallow: /
+
+# Block Meta's AI training bot
+User-agent: meta-externalagent
+Disallow: /
+
+# Sitemap
+Sitemap: https://cdn.arcadesbox.org/cdn/sitemap.xml

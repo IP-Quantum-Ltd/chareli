@@ -60,6 +60,10 @@ interface Config {
     tracesSampleRate: number;
     enabled: boolean;
   };
+  resend: {
+    apiKey: string;
+    fromEmail: string;
+  };
   s3: {
     region: string;
     accessKeyId: string;
@@ -112,6 +116,7 @@ interface Config {
   zipProcessing: {
     mode: 'local' | 'cloudflare';
   };
+  loadTestBypassToken: string;
 }
 
 function getEnv(key: string, defaultValue?: string): string {
@@ -195,6 +200,10 @@ const config: Config = {
     ),
     enabled: false,
   },
+  resend: {
+    apiKey: process.env.RESEND_API_KEY || '',
+    fromEmail: process.env.RESEND_FROM_EMAIL || 'no-reply@arcadesbox.com',
+  },
   s3: {
     region: process.env.AWS_REGION || 'us-east-1',
     accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
@@ -253,6 +262,7 @@ const config: Config = {
   zipProcessing: {
     mode: (process.env.ZIP_PROCESSING_MODE || 'local') as 'local' | 'cloudflare',
   },
+  loadTestBypassToken: process.env.LOAD_TEST_BYPASS_TOKEN || '',
 };
 
 export default config;
