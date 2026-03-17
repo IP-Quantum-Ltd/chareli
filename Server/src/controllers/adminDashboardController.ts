@@ -171,12 +171,11 @@ export const getDashboardAnalytics = async (
       .andWhere('analytics.duration >= :minDuration', { minDuration: 30 })
       .andWhere("(role.name NOT IN (:...excludedRoles) OR analytics.userId IS NULL)", { excludedRoles });
 
-    // Add country filter if provided
+    // Add country filter if provided - only count authenticated users with matching country
     if (countries.length > 0) {
-      yesterdayUsersQuery = yesterdayUsersQuery.andWhere(
-        'user.country IN (:...countries)',
-        { countries }
-      );
+      yesterdayUsersQuery = yesterdayUsersQuery
+        .andWhere('analytics.userId IS NOT NULL')
+        .andWhere('user.country IN (:...countries)', { countries });
     }
 
     const timer1 = new PerformanceTimer('yesterdayUsersQuery');
@@ -255,12 +254,11 @@ export const getDashboardAnalytics = async (
       })
       .andWhere("(role.name NOT IN (:...excludedRoles) OR analytics.userId IS NULL)", { excludedRoles });
 
-    // Add country filter if provided
+    // Add country filter if provided - only count authenticated users with matching country
     if (countries.length > 0) {
-      dailyActiveUsersQuery = dailyActiveUsersQuery.andWhere(
-        'user.country IN (:...countries)',
-        { countries }
-      );
+      dailyActiveUsersQuery = dailyActiveUsersQuery
+        .andWhere('analytics.userId IS NOT NULL')
+        .andWhere('user.country IN (:...countries)', { countries });
     }
 
     const dailyActiveUsersResult = await dailyActiveUsersQuery.getRawOne();

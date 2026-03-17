@@ -55,7 +55,7 @@ export default function GamePlay() {
   const { mutate: likeGame, isPending: isLiking } = useLikeGame();
   const { mutate: unlikeGame, isPending: isUnliking } = useUnlikeGame();
   const [hasLiked, setHasLiked] = useState(game?.hasLiked ?? false);
-  const [likeCount, setLikeCount] = useState(game?.likeCount ?? 100);
+  const [likeCount, setLikeCount] = useState(game?.likeCount ?? 999); // TEST: Changed from 100 to 999 to verify this is the source
   const [isAnimating, setIsAnimating] = useState(false);
 
   // Load guest like state from localStorage
