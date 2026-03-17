@@ -4,6 +4,7 @@ import { Analytics } from '../entities/Analytics';
 import { User } from '../entities/User';
 import logger from '../utils/logger';
 import { AnalyticsProcessingJobData } from '../services/queue.service';
+import { getCountryFromIP } from '../utils/ipUtils';
 
 const analyticsRepository = AppDataSource.getRepository(Analytics);
 const userRepository = AppDataSource.getRepository(User);
@@ -24,6 +25,7 @@ export async function processAnalyticsJob(
     startTime,
     endTime,
     sessionCount,
+    ipAddress,
   } = job.data;
 
   try {
@@ -69,6 +71,18 @@ export async function processAnalyticsJob(
       }
     }
 
+    let country: string | undefined;
+    if (!userId && ipAddress) {
+      try {
+        const resolvedCountry = await getCountryFromIP(ipAddress);
+        if (resolvedCountry) {
+          country = resolvedCountry;
+        }
+      } catch (err) {
+        logger.error(`Error resolving country for IP ${ipAddress}`, err);
+      }
+    }
+
     // Create analytics entry
     const analytics = analyticsRepository.create({
       userId,
@@ -78,6 +92,7 @@ export async function processAnalyticsJob(
       startTime: startTime ? new Date(startTime) : undefined,
       endTime: endTime ? new Date(endTime) : undefined,
       sessionCount: sessionCount || 1,
+      country,
     });
 
     // Save to database

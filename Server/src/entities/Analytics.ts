@@ -46,6 +46,10 @@ export class Analytics {
   @Index()
   sessionId: string | null;
 
+  @Column({ name: 'country', type: 'varchar', length: 100, nullable: true })
+  @Index()
+  country: string | null;
+
   @Column({ name: 'game_id', nullable: true })
   @Index()
   gameId: string | null;

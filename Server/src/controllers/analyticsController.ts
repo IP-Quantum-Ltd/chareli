@@ -9,6 +9,7 @@ import { queueService } from '../services/queue.service';
 import logger from '../utils/logger';
 import { validate } from 'class-validator';
 import { AdminExclusionService } from '../services/adminExclusion.service';
+import { extractClientIP } from '../utils/ipUtils';
 
 const analyticsRepository = AppDataSource.getRepository(Analytics);
 const userRepository = AppDataSource.getRepository(User);
@@ -82,6 +83,12 @@ export const createAnalytics = async (
       );
     }
 
+    // Extract IP address from request
+    const ipAddress = extractClientIP(
+      req.headers['x-forwarded-for'],
+      req.socket.remoteAddress
+    );
+
     // Enqueue analytics processing job
     const job = await queueService.addAnalyticsProcessingJob({
       userId,
@@ -91,6 +98,7 @@ export const createAnalytics = async (
       startTime: new Date(startTime),
       endTime: endTime ? new Date(endTime) : undefined,
       sessionCount,
+      ipAddress,
     });
 
     // Wait for the job to complete and get the result
