@@ -9,6 +9,7 @@ import { queueService } from '../services/queue.service';
 import logger from '../utils/logger';
 import { validate } from 'class-validator';
 import { AdminExclusionService } from '../services/adminExclusion.service';
+import { extractClientIP } from '../utils/ipUtils';
 
 const analyticsRepository = AppDataSource.getRepository(Analytics);
 const userRepository = AppDataSource.getRepository(User);
@@ -82,6 +83,12 @@ export const createAnalytics = async (
       );
     }
 
+    // Extract IP address from request
+    const ipAddress = extractClientIP(
+      req.headers['x-forwarded-for'],
+      req.socket.remoteAddress
+    );
+
     // Enqueue analytics processing job
     const job = await queueService.addAnalyticsProcessingJob({
       userId,
@@ -91,6 +98,7 @@ export const createAnalytics = async (
       startTime: new Date(startTime),
       endTime: endTime ? new Date(endTime) : undefined,
       sessionCount,
+      ipAddress,
     });
 
     // Wait for the job to complete and get the result
@@ -420,6 +428,9 @@ export const updateAnalytics = async (
       const duration = Math.floor(
         (analytics.endTime.getTime() - analytics.startTime.getTime()) / 1000
       );
+      
+      // Part 3: Explicitly assign duration (provides clarity + redundancy with entity hook)
+      analytics.duration = duration;
 
       // For game sessions, only save if duration >= 30 seconds
       if (analytics.gameId && duration < 30) {
@@ -571,6 +582,9 @@ export const updateAnalyticsEndTime = async (
       const duration = Math.floor(
         (analytics.endTime.getTime() - analytics.startTime.getTime()) / 1000
       );
+      
+      // Part 3: Explicitly assign duration (provides clarity + redundancy with entity hook)
+      analytics.duration = duration;
 
       // For game sessions, only save if duration >= 30 seconds
       if (analytics.gameId && duration < 30) {

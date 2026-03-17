@@ -37,6 +37,7 @@ export interface AnalyticsProcessingJobData {
   startTime: Date;
   endTime?: Date;
   sessionCount?: number;
+  ipAddress?: string;
 }
 
 export interface LikeProcessingJobData {
