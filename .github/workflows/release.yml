@@ -27,6 +27,7 @@ jobs:
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
+      worker: ${{ steps.filter.outputs.worker }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -38,6 +39,8 @@ jobs:
           base: ${{ github.event.before }}
           ref: ${{ github.sha }}
           filters: |
+            worker:
+              - 'Server/workers/**'
             backend:
               - 'Server/**'
               - '.github/workflows/**'
@@ -249,8 +252,8 @@ jobs:
     environment: ${{ github.ref_name == 'release' && 'production' || github.ref_name == 'dev' && 'development' || github.ref_name == 'main' && 'staging' || 'development' }}
     if: |
       github.event_name == 'push' &&
-      github.ref == 'refs/heads/main' &&
-      needs.detect-changes.outputs.backend == 'true'
+      github.ref == 'refs/heads/release' &&
+      needs.detect-changes.outputs.worker == 'true'
 
     steps:
       - name: Checkout Code
