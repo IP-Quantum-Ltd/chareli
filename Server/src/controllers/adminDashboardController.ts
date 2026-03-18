@@ -171,12 +171,10 @@ export const getDashboardAnalytics = async (
       .andWhere('analytics.duration >= :minDuration', { minDuration: 30 })
       .andWhere("(role.name NOT IN (:...excludedRoles) OR analytics.userId IS NULL)", { excludedRoles });
 
-    // Add country filter if provided
+    // Add country filter if provided - only count authenticated users with matching country
     if (countries.length > 0) {
-      yesterdayUsersQuery = yesterdayUsersQuery.andWhere(
-        'user.country IN (:...countries)',
-        { countries }
-      );
+      yesterdayUsersQuery = yesterdayUsersQuery
+        .andWhere('(user.country IN (:...countries) OR analytics.country IN (:...countries))', { countries });
     }
 
     const timer1 = new PerformanceTimer('yesterdayUsersQuery');
@@ -209,7 +207,7 @@ export const getDashboardAnalytics = async (
         AND a2."endTime" IS NOT NULL
         AND a2.duration >= 30
         AND (role2.name NOT IN (:...excludedRoles) OR a2.user_id IS NULL)
-        ${countries.length > 0 ? 'AND user2.country = ANY(:countries)' : ''}
+        ${countries.length > 0 ? 'AND (user2.country = ANY(:countries) OR a2.country = ANY(:countries))' : ''}
       )`, {
         start: fortyEightHoursAgo,
         end: twentyFourHoursAgo,
@@ -220,7 +218,7 @@ export const getDashboardAnalytics = async (
     // Add country filter for the outer query if provided
     if (countries.length > 0) {
       returningUsersQuery = returningUsersQuery
-        .andWhere('user1.country IN (:...countriesOuter)', { countriesOuter: countries });
+        .andWhere('(user1.country IN (:...countriesOuter) OR a1.country IN (:...countriesOuter))', { countriesOuter: countries });
     }
 
     const timer2 = new PerformanceTimer('returningUsersQuery (EXISTS subquery)');
@@ -255,12 +253,10 @@ export const getDashboardAnalytics = async (
       })
       .andWhere("(role.name NOT IN (:...excludedRoles) OR analytics.userId IS NULL)", { excludedRoles });
 
-    // Add country filter if provided
+    // Add country filter if provided - only count authenticated users with matching country
     if (countries.length > 0) {
-      dailyActiveUsersQuery = dailyActiveUsersQuery.andWhere(
-        'user.country IN (:...countries)',
-        { countries }
-      );
+      dailyActiveUsersQuery = dailyActiveUsersQuery
+        .andWhere('(user.country IN (:...countries) OR analytics.country IN (:...countries))', { countries });
     }
 
     const dailyActiveUsersResult = await dailyActiveUsersQuery.getRawOne();
@@ -396,15 +392,9 @@ export const getDashboardAnalytics = async (
 
     // Add country filter if provided
     if (countries.length > 0) {
-      currentPlayedGamesQuery = currentPlayedGamesQuery.andWhere(
-        'user.country IN (:...countries)',
-        { countries }
-      );
+      currentPlayedGamesQuery = currentPlayedGamesQuery.andWhere('(user.country IN (:...countries) OR analytics.country IN (:...countries))', { countries });
 
-      previousPlayedGamesQuery = previousPlayedGamesQuery.andWhere(
-        'user.country IN (:...countries)',
-        { countries }
-      );
+      previousPlayedGamesQuery = previousPlayedGamesQuery.andWhere('(user.country IN (:...countries) OR analytics.country IN (:...countries))', { countries });
     }
 
     const currentPlayedGamesResult = await currentPlayedGamesQuery.getRawOne();
@@ -467,15 +457,9 @@ export const getDashboardAnalytics = async (
 
     // Add country filter if provided
     if (countries.length > 0) {
-      currentTotalActiveUsersQuery = currentTotalActiveUsersQuery.andWhere(
-        'user.country IN (:...countries)',
-        { countries }
-      );
+      currentTotalActiveUsersQuery = currentTotalActiveUsersQuery.andWhere('(user.country IN (:...countries) OR analytics.country IN (:...countries))', { countries });
 
-      previousTotalActiveUsersQuery = previousTotalActiveUsersQuery.andWhere(
-        'user.country IN (:...countries)',
-        { countries }
-      );
+      previousTotalActiveUsersQuery = previousTotalActiveUsersQuery.andWhere('(user.country IN (:...countries) OR analytics.country IN (:...countries))', { countries });
     }
 
     const [currentTotalActiveUsers, previousTotalActiveUsers] =
@@ -541,20 +525,11 @@ export const getDashboardAnalytics = async (
 
     // Add country filter if provided
     if (countries.length > 0) {
-      currentTotalSessionsQuery = currentTotalSessionsQuery.andWhere(
-        'user.country IN (:...countries)',
-        { countries }
-      );
+      currentTotalSessionsQuery = currentTotalSessionsQuery.andWhere('(user.country IN (:...countries) OR analytics.country IN (:...countries))', { countries });
 
-      previousTotalSessionsQuery = previousTotalSessionsQuery.andWhere(
-        'user.country IN (:...countries)',
-        { countries }
-      );
+      previousTotalSessionsQuery = previousTotalSessionsQuery.andWhere('(user.country IN (:...countries) OR analytics.country IN (:...countries))', { countries });
 
-      actualSessionsQuery = actualSessionsQuery.andWhere(
-        'user.country IN (:...countries)',
-        { countries }
-      );
+      actualSessionsQuery = actualSessionsQuery.andWhere('(user.country IN (:...countries) OR analytics.country IN (:...countries))', { countries });
     }
 
     const [currentTotalSessions, previousTotalSessions, actualSessions] =
@@ -622,20 +597,11 @@ export const getDashboardAnalytics = async (
 
     // Add country filter if provided
     if (countries.length > 0) {
-      currentTotalTimePlayedQuery = currentTotalTimePlayedQuery.andWhere(
-        'user.country IN (:...countries)',
-        { countries }
-      );
+      currentTotalTimePlayedQuery = currentTotalTimePlayedQuery.andWhere('(user.country IN (:...countries) OR analytics.country IN (:...countries))', { countries });
 
-      previousTotalTimePlayedQuery = previousTotalTimePlayedQuery.andWhere(
-        'user.country IN (:...countries)',
-        { countries }
-      );
+      previousTotalTimePlayedQuery = previousTotalTimePlayedQuery.andWhere('(user.country IN (:...countries) OR analytics.country IN (:...countries))', { countries });
 
-      actualTimePlayedQuery = actualTimePlayedQuery.andWhere(
-        'user.country IN (:...countries)',
-        { countries }
-      );
+      actualTimePlayedQuery = actualTimePlayedQuery.andWhere('(user.country IN (:...countries) OR analytics.country IN (:...countries))', { countries });
     }
 
     const [
@@ -692,10 +658,7 @@ export const getDashboardAnalytics = async (
 
     // Add country filter if provided
     if (countries.length > 0) {
-      mostPlayedGamesQuery = mostPlayedGamesQuery.andWhere(
-        'user.country IN (:...countries)',
-        { countries }
-      );
+      mostPlayedGamesQuery = mostPlayedGamesQuery.andWhere('(user.country IN (:...countries) OR analytics.country IN (:...countries))', { countries });
     }
 
     const mostPlayedGamesResults = await mostPlayedGamesQuery
@@ -750,15 +713,9 @@ export const getDashboardAnalytics = async (
 
           // Add country filter if provided
           if (countries.length > 0) {
-            currentSessionsQuery = currentSessionsQuery.andWhere(
-              'user.country IN (:...countries)',
-              { countries }
-            );
+            currentSessionsQuery = currentSessionsQuery.andWhere('(user.country IN (:...countries) OR analytics.country IN (:...countries))', { countries });
 
-            previousSessionsQuery = previousSessionsQuery.andWhere(
-              'user.country IN (:...countries)',
-              { countries }
-            );
+            previousSessionsQuery = previousSessionsQuery.andWhere('(user.country IN (:...countries) OR analytics.country IN (:...countries))', { countries });
           }
 
           const currentSessions = await currentSessionsQuery.getRawOne();
@@ -830,15 +787,9 @@ export const getDashboardAnalytics = async (
 
     // Add country filter if provided
     if (countries.length > 0) {
-      currentAvgDurationQuery = currentAvgDurationQuery.andWhere(
-        'user.country IN (:...countries)',
-        { countries }
-      );
+      currentAvgDurationQuery = currentAvgDurationQuery.andWhere('(user.country IN (:...countries) OR analytics.country IN (:...countries))', { countries });
 
-      previousAvgDurationQuery = previousAvgDurationQuery.andWhere(
-        'user.country IN (:...countries)',
-        { countries }
-      );
+      previousAvgDurationQuery = previousAvgDurationQuery.andWhere('(user.country IN (:...countries) OR analytics.country IN (:...countries))', { countries });
     }
 
     const [currentAvgDurationResult, previousAvgDurationResult] =

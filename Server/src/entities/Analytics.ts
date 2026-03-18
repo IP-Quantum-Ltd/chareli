@@ -46,6 +46,10 @@ export class Analytics {
   @Index()
   sessionId: string | null;
 
+  @Column({ name: 'country', type: 'varchar', length: 100, nullable: true })
+  @Index()
+  country: string | null;
+
   @Column({ name: 'game_id', nullable: true })
   @Index()
   gameId: string | null;
@@ -112,6 +116,16 @@ export class Analytics {
   @BeforeInsert()
   @BeforeUpdate()
   async validate() {
+    // Auto-calculate duration when both times exist (Part 1: Entity Hook)
+    // This ensures duration is ALWAYS calculated automatically on every save
+    if (this.startTime && this.endTime) {
+      const calculatedDuration = Math.floor(
+        (this.endTime.getTime() - this.startTime.getTime()) / 1000
+      );
+      // Always set the calculated duration
+      this.duration = calculatedDuration;
+    }
+
     // Semantic checks - Invariants ONLY
     if (this.startTime && this.endedAt) {
       if (this.endedAt < this.startTime) {

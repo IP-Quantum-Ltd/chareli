@@ -12,8 +12,9 @@ import {
   roleChangedEmailTemplate,
 } from '../templates/emails/role.template';
 import { accountDeletionEmailTemplate } from '../templates/emails/account-deletion.template';
+import { Resend } from 'resend';
 
-// Provider selection - options: 'ses', 'gmail', 'sendgrid-smtp', 'sendgrid-api'
+// Provider selection - options: 'ses', 'gmail', 'sendgrid-smtp', 'sendgrid-api', 'resend'
 // Default to 'ses' if EMAIL_PROVIDER is not set
 const EMAIL_PROVIDER = (process.env.EMAIL_PROVIDER || 'ses').toLowerCase();
 
@@ -243,6 +244,51 @@ class SendGridAPIProvider implements EmailProvider {
   }
 }
 
+class ResendAPIProvider implements EmailProvider {
+  private resendClient: Resend | null = null;
+  
+  constructor() {
+    if (!config.resend.apiKey) {
+      logger.warn('Resend API key not configured');
+    } else {
+      this.resendClient = new Resend(config.resend.apiKey);
+      logger.info('Resend API configured successfully');
+    }
+  }
+
+  async sendEmail(to: string, subject: string, html: string): Promise<boolean> {
+    try {
+      const emailsToSkip = ['admin@example.com'];
+
+      // In development mode, just log the email instead of sending
+      if (emailsToSkip.includes(to)) {
+        logger.info(
+          `DEVELOPMENT MODE -- Skipping for this email ${to}: Email would be sent to ${to}`
+        );
+        return true;
+      }
+      
+      if (!this.resendClient) {
+        logger.error('Cannot send email via Resend: API client not initialized');
+        return false;
+      }
+
+      await this.resendClient.emails.send({
+        from: config.resend.fromEmail,
+        to,
+        subject,
+        html,
+      });
+
+      logger.info(`Email sent successfully to ${to} via Resend`);
+      return true;
+    } catch (error) {
+      logger.error('Failed to send email via Resend:', error);
+      return false;
+    }
+  }
+}
+
 export class EmailService implements EmailServiceInterface {
   private provider: EmailProvider;
 
@@ -260,6 +306,10 @@ export class EmailService implements EmailServiceInterface {
       case 'sendgrid-api':
         this.provider = new SendGridAPIProvider();
         logger.info('Using SendGrid API email provider');
+        break;
+      case 'resend':
+        this.provider = new ResendAPIProvider();
+        logger.info('Using Resend email provider');
         break;
       case 'ses':
       default:
