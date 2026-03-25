@@ -25,19 +25,30 @@ export class AddPerformanceIndexes1734451200000 implements MigrationInterface {
       `);
     }
 
-    // Games composite index for recently added filter (status, createdAt)
-    await queryRunner.query(`
-      CREATE INDEX IF NOT EXISTS "idx_games_status_created"
-      ON "games" ("status", "createdAt" DESC)
-      WHERE status = 'active'
+    // Only create games indexes if the table exists
+    const gamesTableExists = await queryRunner.query(`
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = 'public'
+        AND table_name = 'games'
+      );
     `);
 
-    // Games position index for popular games ordering
-    await queryRunner.query(`
-      CREATE INDEX IF NOT EXISTS "idx_games_position"
-      ON "games" ("position")
-      WHERE status = 'active' AND position IS NOT NULL
-    `);
+    if (gamesTableExists[0].exists) {
+      // Games composite index for recently added filter (status, createdAt)
+      await queryRunner.query(`
+        CREATE INDEX IF NOT EXISTS "idx_games_status_created"
+        ON "games" ("status", "createdAt" DESC)
+        WHERE status = 'active'
+      `);
+
+      // Games position index for popular games ordering
+      await queryRunner.query(`
+        CREATE INDEX IF NOT EXISTS "idx_games_position"
+        ON "games" ("position")
+        WHERE status = 'active' AND position IS NOT NULL
+      `);
+    }
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {

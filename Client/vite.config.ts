@@ -129,6 +129,11 @@ export default defineConfig(({ mode }) => {
           target: env.VITE_API_URL,
           changeOrigin: true,
         },
+        '/cdn': {
+          target: 'https://staging.cdn.arcadesbox.org',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/cdn/, '/cdn'),
+        },
       },
     },
     build: {

@@ -4,7 +4,7 @@
   "main": "dist/index.js",
   "scripts": {
     "start": "npm run warm-cache && node dist/index.js",
-    "dev": "nodemon --exec ts-node src/index.ts",
+    "dev": "nodemon --signal SIGKILL --exec ts-node src/index.ts",
     "build": "tsc",
     "typeorm": "typeorm-ts-node-commonjs",
     "migration:generate": "npm run typeorm migration:generate -- -d src/config/database.ts",
@@ -51,6 +51,7 @@
     "class-validator": "^0.14.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
+    "date-fns": "^4.1.0",
     "date-fns-tz": "^3.2.0",
     "dompurify": "^3.3.1",
     "dotenv": "^16.5.0",

@@ -78,7 +78,12 @@ const startServer = async () => {
 
     logger.info('Initializing database connection...');
     try {
-      await initializeDatabase();
+      // Temporarily skip database initialization for CORS testing
+      if (process.env.SKIP_DB === 'true') {
+        logger.warn('Skipping database initialization (SKIP_DB=true)');
+      } else {
+        await initializeDatabase();
+      }
 
       const isPrimaryWorker = !process.env.NODE_APP_INSTANCE || process.env.NODE_APP_INSTANCE === '0';
 

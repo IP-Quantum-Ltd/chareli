@@ -4,6 +4,19 @@ export class AddAnonymousAnalytics1734462000000 implements MigrationInterface {
   name = 'AddAnonymousAnalytics1734462000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    // Only run if internal.analytics table already exists (skip on fresh databases)
+    const analyticsExists = await queryRunner.query(`
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = 'internal'
+        AND table_name = 'analytics'
+      );
+    `);
+
+    if (!analyticsExists[0].exists) {
+      return;
+    }
+
     // Make user_id nullable to support anonymous users
     await queryRunner.query(`
       ALTER TABLE "internal"."analytics"

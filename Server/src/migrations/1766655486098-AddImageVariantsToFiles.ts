@@ -6,60 +6,96 @@ export class AddImageVariantsToFiles1766655486098
   name = 'AddImageVariantsToFiles1766655486098';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    // On fresh databases, signup_analytics and otps may still be in public schema
+    // (MoveTablesInternalSchema ran as no-op before these tables existed)
+    const signupAnalyticsInPublic = await queryRunner.query(`
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'signup_analytics'
+      );
+    `);
+    if (signupAnalyticsInPublic[0].exists) {
+      await queryRunner.query(`ALTER TABLE public.signup_analytics SET SCHEMA internal`);
+    }
+
+    const otpsInPublic = await queryRunner.query(`
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'otps'
+      );
+    `);
+    if (otpsInPublic[0].exists) {
+      await queryRunner.query(`ALTER TABLE public.otps SET SCHEMA internal`);
+    }
+
+    await queryRunner.query(`
+      DO $$ BEGIN
+        ALTER TABLE "internal"."game_like_cache" DROP CONSTRAINT "FK_game_like_cache_game";
+      EXCEPTION WHEN undefined_object THEN NULL; END $$;
+    `);
+    await queryRunner.query(`
+      DO $$ BEGIN
+        ALTER TABLE "game_likes" DROP CONSTRAINT "FK_game_likes_game";
+      EXCEPTION WHEN undefined_object THEN NULL; END $$;
+    `);
+    await queryRunner.query(`
+      DO $$ BEGIN
+        ALTER TABLE "game_likes" DROP CONSTRAINT "FK_game_likes_user";
+      EXCEPTION WHEN undefined_object THEN NULL; END $$;
+    `);
+    await queryRunner.query(`DROP INDEX IF EXISTS "public"."idx_users_roleId"`);
     await queryRunner.query(
-      `ALTER TABLE "internal"."game_like_cache" DROP CONSTRAINT "FK_game_like_cache_game"`
+      `DROP INDEX IF EXISTS "internal"."idx_signup_analytics_session_id"`
     );
     await queryRunner.query(
-      `ALTER TABLE "game_likes" DROP CONSTRAINT "FK_game_likes_game"`
+      `DROP INDEX IF EXISTS "public"."idx_signup_analytics_session_id"`
     );
     await queryRunner.query(
-      `ALTER TABLE "game_likes" DROP CONSTRAINT "FK_game_likes_user"`
-    );
-    await queryRunner.query(`DROP INDEX "public"."idx_users_roleId"`);
-    await queryRunner.query(
-      `DROP INDEX "internal"."idx_signup_analytics_session_id"`
+      `DROP INDEX IF EXISTS "internal"."idx_signup_analytics_created_at_type"`
     );
     await queryRunner.query(
-      `DROP INDEX "internal"."idx_signup_analytics_created_at_type"`
+      `DROP INDEX IF EXISTS "public"."idx_signup_analytics_created_at_type"`
     );
-    await queryRunner.query(`DROP INDEX "internal"."idx_otps_userId"`);
-    await queryRunner.query(`DROP INDEX "public"."idx_games_status_created"`);
-    await queryRunner.query(`DROP INDEX "public"."IDX_games_processingStatus"`);
-    await queryRunner.query(`DROP INDEX "public"."idx_games_position"`);
-    await queryRunner.query(`DROP INDEX "public"."IDX_games_slug"`);
-    await queryRunner.query(`DROP INDEX "public"."idx_games_createdById"`);
+    await queryRunner.query(`DROP INDEX IF EXISTS "internal"."idx_otps_userId"`);
+    await queryRunner.query(`DROP INDEX IF EXISTS "public"."idx_games_status_created"`);
+    await queryRunner.query(`DROP INDEX IF EXISTS "public"."IDX_games_processingStatus"`);
+    await queryRunner.query(`DROP INDEX IF EXISTS "public"."idx_games_position"`);
+    await queryRunner.query(`DROP INDEX IF EXISTS "public"."IDX_games_slug"`);
+    await queryRunner.query(`DROP INDEX IF EXISTS "public"."idx_games_createdById"`);
     await queryRunner.query(
-      `DROP INDEX "internal"."IDX_game_like_cache_gameId"`
+      `DROP INDEX IF EXISTS "internal"."IDX_game_like_cache_gameId"`
     );
-    await queryRunner.query(`DROP INDEX "public"."IDX_game_likes_userId"`);
-    await queryRunner.query(`DROP INDEX "public"."IDX_game_likes_gameId"`);
+    await queryRunner.query(`DROP INDEX IF EXISTS "public"."IDX_game_likes_userId"`);
+    await queryRunner.query(`DROP INDEX IF EXISTS "public"."IDX_game_likes_gameId"`);
     await queryRunner.query(
-      `DROP INDEX "public"."IDX_game_likes_userId_gameId"`
+      `DROP INDEX IF EXISTS "public"."IDX_game_likes_userId_gameId"`
     );
-    await queryRunner.query(`DROP INDEX "public"."idx_game_likes_userId"`);
-    await queryRunner.query(`DROP INDEX "public"."idx_game_likes_gameId"`);
+    await queryRunner.query(`DROP INDEX IF EXISTS "public"."idx_game_likes_userId"`);
+    await queryRunner.query(`DROP INDEX IF EXISTS "public"."idx_game_likes_gameId"`);
     await queryRunner.query(
-      `DROP INDEX "internal"."idx_analytics_user_activity_time"`
+      `DROP INDEX IF EXISTS "internal"."idx_analytics_user_activity_time"`
     );
-    await queryRunner.query(`DROP INDEX "internal"."idx_analytics_created_at"`);
+    await queryRunner.query(`DROP INDEX IF EXISTS "internal"."idx_analytics_created_at"`);
     await queryRunner.query(
-      `DROP INDEX "internal"."idx_analytics_user_id_created_at"`
+      `DROP INDEX IF EXISTS "internal"."idx_analytics_user_id_created_at"`
     );
-    await queryRunner.query(`DROP INDEX "internal"."idx_analytics_session_id"`);
+    await queryRunner.query(`DROP INDEX IF EXISTS "internal"."idx_analytics_session_id"`);
     await queryRunner.query(
-      `DROP INDEX "internal"."idx_analytics_session_activity_time"`
-    );
-    await queryRunner.query(
-      `DROP INDEX "internal"."idx_analytics_game_id_created_at"`
+      `DROP INDEX IF EXISTS "internal"."idx_analytics_session_activity_time"`
     );
     await queryRunner.query(
-      `DROP INDEX "internal"."idx_analytics_activity_type"`
+      `DROP INDEX IF EXISTS "internal"."idx_analytics_game_id_created_at"`
     );
-    await queryRunner.query(`DROP INDEX "internal"."idx_analytics_duration"`);
-    await queryRunner.query(`DROP INDEX "internal"."idx_analytics_start_time"`);
     await queryRunner.query(
-      `ALTER TABLE "game_likes" DROP CONSTRAINT "UQ_game_likes_user_game"`
+      `DROP INDEX IF EXISTS "internal"."idx_analytics_activity_type"`
     );
+    await queryRunner.query(`DROP INDEX IF EXISTS "internal"."idx_analytics_duration"`);
+    await queryRunner.query(`DROP INDEX IF EXISTS "internal"."idx_analytics_start_time"`);
+    await queryRunner.query(`
+      DO $$ BEGIN
+        ALTER TABLE "game_likes" DROP CONSTRAINT "UQ_game_likes_user_game";
+      EXCEPTION WHEN undefined_object THEN NULL; END $$;
+    `);
     await queryRunner.query(`ALTER TABLE "files" ADD "variants" jsonb`);
     await queryRunner.query(`ALTER TABLE "files" ADD "dimensions" jsonb`);
     await queryRunner.query(
@@ -106,8 +142,21 @@ export class AddImageVariantsToFiles1766655486098
     await queryRunner.query(
       `CREATE INDEX "IDX_82a98efd505cbfac70c27abd0c" ON "game_likes" ("userId", "gameId") `
     );
+    // Ensure session_id column exists on internal.analytics (may be missing on fresh DBs
+    // where AddAnonymousAnalytics ran as a no-op before the table was created)
+    await queryRunner.query(`
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'internal' AND table_name = 'analytics' AND column_name = 'session_id'
+        ) THEN
+          ALTER TABLE internal.analytics ALTER COLUMN "user_id" DROP NOT NULL;
+          ALTER TABLE internal.analytics ADD COLUMN "session_id" VARCHAR(255);
+        END IF;
+      END $$;
+    `);
     await queryRunner.query(
-      `CREATE INDEX "IDX_c4ad2977cdc3f1771887daa07a" ON "internal"."analytics" ("session_id") `
+      `CREATE INDEX IF NOT EXISTS "IDX_c4ad2977cdc3f1771887daa07a" ON "internal"."analytics" ("session_id") `
     );
     await queryRunner.query(
       `ALTER TABLE "game_likes" ADD CONSTRAINT "UQ_82a98efd505cbfac70c27abd0c9" UNIQUE ("userId", "gameId")`

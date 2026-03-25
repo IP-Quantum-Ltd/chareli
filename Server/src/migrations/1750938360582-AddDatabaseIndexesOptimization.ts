@@ -4,7 +4,7 @@ export class AddDatabaseIndexesOptimization1750938360582 implements MigrationInt
     name = 'AddDatabaseIndexesOptimization1750938360582'
 
     public async up(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(`ALTER TABLE "game_position_history" DROP CONSTRAINT "UQ_f8b8b8b8b8b8b8b8b8b8b8b8b8b8"`);
+        await queryRunner.query(`ALTER TABLE internal.game_position_history DROP CONSTRAINT "UQ_f8b8b8b8b8b8b8b8b8b8b8b8b8b8"`);
         await queryRunner.query(`CREATE INDEX "IDX_97672ac88f789774dd47f7c8be" ON "users" ("email") `);
         await queryRunner.query(`CREATE INDEX "IDX_1e3d0240b49c40521aaeb95329" ON "users" ("phoneNumber") `);
         await queryRunner.query(`CREATE INDEX "IDX_368e146b785b574f42ae9e53d5" ON "users" ("roleId") `);
@@ -25,22 +25,22 @@ export class AddDatabaseIndexesOptimization1750938360582 implements MigrationInt
         await queryRunner.query(`CREATE INDEX "IDX_12eade4cf935b07627e6279b25" ON "games" ("status", "createdAt") `);
         await queryRunner.query(`CREATE INDEX "IDX_76df000fa8a9a923e4057a06ae" ON "games" ("categoryId", "status") `);
         await queryRunner.query(`CREATE INDEX "IDX_0080d07e0a4751b0bbd73ab57a" ON "games" ("status", "position") `);
-        await queryRunner.query(`CREATE INDEX "IDX_1e5775e6c81ecc65fc08ca9d8f" ON "game_position_history" ("position") `);
-        await queryRunner.query(`CREATE INDEX "IDX_c2ca6f2a73d4d64027b724e164" ON "game_position_history" ("clickCount") `);
-        await queryRunner.query(`CREATE INDEX "IDX_d1cc9917abac731106bf4b08be" ON "game_position_history" ("createdAt") `);
-        await queryRunner.query(`CREATE INDEX "IDX_03897db66bf54c24a4f398a2d9" ON "analytics" ("endTime") `);
-        await queryRunner.query(`CREATE INDEX "IDX_9e668bc1d010e44c3f5bb4d1ec" ON "analytics" ("duration") `);
-        await queryRunner.query(`CREATE INDEX "IDX_7439e9bec6e0828a17fb92b1e0" ON "analytics" ("createdAt") `);
-        await queryRunner.query(`CREATE INDEX "IDX_30e58d36a65c827349cef736b9" ON "analytics" ("user_id", "game_id") `);
-        await queryRunner.query(`CREATE INDEX "IDX_9caf158d14efbad90cc8237b4d" ON "analytics" ("activityType", "startTime") `);
-        await queryRunner.query(`CREATE INDEX "IDX_1036877e2937d93f35e30a3156" ON "analytics" ("user_id", "startTime") `);
-        await queryRunner.query(`CREATE INDEX "IDX_4d1c71d7756b90593523f1197d" ON "analytics" ("game_id", "startTime") `);
-        await queryRunner.query(`CREATE INDEX "IDX_8360c0f760326c9009c94a106a" ON "analytics" ("user_id", "activityType") `);
-        await queryRunner.query(`ALTER TABLE "game_position_history" ADD CONSTRAINT "UQ_8f08005686bdf9eb998174a9ad8" UNIQUE ("gameId", "position")`);
+        await queryRunner.query(`CREATE INDEX "IDX_1e5775e6c81ecc65fc08ca9d8f" ON internal.game_position_history ("position") `);
+        await queryRunner.query(`CREATE INDEX "IDX_c2ca6f2a73d4d64027b724e164" ON internal.game_position_history ("clickCount") `);
+        await queryRunner.query(`CREATE INDEX "IDX_d1cc9917abac731106bf4b08be" ON internal.game_position_history ("createdAt") `);
+        await queryRunner.query(`CREATE INDEX "IDX_03897db66bf54c24a4f398a2d9" ON internal.analytics ("endTime") `);
+        await queryRunner.query(`CREATE INDEX "IDX_9e668bc1d010e44c3f5bb4d1ec" ON internal.analytics ("duration") `);
+        await queryRunner.query(`CREATE INDEX "IDX_7439e9bec6e0828a17fb92b1e0" ON internal.analytics ("createdAt") `);
+        await queryRunner.query(`CREATE INDEX "IDX_30e58d36a65c827349cef736b9" ON internal.analytics ("user_id", "game_id") `);
+        await queryRunner.query(`CREATE INDEX "IDX_9caf158d14efbad90cc8237b4d" ON internal.analytics ("activityType", "startTime") `);
+        await queryRunner.query(`CREATE INDEX "IDX_1036877e2937d93f35e30a3156" ON internal.analytics ("user_id", "startTime") `);
+        await queryRunner.query(`CREATE INDEX "IDX_4d1c71d7756b90593523f1197d" ON internal.analytics ("game_id", "startTime") `);
+        await queryRunner.query(`CREATE INDEX "IDX_8360c0f760326c9009c94a106a" ON internal.analytics ("user_id", "activityType") `);
+        await queryRunner.query(`ALTER TABLE internal.game_position_history ADD CONSTRAINT "UQ_8f08005686bdf9eb998174a9ad8" UNIQUE ("gameId", "position")`);
     }
 
     public async down(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(`ALTER TABLE "game_position_history" DROP CONSTRAINT "UQ_8f08005686bdf9eb998174a9ad8"`);
+        await queryRunner.query(`ALTER TABLE internal.game_position_history DROP CONSTRAINT "UQ_8f08005686bdf9eb998174a9ad8"`);
         await queryRunner.query(`DROP INDEX "public"."IDX_8360c0f760326c9009c94a106a"`);
         await queryRunner.query(`DROP INDEX "public"."IDX_4d1c71d7756b90593523f1197d"`);
         await queryRunner.query(`DROP INDEX "public"."IDX_1036877e2937d93f35e30a3156"`);
@@ -72,7 +72,7 @@ export class AddDatabaseIndexesOptimization1750938360582 implements MigrationInt
         await queryRunner.query(`DROP INDEX "public"."IDX_368e146b785b574f42ae9e53d5"`);
         await queryRunner.query(`DROP INDEX "public"."IDX_1e3d0240b49c40521aaeb95329"`);
         await queryRunner.query(`DROP INDEX "public"."IDX_97672ac88f789774dd47f7c8be"`);
-        await queryRunner.query(`ALTER TABLE "game_position_history" ADD CONSTRAINT "UQ_f8b8b8b8b8b8b8b8b8b8b8b8b8b8" UNIQUE ("gameId", "position")`);
+        await queryRunner.query(`ALTER TABLE internal.game_position_history ADD CONSTRAINT "UQ_f8b8b8b8b8b8b8b8b8b8b8b8b8b8" UNIQUE ("gameId", "position")`);
     }
 
 }

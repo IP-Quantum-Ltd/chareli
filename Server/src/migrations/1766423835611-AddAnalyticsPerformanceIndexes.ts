@@ -59,13 +59,13 @@ export class AddAnalyticsPerformanceIndexes1766423835611
     // Composite index for signup analytics
     await queryRunner.query(
       `CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_signup_analytics_created_at_type
-       ON internal.signup_analytics("createdAt" DESC, type)`
+       ON public.signup_analytics("createdAt" DESC, type)`
     );
 
     // Index for signup analytics session tracking
     await queryRunner.query(
       `CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_signup_analytics_session_id
-       ON internal.signup_analytics("sessionId")
+       ON public.signup_analytics("sessionId")
        WHERE "sessionId" IS NOT NULL`
     );
 
@@ -81,10 +81,10 @@ export class AddAnalyticsPerformanceIndexes1766423835611
 
     // Drop all indexes in reverse order
     await queryRunner.query(
-      `DROP INDEX CONCURRENTLY IF EXISTS internal.idx_signup_analytics_session_id`
+      `DROP INDEX CONCURRENTLY IF EXISTS public.idx_signup_analytics_session_id`
     );
     await queryRunner.query(
-      `DROP INDEX CONCURRENTLY IF EXISTS internal.idx_signup_analytics_created_at_type`
+      `DROP INDEX CONCURRENTLY IF EXISTS public.idx_signup_analytics_created_at_type`
     );
     await queryRunner.query(
       `DROP INDEX CONCURRENTLY IF EXISTS internal.idx_analytics_start_time`

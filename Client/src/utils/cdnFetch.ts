@@ -232,7 +232,13 @@ class CDNFetchService {
    */
   private async fetchFromCDN<T>(options: FetchOptions): Promise<T> {
     const versionParam = this.config.version ? `?v=${this.config.version}` : '';
-    const url = `${this.config.baseUrl}/${options.cdnPath}${versionParam}`;
+    
+    // In development, use relative URLs to leverage Vite proxy for CORS
+    const isDevelopment = import.meta.env.DEV;
+    const url = isDevelopment 
+      ? `/${options.cdnPath}${versionParam}`
+      : `${this.config.baseUrl}/${options.cdnPath}${versionParam}`;
+    
     const timeout = options.timeout || this.config.timeout;
 
     // Get stored ETag for this file

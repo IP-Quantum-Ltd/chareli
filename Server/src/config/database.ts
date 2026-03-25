@@ -6,10 +6,12 @@ const commonOptions = {
   type: 'postgres' as const,
   synchronize: false,
   logging: false, // Set to false to disable SQL query logs
+  ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
   entities: [path.join(__dirname, '../entities/**/*.{ts,js}')],
   migrations: [path.join(__dirname, '../migrations/**/*.{ts,js}')],
   subscribers: [path.join(__dirname, '../subscribers/**/*.{ts,js}')],
   extra: {
+    ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
     // Environment-based connection pooling for Supabase
     // Respects Supavisor pooler limits based on compute tier
     //
@@ -32,8 +34,8 @@ const commonOptions = {
     // Ensure connections are released promptly
     idleTimeoutMillis: 10000, // Reduced from 30s - release idle connections faster
 
-    // Minimum pool size (keep some connections ready)
-    min: 2,
+    // Minimum pool size (0 = lazy connect, no connections held open)
+    min: 0,
   },
 };
 
@@ -70,8 +72,16 @@ const dataSourceOptions = config.database.readHost
       database: config.database.database,
     };
 
+// If DATABASE_URL is set, use it directly (supports Neon, Supabase, etc.)
+const finalDataSourceOptions = process.env.DATABASE_URL
+  ? {
+      ...commonOptions,
+      url: process.env.DATABASE_URL,
+    }
+  : dataSourceOptions;
+
 // Cast to any because TypeORM types struggle with the conditional replication union
-export const AppDataSource = new DataSource(dataSourceOptions as any);
+export const AppDataSource = new DataSource(finalDataSourceOptions as any);
 
 export const initializeDatabase = async (): Promise<void> => {
   try {
