@@ -491,30 +491,19 @@ export default function GamePlay() {
         <>
           <div
             ref={gameContainerRef}
-            className={expanded ? 'fixed inset-0 z-40 bg-black' : 'relative'}
+            className={expanded ? 'fixed inset-0 z-40 bg-black' : 'relative p-0 sm:p-4'}
             style={
               !expanded
                 ? {
-                    height: 'calc(100vh - 64px)',
-                    padding: '16px',
+                    height: 'calc(100dvh - 64px)',
                   }
                 : undefined
             }
           >
             <div
-              className={`relative ${
-                expanded
-                  ? 'h-full w-full flex flex-col'
-                  : 'w-full h-full flex flex-col'
-              } overflow-hidden`}
-              style={
-                !expanded
-                  ? {
-                      border: '2px solid #fb923c',
-                      borderRadius: '32px',
-                    }
-                  : undefined
-              }
+              className={`relative h-full w-full flex flex-col overflow-hidden ${
+                !expanded ? 'border-b-2 sm:border-2 border-orange-400 sm:rounded-[32px]' : ''
+              }`}
             >
               {/* Back button - always shown, visible above modal */}
               <button
@@ -524,7 +513,7 @@ export default function GamePlay() {
                   }
                   navigate(-1);
                 }}
-                className={`absolute top-4 left-4 flex items-center gap-1 bg-white/90 backdrop-blur-sm rounded-full px-3 py-2 shadow-lg hover:bg-white transition-all ${
+                className={`absolute top-2 left-2 sm:top-4 sm:left-4 flex items-center gap-1 bg-white/90 backdrop-blur-sm rounded-full px-3 py-2 shadow-lg hover:bg-white transition-all ${
                   isModalOpen ? 'z-[80]' : 'z-50'
                 }`}
                 style={{ minHeight: '44px', minWidth: '60px' }}
@@ -605,8 +594,8 @@ export default function GamePlay() {
               />
               {/* Control bar - always shown, styling changes based on expanded state */}
               <div
-                className={`flex items-center justify-between px-6 py-2 bg-[#7C2D12] border-t border-orange-400 z-50 ${
-                  !expanded ? 'rounded-b-2xl' : ''
+                className={`flex items-center justify-between px-3 sm:px-6 py-2 bg-[#7C2D12] border-t border-orange-400 z-50 ${
+                  !expanded ? 'sm:rounded-b-[30px]' : ''
                 }`}
                 style={
                   expanded
@@ -619,10 +608,10 @@ export default function GamePlay() {
                     : undefined
                 }
               >
-                <h2 className="text-white text-sm font-semibold m-0 font-worksans">
+                <h2 className="text-white text-sm font-semibold m-0 font-worksans truncate mr-2">
                   {game.title}
                 </h2>
-                <div className="flex items-center space-x-4">
+                <div className="flex items-center space-x-2 sm:space-x-4 shrink-0">
                   {/* Like counter with thumbs up */}
                   <button
                     onClick={handleLikeClick}
