@@ -42,19 +42,20 @@ async def capture_game_preview(proposal_id: str, output_path: str = "screenshot.
             await page.wait_for_url("**/admin", timeout=15000)
             print("Successfully authenticated.")
 
-            # Navigate to game preview page
-            # Correct route based on routes.tsx is /admin/proposals/:id/review
-            preview_url = f"{BASE_URL}/admin/proposals/{proposal_id}/review"
+            # Navigate to the actual playable game screen
+            preview_url = f"{BASE_URL}/gameplay/{proposal_id}"
             print(f"Navigating to game preview: {preview_url}")
             await page.goto(preview_url)
 
-            # Wait for the page, images, and canvases to fully load
-            await page.wait_for_load_state("networkidle")
-            await page.wait_for_timeout(2000)
+            # Wait for the game engine to mount the canvas/iframe
+            print("Waiting for game engine to mount...")
+            await page.wait_for_selector("iframe", state="visible", timeout=15000)
+
+            await page.wait_for_timeout(5000)
 
             # Capture full page screenshot
             await page.screenshot(path=output_path, full_page=True)
-            print(f"Screenshot successfully saved to {output_path}")
+            print(f"Game preview screenshot successfully saved to {output_path}")
 
             return output_path
 
@@ -66,7 +67,8 @@ async def capture_game_preview(proposal_id: str, output_path: str = "screenshot.
 
 
 if __name__ == "__main__":
-    test_ids = ["9927a533-92e2-40b5-956c-9bb7f9059b4d"]
+    # Test with valid game IDs from the database to verify the player screenshot
+    test_ids = ["d1fbe524-b5e6-434c-91c4-bd3e7032fc72"]
 
     for pid in test_ids:
         try:
