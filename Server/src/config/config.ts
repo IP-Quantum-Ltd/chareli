@@ -117,6 +117,9 @@ interface Config {
     mode: 'local' | 'cloudflare';
   };
   loadTestBypassToken: string;
+  aiAgent: {
+    webhookUrl: string;
+  };
 }
 
 function getEnv(key: string, defaultValue?: string): string {
@@ -263,6 +266,9 @@ const config: Config = {
     mode: (process.env.ZIP_PROCESSING_MODE || 'local') as 'local' | 'cloudflare',
   },
   loadTestBypassToken: process.env.LOAD_TEST_BYPASS_TOKEN || '',
+  aiAgent: {
+    webhookUrl: process.env.AI_AGENT_WEBHOOK_URL || '',
+  },
 };
 
 export default config;

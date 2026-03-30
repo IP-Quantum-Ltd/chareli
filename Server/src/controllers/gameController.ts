@@ -30,6 +30,7 @@ import { calculateLikeCount } from '../utils/gameUtils';
 // import { processImage } from '../services/file.service';
 
 import { GameProposal, GameProposalStatus, GameProposalType } from '../entities/GameProposal';
+import { notifyProposalCreated } from '../services/aiNotification.service';
 
 const gameRepository = AppDataSource.getRepository(Game);
 const gamePositionHistoryRepository =
@@ -1077,6 +1078,15 @@ export const createGame = async (
       await queryRunner.manager.save(proposal);
       await queryRunner.commitTransaction();
 
+      notifyProposalCreated({
+        proposalId: proposal.id,
+        type: 'create',
+        gameId: proposal.gameId ?? null,
+        editorId: proposal.editorId,
+        proposedData: proposal.proposedData,
+        createdAt: proposal.createdAt,
+      });
+
       // We still queue the thumbnail image processing since the file record exists
        await queueService.addImageProcessingJob({
         fileId: thumbnailFileRecord.id,
@@ -1509,6 +1519,15 @@ export const updateGame = async (
 
        await queryRunner.manager.save(proposal);
        await queryRunner.commitTransaction();
+
+       notifyProposalCreated({
+         proposalId: proposal.id,
+         type: 'update',
+         gameId: proposal.gameId ?? null,
+         editorId: proposal.editorId,
+         proposedData: proposal.proposedData,
+         createdAt: proposal.createdAt,
+       });
 
        res.status(200).json({
          success: true,
