@@ -77,3 +77,13 @@ supabase_*.sql
 # Local docker compose files
 compose.yml
 docker-compose.override.yml
+
+# ai-agent Python artefacts
+ai-agent/venv/
+ai-agent/.venv/
+ai-agent/__pycache__/
+ai-agent/**/__pycache__/
+ai-agent/**/*.pyc
+ai-agent/.pytest_cache/
+ai-agent/.mypy_cache/
+ai-agent/.ruff_cache/
