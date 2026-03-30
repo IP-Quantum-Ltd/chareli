@@ -53,9 +53,21 @@ async def capture_game_preview(proposal_id: str, output_path: str = "screenshot.
 
             await page.wait_for_timeout(5000)
 
-            # Capture full page screenshot
-            await page.screenshot(path=output_path, full_page=True)
-            print(f"Game preview screenshot successfully saved to {output_path}")
+            # Dismiss any cookie banners or "Accept" overlays that block the view
+            try:
+                accept_button = page.get_by_role("button", name="Accept")
+                if await accept_button.is_visible():
+                    print("Dismissing cookie banner...")
+                    await accept_button.click()
+                    await page.wait_for_timeout(1000)
+            except Exception:
+                pass
+
+            # Capture ONLY the game iframe to reduce visual noise for the AI
+            print("Capturing precision screenshot of the game iframe...")
+            game_element = page.locator("iframe")
+            await game_element.screenshot(path=output_path)
+            print(f"Precision game screenshot successfully saved to {output_path}")
 
             return output_path
 
