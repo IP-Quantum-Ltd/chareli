@@ -1,7 +1,13 @@
 fastapi==0.115.5
 uvicorn[standard]==0.32.1
+gunicorn==23.0.0
 pydantic==2.10.3
 pydantic-settings==2.6.1
+sqlmodel==0.0.22
+asyncpg==0.30.0
+motor==3.6.1
+redis==5.2.1
+arq==0.26.1
 httpx==0.28.1
 apscheduler==3.10.4
 playwright==1.49.0

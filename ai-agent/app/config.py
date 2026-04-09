@@ -6,9 +6,28 @@ class Settings(BaseSettings):
     ARCADE_API_BASE_URL: str
     ARCADE_API_TOKEN: str  # Non-expiry editor-role service account token
 
+    # Database
+    DB_HOST: str = "localhost"
+    DB_PORT: int = 5432
+    DB_USERNAME: str = "postgres"
+    DB_PASSWORD: str = "postgres"
+    DB_DATABASE: str = "chareli"
+
+    @property
+    def DATABASE_URL(self) -> str:
+        return f"postgresql+asyncpg://{self.DB_USERNAME}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_DATABASE}"
+
+    # MongoDB
+    MONGODB_URL: str = "mongodb://localhost:27017"
+    MONGODB_DB_NAME: str = "chareli_ai"
+
+    # Redis
+    REDIS_URL: str = "redis://localhost:6379"
+
     # OpenAI
     OPENAI_API_KEY: str
     AI_PROVIDER: str = "openai"  # "openai" | "claude" — toggle without code changes
+    EMBEDDING_MODEL: str = "text-embedding-3-large"
 
     # Anthropic (Claude fallback)
     ANTHROPIC_API_KEY: str = ""

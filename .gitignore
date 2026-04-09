@@ -87,3 +87,14 @@ ai-agent/**/*.pyc
 ai-agent/.pytest_cache/
 ai-agent/.mypy_cache/
 ai-agent/.ruff_cache/
+
+#/docs/ai_agent
+Research Report and Findings.docx
+Research Report and Findings.zip
+Research_Report_Extracted_UTF8.txt
+Research_Report_Extracted.txt
+extract_docx.py
+tmp_report/
+AI_Game_Review_Agent_Task_Board.md
+docs/AI_Game_Review_Agent_Task_Board.md
+docs/Project Scope_ AI Game Review Agent.docx
