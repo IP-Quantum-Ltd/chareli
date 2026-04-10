@@ -7,27 +7,27 @@ from sqlmodel import Field, SQLModel
 
 
 class GameStatus(str, enum.Enum):
-    ACTIVE = "active"
-    DISABLED = "disabled"
+    active = "active"
+    disabled = "disabled"
 
 
 class GameProcessingStatus(str, enum.Enum):
-    PENDING = "pending"
-    PROCESSING = "processing"
-    COMPLETED = "completed"
-    FAILED = "failed"
+    pending = "pending"
+    processing = "processing"
+    completed = "completed"
+    failed = "failed"
 
 
 class GameProposalStatus(str, enum.Enum):
-    PENDING = "pending"
-    APPROVED = "approved"
-    DECLINED = "declined"
-    SUPERSEDED = "superseded"
+    pending = "pending"
+    approved = "approved"
+    declined = "declined"
+    superseded = "superseded"
 
 
 class GameProposalType(str, enum.Enum):
-    CREATE = "create"
-    UPDATE = "update"
+    create = "create"
+    update = "update"
 
 
 class Game(SQLModel, table=True):
@@ -38,7 +38,7 @@ class Game(SQLModel, table=True):
     slug: str
     description: Optional[str] = None
     thumbnailFileId: Optional[str] = Field(default=None)
-    status: GameStatus = Field(default=GameStatus.ACTIVE)
+    status: GameStatus = Field(default=GameStatus.active)
     gameFileId: Optional[str] = Field(default=None)
     config: int = Field(default=0)
     baseLikeCount: int = Field(default=100)
@@ -46,10 +46,10 @@ class Game(SQLModel, table=True):
     categoryId: Optional[str] = Field(default=None)
     createdById: Optional[str] = Field(default=None)
     position: Optional[int] = None
-    processingStatus: GameProcessingStatus = Field(default=GameProcessingStatus.COMPLETED)
+    processingStatus: GameProcessingStatus = Field(default=GameProcessingStatus.completed)
     processingError: Optional[str] = None
     jobId: Optional[str] = None
-    metadata: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
+    game_metadata: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column("metadata", JSON))
     createdAt: datetime = Field(default_factory=datetime.utcnow)
     updatedAt: datetime = Field(default_factory=datetime.utcnow)
 
@@ -58,10 +58,10 @@ class GameProposal(SQLModel, table=True):
     __tablename__ = "game_proposals"
 
     id: str = Field(primary_key=True)
-    type: GameProposalType = Field(default=GameProposalType.UPDATE)
+    type: GameProposalType = Field(default=GameProposalType.update)
     gameId: Optional[str] = Field(default=None)
     editorId: str
-    status: GameProposalStatus = Field(default=GameProposalStatus.PENDING)
+    status: GameProposalStatus = Field(default=GameProposalStatus.pending)
     previousProposalId: Optional[str] = None
     proposedData: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     adminFeedback: Optional[str] = None
