@@ -4,6 +4,7 @@ gunicorn==23.0.0
 pydantic==2.10.3
 pydantic-settings==2.6.1
 sqlmodel==0.0.22
+sqlalchemy==2.0.36
 asyncpg==0.30.0
 motor==3.6.1
 redis==5.2.1
