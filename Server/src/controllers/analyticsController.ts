@@ -14,6 +14,19 @@ import { extractClientIP } from '../utils/ipUtils';
 const analyticsRepository = AppDataSource.getRepository(Analytics);
 const userRepository = AppDataSource.getRepository(User);
 
+const ALLOWED_ACTIVITY_TYPES = new Set<string>([
+  'game_session',
+  'homepage_visit',
+  'Signed up',
+  'Signed up from invitation',
+  'Logged in',
+]);
+
+const MAX_CLOCK_SKEW_MS = 60_000;
+
+const isFutureTimestamp = (ts: Date): boolean =>
+  ts.getTime() - Date.now() > MAX_CLOCK_SKEW_MS;
+
 /**
  * @swagger
  * /analytics:
@@ -83,6 +96,24 @@ export const createAnalytics = async (
       );
     }
 
+    if (!activityType || !ALLOWED_ACTIVITY_TYPES.has(activityType)) {
+      return next(
+        ApiError.badRequest(
+          `Invalid activityType. Allowed: ${[...ALLOWED_ACTIVITY_TYPES].join(', ')}`
+        )
+      );
+    }
+
+    const parsedStartTime = new Date(startTime);
+    if (isNaN(parsedStartTime.getTime()) || isFutureTimestamp(parsedStartTime)) {
+      return next(ApiError.badRequest('Invalid or future startTime'));
+    }
+
+    const parsedEndTime = endTime ? new Date(endTime) : undefined;
+    if (parsedEndTime && (isNaN(parsedEndTime.getTime()) || isFutureTimestamp(parsedEndTime))) {
+      return next(ApiError.badRequest('Invalid or future endTime'));
+    }
+
     // Extract IP address from request
     const ipAddress = extractClientIP(
       req.headers['x-forwarded-for'],
@@ -95,8 +126,8 @@ export const createAnalytics = async (
       sessionId: sessionId || null,
       gameId: gameId || null,
       activityType,
-      startTime: new Date(startTime),
-      endTime: endTime ? new Date(endTime) : undefined,
+      startTime: parsedStartTime,
+      endTime: parsedEndTime,
       sessionCount,
       ipAddress,
     });
@@ -401,6 +432,26 @@ export const updateAnalytics = async (
 
     if (!analytics) {
       return next(ApiError.notFound(`Analytics entry with id ${id} not found`));
+    }
+
+    if (analytics.userId) {
+      const shouldTrack = await AdminExclusionService.shouldTrack(analytics.userId);
+      if (!shouldTrack) {
+        await analyticsRepository.remove(analytics);
+        res.status(200).json({
+          success: true,
+          message: 'Analytics entry removed (admin activity excluded)',
+          data: null,
+        });
+        return;
+      }
+    }
+
+    if (endTime !== undefined && endTime) {
+      const parsedEndTime = new Date(endTime);
+      if (isNaN(parsedEndTime.getTime()) || isFutureTimestamp(parsedEndTime)) {
+        return next(ApiError.badRequest('Invalid or future endTime'));
+      }
     }
 
     // Always update lastSeenAt on any update
