@@ -227,6 +227,8 @@ export const getDashboardAnalytics = async (
 
     const yesterdayUsers = parseInt(yesterdayUsersResult?.count) || 0;
     const returningUsers = parseInt(returningUsersResult?.count) || 0;
+    // Retention = % of yesterday's active players who also played today.
+    // Uses rolling 24h windows (not calendar days), qualifying sessions only (duration >= 30s).
     const retentionRate =
       yesterdayUsers > 0
         ? Number(((returningUsers / yesterdayUsers) * 100).toFixed(2))
