@@ -1,3 +1,4 @@
+import json
 import logging
 from datetime import datetime
 from typing import List, Dict, Any
@@ -89,4 +90,3 @@ class LibrarianService(BaseService, BaseAIClient):
             logger.error(f"Librarian enrichment failed for {title}: {e}")
             return {}
 
-import json # Needed for json.loads

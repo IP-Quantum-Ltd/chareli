@@ -69,7 +69,7 @@ class SearchService:
                 logger.error(f"Serper search failed: {e}")
                 return []
 
-    async def universal_search(self, query: str, provider: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def universal_search(self, query: str, provider: Optional[str] = None, max_results: int = 5) -> List[Dict[str, Any]]:
         """ 
         Unified search method. 
         Defaults to Tavily if available, else Serper.
@@ -77,9 +77,9 @@ class SearchService:
         provider = provider or ("tavily" if settings.TAVILY_API_KEY else "serper")
         
         if provider == "tavily":
-            return await self.search_tavily(query)
+            return await self.search_tavily(query, max_results=max_results)
         elif provider == "serper":
-            return await self.search_serper(query)
+            return await self.search_serper(query, max_results=max_results)
         else:
             logger.error(f"Unsupported search provider: {provider}")
             return []

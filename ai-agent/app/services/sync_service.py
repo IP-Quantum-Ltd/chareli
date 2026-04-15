@@ -54,7 +54,7 @@ class SyncService(BaseService, BaseAIClient):
 
                     # Upsert into MongoDB
                     document = {
-                        "pg_id": game.id,
+                        "pg_id": str(game.id),
                         "title": game.title,
                         "summary": summary_text,
                         "embedding": embedding,
@@ -62,7 +62,7 @@ class SyncService(BaseService, BaseAIClient):
                     }
 
                     await self.mongo_collection.update_one(
-                        {"pg_id": game.id},
+                        {"pg_id": str(game.id)},
                         {"$set": document},
                         upsert=True
                     )
