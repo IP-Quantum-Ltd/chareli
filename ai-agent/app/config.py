@@ -1,3 +1,5 @@
+from typing import Optional
+from pydantic import Field
 from pydantic_settings import BaseSettings
 
 
@@ -37,14 +39,12 @@ class Settings(BaseSettings):
             password=url.password
         )
 
-    # OpenAI
-    OPENAI_API_KEY: str
-    AI_PROVIDER: str = "openai"  # "openai" | "claude" — toggle without code changes
-    EMBEDDING_MODEL: str = "text-embedding-3-large"
-
-    # Web Search
-    TAVILY_API_KEY: str
-    SERPER_API_KEY: str
+    # LLM & Search Providers
+    OPENAI_API_KEY: str = Field(default="sk-proj-...")
+    AI_PROVIDER: str = Field(default="openai")
+    EMBEDDING_MODEL: str = Field(default="text-embedding-3-large")
+    SERPER_API_KEY: Optional[str] = None
+    TAVILY_API_KEY: Optional[str] = None
 
     # Anthropic (Claude fallback)
     ANTHROPIC_API_KEY: str = ""
