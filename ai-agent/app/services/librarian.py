@@ -18,75 +18,53 @@ class LibrarianService(BaseService, BaseAIClient):
         super().__init__()
         self.search = SearchService()
 
-    async def enrich_game_data(self, pg_game_id: str, title: str) -> Dict[str, Any]:
+    async def enrich_game_data(self, pg_game_id: str, title: str) -> List[Dict[str, Any]]:
         """
-        Enriches a game's metadata with live facts (patch notes, official release dates, etc.)
+        Stage 2: Deep research using Tavily.
+        Scrapes authoritative sources and stores results as semantic 'knowledge chunks'.
         """
-        logger.info(f"Librarian researching live facts for: {title}")
+        logger.info(f"Librarian performing deep research for: {title}")
 
-        # 1. Search for official facts
-        queries = [
-            f"{title} official release date and platforms",
-            f"{title} latest patch notes and updates",
-            f"{title} game features and developer official site"
-        ]
+        # 1. Deep research using Tavily (Scraping mode)
+        search_results = await self.search.search_tavily(
+            f"{title} game guide walkthrough patch notes official features", 
+            max_results=5
+        )
         
-        all_results = []
-        for q in queries:
-            results = await self.search.universal_search(q, max_results=3)
-            all_results.extend(results)
-
-        context = "\n".join([f"Source ({r['url']}): {r['content']}" for r in all_results])
-
-        # 2. Extract structured data with LLM
-        prompt = f"""
-        Research Context for '{title}':
-        {context}
+        chunks_to_store = []
         
-        Your task: Extract accurate, verified facts for this game.
-        Identify:
-        - Release Date
-        - Developer/Publisher
-        - Verified Platforms
-        - Key Features/Mechanics
-        - Latest version/Update info
-        
-        Return a JSON object format. Be extremely factual. If a fact is not found, set to null.
-        """
+        for idx, result in enumerate(search_results):
+            content = result.get("content", "")
+            if not content:
+                continue
 
-        try:
-            response = await self.client.chat.completions.create(
-                model="gpt-4o",
-                messages=[
-                    {"role": "system", "content": "You are a fact-checking game archivist (The Librarian). Respond only with JSON."},
-                    {"role": "user", "content": prompt}
-                ],
-                response_format={"type": "json_object"}
-            )
+            # In a real scenario, we might further split 'content' into smaller chunks if it's very long
+            # For now, each search result is treated as a chunk as per colleague's hint
             
-            enriched_facts = json.loads(response.choices[0].message.content)
-            
-            # 3. Store in MongoDB Enriched collection
-            mongodb = await get_mongodb()
-            collection = mongodb["enriched_knowledge"]
-            
-            document = {
+            summary_text = f"Source: {result.get('url')} | Content: {content}"
+            embedding = await self.generate_embedding(summary_text)
+
+            chunk = {
                 "pg_id": str(pg_game_id),
                 "title": title,
-                "facts": enriched_facts,
-                "sources": [r['url'] for r in all_results],
-                "last_researched": datetime.utcnow()
+                "chunk_index": idx,
+                "content": content,
+                "url": result.get("url"),
+                "embedding": embedding,
+                "timestamp": datetime.utcnow().isoformat()
             }
-            
-            await collection.update_one(
-                {"pg_id": str(pg_game_id)},
-                {"$set": document},
-                upsert=True
-            )
-            
-            return enriched_facts
+            chunks_to_store.append(chunk)
 
-        except Exception as e:
-            logger.error(f"Librarian enrichment failed for {title}: {e}")
-            return {}
+        # 2. Store in MongoDB 'knowledge_chunks' collection
+        if chunks_to_store:
+            mongodb = await get_mongodb()
+            collection = mongodb["knowledge_chunks"] # Using colleague's terminolgy
+            
+            # Clear old chunks for this game to avoid duplicates (optional, based on preference)
+            await collection.delete_many({"pg_id": str(pg_game_id)})
+            
+            await collection.insert_many(chunks_to_store)
+            logger.info(f"Stored {len(chunks_to_store)} chunks for {title}")
+
+        return chunks_to_store
 

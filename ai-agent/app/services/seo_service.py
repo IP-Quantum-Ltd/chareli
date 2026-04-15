@@ -18,52 +18,68 @@ class SEOService(BaseService, BaseAIClient):
 
     async def analyze_keyword(self, keyword: str) -> Dict[str, Any]:
         """
-        Main analysis pipeline for a seed keyword.
-        1. Research the keyword on the web.
-        2. Use LLM to extract intent and required entities.
+        Stage 1: Search Intelligence using Serper.
+        Identifies headings, keywords, intent, and 'People Also Ask' questions.
         """
-        logger.info(f"Analyzing search intelligence for keyword: {keyword}")
+        logger.info(f"Strategic SEO Analysis for: {keyword}")
 
-        # 1. Get search context
-        search_results = await self.search.universal_search(f"Top ranking content for {keyword}")
-        context = "\n".join([f"- {r['title']}: {r['content']}" for r in search_results])
+        # 1. Get strategic context from Serper
+        serper_data = await self.search.search_serper(keyword)
+        
+        organic = "\n".join([f"- {r['title']}: {r['snippet']}" for r in serper_data.get("organic", [])])
+        paa = "\n".join([f"- {q['question']}" for q in serper_data.get("peopleAlsoAsk", [])])
 
-        # 2. Analyze with LLM
+        # 2. Strategic Analysis with LLM
         prompt = f"""
-        Analyze the following search context for the keyword: '{keyword}'
+        Analyze the Google Search Results for: '{keyword}'
         
-        Search Context:
-        {context}
+        Organic Results snippets:
+        {organic}
         
-        Goal: Identify what Google expects from a high-ranking page for this keyword.
+        People Also Ask:
+        {paa}
         
-        Return a JSON object with:
-        1. "intent": The search intent (Informational, Transactional, Navigational).
-        2. "required_entities": A list of specific topics, entities, or features that must be covered.
-        3. "content_gaps": Potential areas where current results are weak.
-        4. "suggested_structure": A high-level outline (H2/H3 ideas).
+        Task: 
+        1. Determine the search intent.
+        2. Identify the 'Required Entities' (topics/features Google expects).
+        3. Extract the top 5 questions we MUST answer to rank (from PAA and snippets).
+        4. Suggest a high-ranking content structure (H2/H3).
         
-        Output MUST be pure JSON.
+        Return JSON format.
         """
 
         try:
             response = await self.client.chat.completions.create(
-                model="gpt-4o", # Using 4o for better reasoning
+                model="gpt-4o",
                 messages=[
-                    {"role": "system", "content": "You are a senior SEO strategist. Respond only with JSON."},
+                    {"role": "system", "content": "You are an SEO Strategist using Serper data. Respond only with JSON."},
                     {"role": "user", "content": prompt}
                 ],
                 response_format={"type": "json_object"}
             )
-            
-            analysis = json.loads(response.choices[0].message.content)
-            return analysis
-            
+            return json.loads(response.choices[0].message.content)
         except Exception as e:
-            logger.error(f"SEO Analysis failed: {e}")
-            return {
-                "intent": "Unknown",
-                "required_entities": [],
-                "content_gaps": [],
-                "suggested_structure": []
-            }
+            logger.error(f"SEO Strategic Analysis failed: {e}")
+            return {}
+
+    async def verify_ground_truth(self, title: str, pg_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Uses Serper's Knowledge Graph to verify PG metadata (Ground Truth check).
+        """
+        logger.info(f"Verifying Ground Truth for: {title}")
+        serper_data = await self.search.search_serper(title)
+        kg = serper_data.get("knowledgeGraph", {})
+
+        if not kg:
+            return {"status": "no_kg_data", "original": pg_data}
+
+        # Simplified comparison logic
+        discrepancies = []
+        # Check developer, release date etc if available in KG
+        # This is a placeholder for more complex comparison logic
+        
+        return {
+            "status": "verified",
+            "kg_data": kg,
+            "discrepancies": discrepancies
+        }

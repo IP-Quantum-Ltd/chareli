@@ -34,21 +34,15 @@ class SearchService:
                 return []
 
     @staticmethod
-    async def search_serper(query: str, max_results: int = 5) -> List[Dict[str, Any]]:
-        """ Search using Serper.dev (Google Search API). """
+    async def search_serper(query: str, max_results: int = 5) -> Dict[str, Any]:
+        """ Search using Serper.dev to get Organic, PAA, and Knowledge Graph data. """
         if not settings.SERPER_API_KEY:
             logger.warning("Serper API key missing. Skipping search.")
-            return []
+            return {"organic": [], "peopleAlsoAsk": [], "knowledgeGraph": {}}
 
         url = "https://google.serper.dev/search"
-        payload = {
-            "q": query,
-            "num": max_results
-        }
-        headers = {
-            "X-API-KEY": settings.SERPER_API_KEY,
-            "Content-Type": "application/json"
-        }
+        payload = {"q": query, "num": max_results}
+        headers = {"X-API-KEY": settings.SERPER_API_KEY, "Content-Type": "application/json"}
 
         async with httpx.AsyncClient() as client:
             try:
@@ -56,18 +50,14 @@ class SearchService:
                 response.raise_for_status()
                 data = response.json()
                 
-                # Standardize Serper output to match Tavily-like structure (title, url, content)
-                results = []
-                for item in data.get("organic", []):
-                    results.append({
-                        "title": item.get("title"),
-                        "url": item.get("link"),
-                        "content": item.get("snippet")
-                    })
-                return results
+                return {
+                    "organic": data.get("organic", []),
+                    "peopleAlsoAsk": data.get("peopleAlsoAsk", []),
+                    "knowledgeGraph": data.get("knowledgeGraph", {})
+                }
             except Exception as e:
                 logger.error(f"Serper search failed: {e}")
-                return []
+                return {"organic": [], "peopleAlsoAsk": [], "knowledgeGraph": {}}
 
     async def universal_search(self, query: str, provider: Optional[str] = None, max_results: int = 5) -> List[Dict[str, Any]]:
         """ 
