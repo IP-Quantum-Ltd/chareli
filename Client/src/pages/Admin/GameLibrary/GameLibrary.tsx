@@ -235,9 +235,9 @@ function GridView({ games, onView, onToggle, toggling }: ViewProps) {
               onClick={() => onView(game)}
               title="View game"
             >
-              {game.thumbnailFile?.url ? (
+              {(game.thumbnailFile?.s3Key || game.thumbnailFile?.url) ? (
                 <img
-                  src={game.thumbnailFile.url}
+                  src={game.thumbnailFile.s3Key || game.thumbnailFile.url}
                   alt={game.title}
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                 />
@@ -302,9 +302,9 @@ function ListView({ games, onView, onToggle, toggling }: ViewProps) {
               className="w-20 h-12 rounded overflow-hidden flex-shrink-0 bg-[#F8FAFC] dark:bg-[#0F172A] cursor-pointer"
               onClick={() => onView(game)}
             >
-              {game.thumbnailFile?.url ? (
+              {(game.thumbnailFile?.s3Key || game.thumbnailFile?.url) ? (
                 <img
-                  src={game.thumbnailFile.url}
+                  src={game.thumbnailFile.s3Key || game.thumbnailFile.url}
                   alt={game.title}
                   className="w-full h-full object-cover"
                 />
