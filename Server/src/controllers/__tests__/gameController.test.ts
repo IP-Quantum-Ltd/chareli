@@ -1,11 +1,13 @@
 import request from 'supertest'
 import express from 'express'
-import { 
+import {
   getAllGames,
   getGameById,
   createGame,
   updateGame,
-  deleteGame
+  deleteGame,
+  publishGame,
+  unpublishGame,
 } from '../gameController'
 
 // Create a simple test app
@@ -28,6 +30,8 @@ const createTestApp = () => {
   app.post('/games', createGame)
   app.put('/games/:id', updateGame)
   app.delete('/games/:id', deleteGame)
+  app.post('/games/:id/publish', publishGame)
+  app.post('/games/:id/unpublish', unpublishGame)
   
   return app
 }
@@ -173,6 +177,31 @@ describe('Game Controller', () => {
       // Should respond (might be 404 or redirect)
       expect(response.status).toBeDefined()
       expect(typeof response.status).toBe('number')
+    })
+  })
+
+  describe('POST /games/:id/publish', () => {
+    it('responds to publish request', async () => {
+      const response = await request(app).post('/games/test-id/publish')
+      expect(response.status).toBeDefined()
+      expect(typeof response.status).toBe('number')
+    })
+  })
+
+  describe('POST /games/:id/unpublish', () => {
+    it('responds to unpublish request', async () => {
+      const response = await request(app).post('/games/test-id/unpublish')
+      expect(response.status).toBeDefined()
+      expect(typeof response.status).toBe('number')
+    })
+  })
+
+  describe('PUT /games/:id with status', () => {
+    it('rejects attempts to change status via PUT', async () => {
+      const response = await request(app)
+        .put('/games/game-123')
+        .send({ status: 'active' })
+      expect(response.status).toBe(400)
     })
   })
 })

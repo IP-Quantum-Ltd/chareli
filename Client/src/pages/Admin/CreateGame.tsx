@@ -43,6 +43,7 @@ interface FormValues {
     howToPlay?: string;
     tags?: string[];
   };
+  publishImmediately: boolean;
 }
 
 // Validation schema
@@ -80,6 +81,8 @@ const initialValues: FormValues = {
     howToPlay: '',
     tags: [],
   },
+  // Default to draft so uploads don't auto-go-live. Admins explicitly opt in.
+  publishImmediately: false,
 };
 
 export default function CreateGame() {
@@ -198,6 +201,7 @@ export default function CreateGame() {
         position: values.position,
         thumbnailFileKey: values.thumbnailFile?.key,
         gameFileKey: values.gameFile?.key,
+        publishImmediately: values.publishImmediately,
         // Add metadata if any fields were provided
         ...(Object.keys(metadata).length > 0 && { metadata }),
       };
@@ -682,6 +686,40 @@ export default function CreateGame() {
                    SEO tags/keywords
                  </p>
              </div>
+
+             {/* Publish on creation - admins only. Editors always submit drafts via proposal. */}
+             {!permissions?.isEditor && (
+               <div className="pt-6 border-t dark:border-gray-800">
+                 <label className="block text-sm font-semibold mb-3 text-[#121C2D] dark:text-white font-worksans">
+                   When the game finishes processing
+                 </label>
+                 <div className="flex flex-col gap-3 sm:flex-row sm:gap-6">
+                   <label className="flex items-center gap-2 cursor-pointer text-sm text-[#334154] dark:text-gray-300 font-worksans">
+                     <input
+                       type="radio"
+                       name="publishImmediately"
+                       checked={values.publishImmediately === false}
+                       onChange={() => setFieldValue('publishImmediately', false)}
+                       className="cursor-pointer"
+                     />
+                     Save as Draft
+                   </label>
+                   <label className="flex items-center gap-2 cursor-pointer text-sm text-[#334154] dark:text-gray-300 font-worksans">
+                     <input
+                       type="radio"
+                       name="publishImmediately"
+                       checked={values.publishImmediately === true}
+                       onChange={() => setFieldValue('publishImmediately', true)}
+                       className="cursor-pointer"
+                     />
+                     Publish immediately
+                   </label>
+                 </div>
+                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 font-worksans">
+                   Drafts live in the Game Library and can be tested privately before going live.
+                 </p>
+               </div>
+             )}
 
              {/* Actions */}
             <div className="flex justify-end gap-3 pt-6 border-t dark:border-gray-800">

@@ -18,6 +18,8 @@ import {
   abortMultipartUpload,
   likeGame,
   unlikeGame,
+  publishGame,
+  unpublishGame,
 } from '../controllers/gameController';
 import {
   authenticate,
@@ -97,6 +99,20 @@ router.put(
   validateParams(gameIdParamSchema),
   uploadGameFilesForUpdate,
   updateGame
+);
+
+// Publish / Unpublish - Admin only
+router.post(
+  '/:id/publish',
+  isAdmin,
+  validateParams(gameIdParamSchema),
+  publishGame
+);
+router.post(
+  '/:id/unpublish',
+  isAdmin,
+  validateParams(gameIdParamSchema),
+  unpublishGame
 );
 
 // Delete Game - Admin only (User explicitly requested NO delete permissions for Editors)

@@ -255,26 +255,64 @@ async function handleSuccessfulProcessing(
       s3Key: data.s3Key,
     });
 
-    // STEP 2: Update game - mark as completed and activate
-    // This matches the behavior in gameZipProcessor.ts
-    await gameRepository.update(gameId, {
+    // STEP 2: Mark as completed; auto-publish only if the upload flow opted in.
+    // Matches gameZipProcessor.ts.
+    const existingGame = await gameRepository.findOne({ where: { id: gameId } });
+    const publishOnReady =
+      (existingGame?.metadata as any)?._publishOnReady === true;
+
+    const completionUpdate: Partial<Game> = {
       gameFileId: gameFileRecord.id,
       processingStatus: GameProcessingStatus.COMPLETED,
       processingError: undefined,
-      status: GameStatus.ACTIVE, // Activate the game
-      jobId: undefined, // Clear job ID (no longer relevant)
-    });
+      jobId: undefined,
+    };
+    if (publishOnReady) {
+      completionUpdate.status = GameStatus.ACTIVE;
+      completionUpdate.publishedAt = new Date();
+      completionUpdate.lastLikeIncrement = new Date();
+    }
+    if (existingGame?.metadata && (existingGame.metadata as any)._publishOnReady !== undefined) {
+      const cleaned = { ...(existingGame.metadata as any) };
+      delete cleaned._publishOnReady;
+      completionUpdate.metadata = cleaned;
+    }
 
-    logger.info('[WEBHOOK] Game activated', {
+    await gameRepository.update(gameId, completionUpdate);
+
+    if (publishOnReady) {
+      try {
+        const { GamePublishHistory, GamePublishAction } = await import(
+          '../entities/GamePublishHistory'
+        );
+        const repo = AppDataSource.getRepository(GamePublishHistory);
+        await repo.save(
+          repo.create({
+            gameId,
+            action: GamePublishAction.PUBLISHED,
+            actorId: existingGame?.createdById ?? null,
+            actorRole: null,
+          })
+        );
+      } catch (historyErr) {
+        logger.warn('[WEBHOOK] Failed to record publish history for auto-publish', {
+          gameId,
+          error: historyErr,
+        });
+      }
+    }
+
+    logger.info('[WEBHOOK] Game processed', {
       gameId,
+      published: publishOnReady,
       fileCount: data.fileCount,
       totalSize: data.totalSize,
     });
 
-    // STEP 3: Emit WebSocket event - game is now completed and active
+    // STEP 3: Emit WebSocket event reflecting actual end-state.
     websocketService.emitGameStatusUpdate(gameId, {
       processingStatus: GameProcessingStatus.COMPLETED,
-      status: GameStatus.ACTIVE,
+      status: publishOnReady ? GameStatus.ACTIVE : GameStatus.DISABLED,
     });
 
     websocketService.emitGameProcessingProgress(gameId, 100);

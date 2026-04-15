@@ -114,7 +114,7 @@ export default function ViewGame() {
                     className="flex items-center justify-center gap-2 w-full bg-[#6A7282] text-white tracking-wider hover:bg-[#5A626F] cursor-pointer"
                     onClick={() => setShowDisableModal(true)}
                   >
-                    {game?.status === "active" ? "Disable" : "Enable"}{" "}
+                    {game?.status === "active" ? "Unpublish" : "Publish"}{" "}
                     <IoEyeOutline />
                   </Button>
                 )}

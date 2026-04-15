@@ -123,6 +123,10 @@ export class Game {
     schemaVersion?: string;
   } | null;
 
+  @Column({ type: 'timestamp', nullable: true })
+  @Index()
+  publishedAt: Date | null;
+
   @CreateDateColumn()
   @Index()
   createdAt: Date;
