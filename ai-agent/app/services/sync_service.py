@@ -1,72 +1,79 @@
-import logging
 from datetime import datetime
 from typing import List
 from sqlalchemy.future import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.models.database import Game
 from app.db.mongo import get_mongodb
-from app.config import settings
-from openai import AsyncOpenAI
+from app.services.base import BaseAIClient, BaseService
 
-logger = logging.getLogger(__name__)
-
-async def generate_embedding(text: str) -> List[float]:
-    """Generate vector embedding for a given text using OpenAI."""
-    client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-    response = await client.embeddings.create(
-        input=[text.replace("\n", " ")],
-        model=settings.EMBEDDING_MODEL
-    )
-    return response.data[0].embedding
-
-async def sync_pg_to_mongo(pg_session: AsyncSession):
+class SyncService(BaseService, BaseAIClient):
     """
-    Sync all game metadata from PostgreSQL to MongoDB Atlas.
-    Creates a searchable summary and generates vector embeddings.
+    Sync Service to coordinate PostgreSQL to MongoDB Atlas data migration.
+    Inherits from BaseAIClient for embedding generation.
     """
-    try:
-        mongodb = await get_mongodb()
-        collection = mongodb["game_summaries"]
+    
+    def __init__(self, pg_session: AsyncSession):
+        super().__init__()
+        self.pg_session = pg_session
+        self.mongo_collection = None
 
-        # Fetch all games from PG
-        logger.info("Fetching games from PostgreSQL for sync...")
-        result = await pg_session.execute(select(Game))
-        games = result.scalars().all()
+    async def _init_mongo(self):
+        """Initialize MongoDB collection reference."""
+        if self.mongo_collection is None:
+            mongodb = await get_mongodb()
+            self.mongo_collection = mongodb["game_summaries"]
 
-        count = 0
-        for game in games:
-            try:
-                # Create a searchable summary string
-                summary_text = f"Title: {game.title} | Developer: {game.createdById or 'Unknown'} | Description: {game.description or 'No description available'}"
-                
-                if game.game_metadata:
-                    summary_text += f" | Details: {str(game.game_metadata)}"
+    async def sync_all(self) -> int:
+        """
+        Sync all game metadata from PostgreSQL to MongoDB Atlas.
+        Creates a searchable summary and generates vector embeddings.
+        """
+        try:
+            await self._init_mongo()
+            
+            # Fetch all games from PG
+            self.logger.info("Fetching games from PostgreSQL for sync...")
+            result = await self.pg_session.execute(select(Game))
+            games = result.scalars().all()
 
-                # Generate embedding for vector search
-                embedding = await generate_embedding(summary_text)
+            count = 0
+            for game in games:
+                try:
+                    # Create a searchable summary string
+                    summary_text = (
+                        f"Title: {game.title} | "
+                        f"Developer: {game.createdById or 'Unknown'} | "
+                        f"Description: {game.description or 'No description available'}"
+                    )
+                    
+                    if game.game_metadata:
+                        summary_text += f" | Details: {str(game.game_metadata)}"
 
-                # Upsert into MongoDB
-                document = {
-                    "pg_id": game.id,
-                    "title": game.title,
-                    "summary": summary_text,
-                    "embedding": embedding,
-                    "last_synced": game.updatedAt or datetime.utcnow()
-                }
+                    # Generate embedding for vector search via BaseAIClient
+                    embedding = await self.generate_embedding(summary_text)
 
-                await collection.update_one(
-                    {"pg_id": game.id},
-                    {"$set": document},
-                    upsert=True
-                )
-                count += 1
-                if count % 10 == 0:
-                    logger.info(f"Synced {count}/{len(games)} games...")
-            except Exception as e:
-                logger.error(f"Failed to sync game {game.id} ({game.title}): {e}")
+                    # Upsert into MongoDB
+                    document = {
+                        "pg_id": game.id,
+                        "title": game.title,
+                        "summary": summary_text,
+                        "embedding": embedding,
+                        "last_synced": game.updatedAt or datetime.utcnow()
+                    }
 
-        logger.info(f"Successfully synced {count} games from PG to MongoDB")
-        return count
-    except Exception as e:
-        logger.error(f"Critical error during sync: {e}")
-        raise
+                    await self.mongo_collection.update_one(
+                        {"pg_id": game.id},
+                        {"$set": document},
+                        upsert=True
+                    )
+                    count += 1
+                    if count % 10 == 0:
+                        self.logger.info(f"Synced {count}/{len(games)} games...")
+                except Exception as e:
+                    self.logger.error(f"Failed to sync game {game.id} ({game.title}): {e}")
+
+            self.logger.info(f"Successfully synced {count} games from PG to MongoDB")
+            return count
+        except Exception as e:
+            self.logger.error(f"Critical error during sync: {e}")
+            raise

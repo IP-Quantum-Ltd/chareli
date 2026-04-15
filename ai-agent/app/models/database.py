@@ -1,5 +1,6 @@
 import enum
 from datetime import datetime
+from uuid import UUID
 from typing import Any, Dict, Optional
 
 from sqlalchemy import JSON, Column, DateTime, String
@@ -33,7 +34,7 @@ class GameProposalType(str, enum.Enum):
 class Game(SQLModel, table=True):
     __tablename__ = "games"
 
-    id: str = Field(primary_key=True)
+    id: UUID = Field(primary_key=True)
     title: str
     slug: str
     description: Optional[str] = None
@@ -57,12 +58,12 @@ class Game(SQLModel, table=True):
 class GameProposal(SQLModel, table=True):
     __tablename__ = "game_proposals"
 
-    id: str = Field(primary_key=True)
+    id: UUID = Field(primary_key=True)
     type: GameProposalType = Field(default=GameProposalType.update)
-    gameId: Optional[str] = Field(default=None)
+    gameId: Optional[UUID] = Field(default=None)
     editorId: str
     status: GameProposalStatus = Field(default=GameProposalStatus.pending)
-    previousProposalId: Optional[str] = None
+    previousProposalId: Optional[UUID] = None
     proposedData: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     adminFeedback: Optional[str] = None
     reviewedBy: Optional[str] = None

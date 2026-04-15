@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     AI_PROVIDER: str = "openai"  # "openai" | "claude" — toggle without code changes
     EMBEDDING_MODEL: str = "text-embedding-3-large"
 
+    # Web Search
+    TAVILY_API_KEY: str
+    SERPER_API_KEY: str
+
     # Anthropic (Claude fallback)
     ANTHROPIC_API_KEY: str = ""
 
@@ -52,7 +56,8 @@ class Settings(BaseSettings):
     CRON_INTERVAL_MINUTES: int = 15
 
     class Config:
-        env_file = ".env"
+        import os
+        env_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
         extra = "ignore"
 
 
