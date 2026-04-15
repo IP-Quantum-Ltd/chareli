@@ -248,16 +248,16 @@ export default function GameManagement() {
       }
     }
 
-    // Show normal active/inactive status for completed games
+    // Show Published/Draft status for completed games
     return game.status === "active" ? (
       <span className="inline-flex items-center gap-2 p-1 rounded bg-[#419E6A] text-white tracking-wider text-nowrap">
         <span className="w-2 h-2 bg-white rounded-full"></span>
-        Active
+        Published
       </span>
     ) : (
       <span className="inline-flex items-center gap-2 p-1 rounded bg-[#CBD5E0] text-[#22223B] tracking-wider text-nowrap">
         <span className="w-2 h-2 bg-red-500 rounded-full"></span>
-        Inactive
+        Draft
       </span>
     );
   };

@@ -1,5 +1,5 @@
 import { AppDataSource } from '../config/database';
-import { Game, GameStatus } from '../entities/Games';
+import { Game, GameStatus, GameProcessingStatus } from '../entities/Games';
 import { Category } from '../entities/Category';
 import { GameLike } from '../entities/GameLike';
 import { SystemConfig } from '../entities/SystemConfig';
@@ -167,7 +167,10 @@ class JsonCdnService {
       const gameRepository = AppDataSource.getRepository(Game);
 
       const games = await gameRepository.find({
-        where: { status: GameStatus.ACTIVE },
+        where: {
+          status: GameStatus.ACTIVE,
+          processingStatus: GameProcessingStatus.COMPLETED,
+        },
         relations: ['category', 'createdBy', 'thumbnailFile', 'gameFile'],
         order: { createdAt: 'DESC' },
         select: {
@@ -303,6 +306,7 @@ class JsonCdnService {
           where: {
             id: In(gameIds),
             status: GameStatus.ACTIVE,
+            processingStatus: GameProcessingStatus.COMPLETED,
           },
           relations: ['category', 'createdBy', 'thumbnailFile', 'gameFile'],
           select: {
@@ -415,6 +419,7 @@ class JsonCdnService {
         where: {
           id: In(gameIds),
           status: GameStatus.ACTIVE,
+          processingStatus: GameProcessingStatus.COMPLETED,
         },
         relations: ['category', 'createdBy', 'thumbnailFile', 'gameFile'],
         select: {
@@ -513,7 +518,10 @@ class JsonCdnService {
 
       // Fetch all active games
       const games = await gameRepository.find({
-        where: { status: GameStatus.ACTIVE },
+        where: {
+          status: GameStatus.ACTIVE,
+          processingStatus: GameProcessingStatus.COMPLETED,
+        },
         select: ['slug', 'updatedAt'],
         order: { updatedAt: 'DESC' },
       });
@@ -641,13 +649,19 @@ Disallow: /
   }
 
   /**
-   * Generate games_all.json (all games regardless of status)
+   * Generate games_all.json. Historically included every row; this file is
+   * publicly served via the CDN, so we filter to the public-safe set to avoid
+   * leaking drafts or still-processing games.
    */
   private async generateAllGamesJson(): Promise<void> {
     try {
       const gameRepository = AppDataSource.getRepository(Game);
 
       const games = await gameRepository.find({
+        where: {
+          status: GameStatus.ACTIVE,
+          processingStatus: GameProcessingStatus.COMPLETED,
+        },
         relations: ['category', 'createdBy', 'thumbnailFile', 'gameFile'],
         order: { createdAt: 'DESC' },
         select: {
@@ -736,7 +750,10 @@ Disallow: /
       const gameRepository = AppDataSource.getRepository(Game);
 
       const games = await gameRepository.find({
-        where: { status: GameStatus.ACTIVE },
+        where: {
+          status: GameStatus.ACTIVE,
+          processingStatus: GameProcessingStatus.COMPLETED,
+        },
         select: {
           id: true,
           slug: true,

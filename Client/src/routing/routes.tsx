@@ -25,6 +25,9 @@ const AdminHome = lazy(() => import('../pages/Admin/Home/Home'));
 const GameManagement = lazy(
   () => import('../pages/Admin/Management/GameManagement')
 );
+const GameLibrary = lazy(
+  () => import('../pages/Admin/GameLibrary/GameLibrary')
+);
 const UserManagement = lazy(
   () => import('../pages/Admin/UserManagement/UserManagement')
 );
@@ -112,6 +115,7 @@ export const routes = [
             children: [
               { index: true, element: <SuspenseWrapper><AdminHome /></SuspenseWrapper> },
               { path: 'game-management', element: <SuspenseWrapper><GameManagement /></SuspenseWrapper> },
+              { path: 'game-library', element: <SuspenseWrapper><GameLibrary /></SuspenseWrapper> },
               { path: 'categories', element: <SuspenseWrapper><GameCategories /></SuspenseWrapper> },
               { path: 'categories/:categoryId', element: <SuspenseWrapper><CategoryDetail /></SuspenseWrapper> },
               { path: 'management', element: <SuspenseWrapper><UserManagement /></SuspenseWrapper> },

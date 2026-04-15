@@ -174,18 +174,51 @@ export async function processGameZip(
       fileId: gameFileRecord.id,
     });
 
-    // Step 5: Update game with file ID, mark as completed, and activate the game
-    logger.info(
-      `Updating game ${gameId} with gameFileId, marking as completed, and activating game`
-    );
-    console.log('🎮 [WORKER] Activating game:', { gameId });
+    // Step 5: Update game with file ID and mark as completed. Auto-publish only
+    // if the upload flow set metadata._publishOnReady; otherwise leave the game
+    // in DRAFT state for the admin to publish manually via /games/:id/publish.
+    const existingGame = await gameRepository.findOne({ where: { id: gameId } });
+    const publishOnReady =
+      (existingGame?.metadata as any)?._publishOnReady === true;
 
-    await gameRepository.update(gameId, {
+    logger.info(
+      `Game ${gameId} processed; publishOnReady=${publishOnReady}`
+    );
+
+    const completionUpdate: Partial<Game> = {
       gameFileId: gameFileRecord.id,
       processingStatus: GameProcessingStatus.COMPLETED,
       processingError: undefined,
-      status: GameStatus.ACTIVE, // Activate the game when processing completes successfully
-    });
+    };
+    if (publishOnReady) {
+      completionUpdate.status = GameStatus.ACTIVE;
+      completionUpdate.publishedAt = new Date();
+      completionUpdate.lastLikeIncrement = new Date();
+    }
+    if (existingGame?.metadata && (existingGame.metadata as any)._publishOnReady !== undefined) {
+      const cleaned = { ...(existingGame.metadata as any) };
+      delete cleaned._publishOnReady;
+      completionUpdate.metadata = cleaned;
+    }
+
+    await gameRepository.update(gameId, completionUpdate);
+
+    if (publishOnReady) {
+      try {
+        const { GamePublishHistory, GamePublishAction } = await import(
+          '../entities/GamePublishHistory'
+        );
+        const history = AppDataSource.getRepository(GamePublishHistory).create({
+          gameId,
+          action: GamePublishAction.PUBLISHED,
+          actorId: existingGame?.createdById ?? null,
+          actorRole: null,
+        });
+        await AppDataSource.getRepository(GamePublishHistory).save(history);
+      } catch (historyErr) {
+        logger.warn('Failed to record publish history for auto-publish', historyErr);
+      }
+    }
 
     await job.updateProgress(90);
     websocketService.emitGameProcessingProgress(gameId, 90);
@@ -203,10 +236,10 @@ export async function processGameZip(
     await job.updateProgress(100);
     websocketService.emitGameProcessingProgress(gameId, 100);
 
-    // Emit final status update - game is now completed and active
+    // Emit final status update reflecting the actual end-state.
     websocketService.emitGameStatusUpdate(gameId, {
       processingStatus: GameProcessingStatus.COMPLETED,
-      status: GameStatus.ACTIVE,
+      status: publishOnReady ? GameStatus.ACTIVE : GameStatus.DISABLED,
       jobId: job.id as string,
     });
 
