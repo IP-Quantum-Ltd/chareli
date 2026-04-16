@@ -22,13 +22,10 @@ class BaseAIClient:
         return self._client
 
     async def generate_embedding(self, text: str, model: str = settings.EMBEDDING_MODEL) -> List[float]:
-        """Class-based embedding generation with robust fallback."""
+        """Class-based embedding generation (Native mode)."""
         # 3072 is the dimension for text-embedding-3-large
         dimension = 3072
         
-        if not self.api_key or "sk-" not in self.api_key or "dummy" in self.api_key.lower():
-            return [0.0] * dimension
-            
         try:
             response = await self.client.embeddings.create(
                 input=[text.replace("\n", " ")],
@@ -41,10 +38,7 @@ class BaseAIClient:
             return [0.0] * dimension
 
     async def chat_completion(self, messages: List[Dict[str, str]], response_format: Optional[Dict] = None, fallback_data: Optional[Dict] = None) -> Dict:
-        """Helper for Chat Completions with built-in mock fallback for development."""
-        if not self.api_key or "sk-" not in self.api_key or "dummy" in self.api_key.lower():
-            logger.warning("Using provided fallback JSON (Developer Mock Mode).")
-            return fallback_data or {}
+        """Helper for Chat Completions (Native mode)."""
 
         try:
             response = await self.client.chat.completions.create(
@@ -55,9 +49,6 @@ class BaseAIClient:
             import json
             return json.loads(response.choices[0].message.content)
         except Exception as e:
-            if "insufficient_quota" in str(e).lower() or "429" in str(e):
-                logger.warning(f"OpenAI Quota Exceeded. Returning structured fallback data for testing.")
-                return fallback_data or {}
             logger.error(f"Chat completion failed: {e}")
             raise
 

@@ -30,18 +30,24 @@ class AnalystAgent(BaseService, BaseAIClient):
         payload = json.dumps({"q": keyword})
         
         try:
+            self.logger.info(f"Serper URL: {self.serper_url}")
+            self.logger.info(f"Serper Key Length: {len(self.serper_headers.get('X-API-KEY', ''))}")
+            
             async with httpx.AsyncClient() as client:
                 response = await client.post(
                     self.serper_url, 
                     headers=self.serper_headers, 
                     data=payload,
-                    timeout=20.0
+                    timeout=30.0
                 )
+                if response.status_code != 200:
+                    self.logger.error(f"Serper API Error ({response.status_code}): {response.text}")
                 response.raise_for_status()
                 serper_data = response.json()
         except Exception as e:
-            self.logger.error(f"Serper search failed: {e}")
+            self.logger.error(f"Serper traceback: {str(e)}")
             raise
+                     
 
         # 2. Extract relevant snippets and metadata for the LLM
         simplified_context = {
