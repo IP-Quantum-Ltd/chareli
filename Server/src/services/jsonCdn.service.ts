@@ -32,11 +32,16 @@ interface JsonMetadata {
  * Service to generate static JSON files for CDN caching
  * Reduces database load by serving pre-generated JSON from R2/CDN
  */
+// Redis key holding the authoritative CDN version timestamp shared across all
+// ECS tasks / PM2 workers. In-memory `lastVersion` is a local cache that
+// mirrors the Redis value; never rely on it for cross-worker agreement.
+const CDN_VERSION_REDIS_KEY = 'cdn:lastVersion';
+
 class JsonCdnService {
   private config: JsonCdnConfig;
   private isGenerating = false;
   private r2Adapter: R2StorageAdapter;
-  private lastVersion: number = Date.now(); // Version timestamp for cache-busting
+  private lastVersion: number = Date.now(); // Local fallback cache of the Redis value
   private metrics = {
     generationCount: 0,
     lastGenerationDuration: 0,
@@ -88,7 +93,7 @@ class JsonCdnService {
 
       // Bump version so Client cache-buster (?v=) changes, forcing browsers
       // past their max-age window to pick up the new content on reload.
-      this.lastVersion = Date.now();
+      await this.bumpVersion();
 
       logger.info(`JSON CDN generation completed in ${duration}ms`);
     } catch (error) {
@@ -944,8 +949,9 @@ Disallow: /
         }
       }
 
-      // Update version timestamp for cache-busting
-      this.lastVersion = Date.now();
+      // Update version timestamp for cache-busting (shared via Redis so
+      // other workers see it too).
+      await this.bumpVersion();
 
       // Purge Cloudflare cache for regenerated files
       if (regeneratedPaths.length > 0) {
@@ -978,11 +984,44 @@ Disallow: /
   }
 
   /**
-   * Get latest CDN version timestamp for cache-busting
-   * Frontend uses this to append ?v=<version> to CDN URLs
+   * Get latest CDN version timestamp for cache-busting. Reads from Redis so
+   * every ECS task / PM2 worker returns the same value even though only one
+   * worker actually ran the regen that bumped it. Falls back to the in-memory
+   * cache if Redis is unavailable.
    */
-  getVersion(): number {
+  async getVersion(): Promise<number> {
+    try {
+      const stored = await redisService.get<number | string>(
+        CDN_VERSION_REDIS_KEY
+      );
+      if (stored !== null && stored !== undefined) {
+        const parsed = typeof stored === 'number' ? stored : parseInt(stored, 10);
+        if (!Number.isNaN(parsed)) {
+          this.lastVersion = parsed;
+          return parsed;
+        }
+      }
+    } catch (err) {
+      logger.warn('[CDN] Failed to read lastVersion from Redis, using local cache:', err);
+    }
     return this.lastVersion;
+  }
+
+  /**
+   * Bump `lastVersion` in Redis (authoritative) and update the local cache.
+   * Call this once per completed write path (full regen, incremental batch,
+   * invalidateCache). Never just assign `this.lastVersion` directly — other
+   * workers won't see it.
+   */
+  private async bumpVersion(): Promise<number> {
+    const now = Date.now();
+    this.lastVersion = now;
+    try {
+      await redisService.set(CDN_VERSION_REDIS_KEY, now);
+    } catch (err) {
+      logger.warn('[CDN] Failed to persist lastVersion to Redis:', err);
+    }
+    return now;
   }
 
   /**
@@ -1076,7 +1115,7 @@ Disallow: /
       // Bump version so the Client's `?v=` cache-buster changes. Without
       // this, browsers serve stale CDN JSON from their HTTP cache for up to
       // max-age seconds even though R2 and the edge have fresh content.
-      this.lastVersion = Date.now();
+      await this.bumpVersion();
 
       logger.info(`✅ [BATCH UPDATE] Completed ${gameIds.length} games`);
     } catch (error) {
