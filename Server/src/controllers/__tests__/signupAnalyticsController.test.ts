@@ -7,25 +7,20 @@ import {
 } from '../signupAnalyticsController'
 
 // Create a simple test app
+// NOTE: no auth mock. trackSignupClick runs admin-exclusion only when req.user
+// is set, and the DB-backed admin lookup throws in tests (no connection),
+// causing the outer try/catch to swallow the failure as 200. Leaving the
+// request unauthenticated lets the validation branch run as intended for
+// these input-level checks.
 const createTestApp = () => {
   const app = express()
   app.use(express.json())
-  
-  // Mock authentication middleware for protected routes
-  app.use((req, res, next) => {
-    req.user = {
-      userId: 'user-123',
-      id: 'user-123',
-      role: { name: 'admin' }
-    } as any
-    next()
-  })
-  
+
   // Add routes
   app.post('/signup-analytics/click', trackSignupClick)
   app.get('/signup-analytics/data', getSignupAnalyticsData)
   app.get('/signup-analytics/test-ip/:ip', testIPCountry)
-  
+
   return app
 }
 

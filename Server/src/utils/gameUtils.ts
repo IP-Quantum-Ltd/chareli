@@ -1,5 +1,32 @@
-import { Game } from '../entities/Games';
+import { Game, GameStatus, GameProcessingStatus } from '../entities/Games';
+import { RoleType } from '../entities/Role';
 import logger from './logger';
+
+/**
+ * TypeORM `where` fragment describing a publicly visible game: published AND
+ * fully processed. Spread this into find options for DB queries. This is the
+ * single source of truth — the runtime predicate below derives from it.
+ */
+export const publiclyVisibleGameFilter = {
+  status: GameStatus.ACTIVE,
+  processingStatus: GameProcessingStatus.COMPLETED,
+} as const;
+
+/**
+ * Runtime equivalent of publiclyVisibleGameFilter. Used by API list filters,
+ * the JSON CDN incremental updater, and any other code gating public access.
+ */
+export const isGamePubliclyVisible = (
+  game: Pick<Game, 'status' | 'processingStatus'>
+): boolean =>
+  game.status === publiclyVisibleGameFilter.status &&
+  game.processingStatus === publiclyVisibleGameFilter.processingStatus;
+
+/**
+ * Roles allowed to see draft / still-processing games in admin surfaces.
+ */
+export const canSeeUnpublishedGames = (role?: string | null): boolean =>
+  role === RoleType.ADMIN || role === RoleType.SUPERADMIN;
 
 /**
  * Calculate current like count for a game based on days elapsed and deterministic random increments

@@ -26,7 +26,12 @@ import { cacheService } from '../services/cache.service';
 import { cacheInvalidationService } from '../services/cache-invalidation.service';
 import { redisService } from '../services/redis.service';
 import { multipartUploadHelpers } from '../utils/multipartUpload';
-import { calculateLikeCount } from '../utils/gameUtils';
+import {
+  calculateLikeCount,
+  canSeeUnpublishedGames,
+  isGamePubliclyVisible,
+  publiclyVisibleGameFilter,
+} from '../utils/gameUtils';
 // import { processImage } from '../services/file.service';
 
 import { GameProposal, GameProposalStatus, GameProposalType } from '../entities/GameProposal';
@@ -44,16 +49,6 @@ const categoryRepository = AppDataSource.getRepository(Category);
 const fileRepository = AppDataSource.getRepository(File);
 const gameLikeRepository = AppDataSource.getRepository(GameLike);
 const gameProposalRepository = AppDataSource.getRepository(GameProposal);
-
-// Non-admin users can only see games that are published (status=active) AND
-// fully processed. Admin and superadmin see everything, so the Game Library
-// can show drafts and processing games.
-const canSeeUnpublished = (role?: string | null): boolean =>
-  role === RoleType.ADMIN || role === RoleType.SUPERADMIN;
-
-const isGamePubliclyVisible = (game: Game): boolean =>
-  game.status === GameStatus.ACTIVE &&
-  game.processingStatus === GameProcessingStatus.COMPLETED;
 
 // Helper function to get the maximum position
 const getMaxPosition = async (): Promise<number> => {
@@ -250,7 +245,7 @@ export const getAllGames = async (
 
     // Non-admins see only published + processed games, regardless of the
     // status query param. Admins can filter freely via ?status= below.
-    const isAdminViewer = canSeeUnpublished(req.user?.role);
+    const isAdminViewer = canSeeUnpublishedGames(req.user?.role);
     if (!isAdminViewer) {
       queryBuilder
         .andWhere('game.status = :publicStatus', {
@@ -304,8 +299,7 @@ export const getAllGames = async (
           const games = await gameRepository.find({
             where: {
               id: In(gameIds),
-              status: GameStatus.ACTIVE,
-              processingStatus: GameProcessingStatus.COMPLETED,
+              ...publiclyVisibleGameFilter,
             },
             relations: ['category', 'thumbnailFile', 'gameFile', 'createdBy'],
             order: { position: 'ASC' }, // Order by position
@@ -774,7 +768,7 @@ export const getGameById = async (
 
     // 404 drafts / processing games for non-admins. Do not distinguish from
     // "not found" - we don't want to leak that the slug exists.
-    if (!canSeeUnpublished(req.user?.role) && !isGamePubliclyVisible(game)) {
+    if (!canSeeUnpublishedGames(req.user?.role) && !isGamePubliclyVisible(game)) {
       return next(
         ApiError.notFound(`Game with ${isUUID ? 'id' : 'slug'} ${id} not found`)
       );
@@ -1962,7 +1956,7 @@ export const getGameByPosition = async (
       );
     }
 
-    if (!canSeeUnpublished(req.user?.role) && !isGamePubliclyVisible(game)) {
+    if (!canSeeUnpublishedGames(req.user?.role) && !isGamePubliclyVisible(game)) {
       return next(
         ApiError.notFound(`No game found at position ${positionNumber}`)
       );
