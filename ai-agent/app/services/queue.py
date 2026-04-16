@@ -1,49 +1,41 @@
 """
-In-memory job queue with proposal-id deduplication.
-Prevents double-processing when webhook and cron both fire for the same proposal.
-
-Day 3: swap this for a Redis-backed queue if needed for multi-worker deployments.
+Redis-backed job queue using Arq.
+Prevents double-processing and ensures job persistence.
 """
 
-import asyncio
 import logging
-from typing import Callable, Awaitable
+from typing import Optional
+from arq import create_pool
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-_queued: set[str] = set()
-_queue: asyncio.Queue[str] = asyncio.Queue()
+# Singleton pool instance
+_redis_pool = None
 
-
-def is_queued(proposal_id: str) -> bool:
-    return proposal_id in _queued
-
+async def get_redis_pool():
+    global _redis_pool
+    if _redis_pool is None:
+        _redis_pool = await create_pool(settings.ARQ_REDIS_SETTINGS)
+    return _redis_pool
 
 async def enqueue(proposal_id: str) -> bool:
     """
-    Add a proposal to the queue. Returns False if already queued (dedup).
+    Add a proposal to the Arq queue. 
+    Arq handles job IDs for deduplication if we provide a unique job_id.
     """
-    if proposal_id in _queued:
-        logger.debug(f"[queue] Proposal {proposal_id} already queued — skipping")
+    try:
+        pool = await get_redis_pool()
+        # Use proposal_id as job_id for automatic deduplication by Arq
+        await pool.enqueue_job("run_pipeline_task", proposal_id, _job_id=f"pipeline_{proposal_id}")
+        logger.info(f"[queue] Enqueued pipeline task for {proposal_id}")
+        return True
+    except Exception as e:
+        logger.error(f"[queue] Failed to enqueue {proposal_id}: {e}")
         return False
-    _queued.add(proposal_id)
-    await _queue.put(proposal_id)
-    logger.info(f"[queue] Enqueued proposal {proposal_id}")
-    return True
 
-
-async def run_worker(handler: Callable[[str], Awaitable[None]]) -> None:
-    """
-    Continuously pulls proposal IDs from the queue and calls handler.
-    Runs as a background asyncio task.
-    """
-    logger.info("[queue] Worker started")
-    while True:
-        proposal_id = await _queue.get()
-        try:
-            await handler(proposal_id)
-        except Exception as exc:
-            logger.error(f"[queue] Error processing proposal {proposal_id}: {exc}", exc_info=True)
-        finally:
-            _queued.discard(proposal_id)
-            _queue.task_done()
+async def close_queue():
+    global _redis_pool
+    if _redis_pool:
+        await _redis_pool.close()
+        _redis_pool = None
