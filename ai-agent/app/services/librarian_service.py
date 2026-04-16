@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import List, Optional
 from sqlalchemy.future import select
 from sqlmodel.ext.asyncio.session import AsyncSession
-from tavily import TavilyClient
+from tavily import AsyncTavilyClient
 
 from app.models.database import Game
 from app.db.mongo import get_mongodb
@@ -23,8 +23,8 @@ class LibrarianService(BaseService, BaseAIClient):
         super().__init__()
         self.pg_session = pg_session
         self.mongo_collection = None
-        # Use simple TavilyClient (standard for tavily-python 0.3.x)
-        self.tavily_client = TavilyClient(api_key=settings.TAVILY_API_KEY)
+        # Native Async Tavily Client
+        self.tavily_client = AsyncTavilyClient(api_key=settings.TAVILY_API_KEY)
 
     async def _init_mongo(self):
         """Initialize MongoDB collection reference for knowledge chunks."""
@@ -67,16 +67,12 @@ class LibrarianService(BaseService, BaseAIClient):
         self.logger.info(f"Executing Tavily search (Sync -> Async wrapper): '{search_query}'")
         
         try:
-            # Tavily 0.3.3 search is synchronous, we run it in executor to avoid blocking
-            loop = asyncio.get_event_loop()
-            tavily_response = await loop.run_in_executor(
-                None, 
-                lambda: self.tavily_client.search(
-                    query=search_query,
-                    search_depth=depth.value, 
-                    include_raw_content=True,
-                    max_results=3
-                )
+            # Using the native AsyncTavilyClient
+            tavily_response = await self.tavily_client.search(
+                query=search_query,
+                search_depth=depth.value, 
+                include_raw_content=True,
+                max_results=3
             )
         except Exception as e:
             self.logger.error(f"Tavily search failed: {e}")
