@@ -1,9 +1,12 @@
 import { AppDataSource } from '../config/database';
 import { redisService } from '../services/redis.service';
 import { cacheService } from '../services/cache.service';
-import { Game, GameStatus, GameProcessingStatus } from '../entities/Games';
+import { Game } from '../entities/Games';
 import { GameLike } from '../entities/GameLike';
-import { calculateLikeCount } from '../utils/gameUtils';
+import {
+  calculateLikeCount,
+  publiclyVisibleGameFilter,
+} from '../utils/gameUtils';
 import logger from '../utils/logger';
 
 const gameRepository = AppDataSource.getRepository(Game);
@@ -35,10 +38,7 @@ async function warmCache() {
     // 1. Warm recently added games
     logger.info('[Cache Warming] Loading recently added games...');
     const recentGames = await gameRepository.find({
-      where: {
-        status: GameStatus.ACTIVE,
-        processingStatus: GameProcessingStatus.COMPLETED,
-      },
+      where: { ...publiclyVisibleGameFilter },
       relations: ['category', 'thumbnailFile', 'gameFile'],
       order: { createdAt: 'DESC' },
       take: 20,
@@ -48,10 +48,7 @@ async function warmCache() {
     // 2. Warm popular games
     logger.info('[Cache Warming] Loading popular games...');
     const popularGames = await gameRepository.find({
-      where: {
-        status: GameStatus.ACTIVE,
-        processingStatus: GameProcessingStatus.COMPLETED,
-      },
+      where: { ...publiclyVisibleGameFilter },
       relations: ['category', 'thumbnailFile', 'gameFile'],
       order: { position: 'ASC' },
       take: 20,

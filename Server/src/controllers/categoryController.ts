@@ -1,13 +1,17 @@
 import { Request, Response, NextFunction } from 'express';
 import { AppDataSource } from '../config/database';
 import { Category } from '../entities/Category';
-import { Game, GameStatus, GameProcessingStatus } from '../entities/Games';
+import { Game } from '../entities/Games';
 import { ApiError } from '../middlewares/errorHandler';
 import { File } from '../entities/Files';
 import { storageService } from '../services/storage.service';
 import { cacheService } from '../services/cache.service';
 import { cacheInvalidationService } from '../services/cache-invalidation.service';
 import { AdminExclusionService } from '../services/adminExclusion.service';
+import {
+  isGamePubliclyVisible,
+  publiclyVisibleGameFilter,
+} from '../utils/gameUtils';
 import logger from '../utils/logger';
 
 // Extend File type to include url
@@ -239,8 +243,7 @@ export const getAllCategories = async (
         const gameCount = await AppDataSource.getRepository(Game).count({
           where: {
             categoryId: category.id,
-            status: GameStatus.ACTIVE,
-            processingStatus: GameProcessingStatus.COMPLETED,
+            ...publiclyVisibleGameFilter,
           },
         });
 
@@ -386,11 +389,7 @@ export const getCategoryById = async (
     // This endpoint is mounted pre-auth in categoryRoutes (GET /categories/:id),
     // so we can't distinguish admin callers here. Always filter to the public
     // view; admins needing drafts use the games list endpoint with ?categoryId.
-    category.games = category.games.filter(
-      (g) =>
-        g.status === GameStatus.ACTIVE &&
-        g.processingStatus === GameProcessingStatus.COMPLETED
-    );
+    category.games = category.games.filter(isGamePubliclyVisible);
 
     // Get analytics data for all games in this category
     const nonTrackedRoles = AdminExclusionService.getNonTrackedRoles();
