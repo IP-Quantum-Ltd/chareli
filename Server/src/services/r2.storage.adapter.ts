@@ -341,6 +341,35 @@ export class R2StorageAdapter implements IStorageService {
   }
 
   /**
+   * Get ETag + cache-control + content-type in a single HEAD request. Used by
+   * uploadIfChanged so we can detect when content is unchanged but the header
+   * policy has changed (e.g. we shipped a new Cache-Control and want it to
+   * propagate to already-stable files on the next write-cycle).
+   */
+  async getObjectHeaders(
+    key: string
+  ): Promise<{ etag: string | null; cacheControl: string | null; contentType: string | null }> {
+    try {
+      const response = await this.s3Client.send(
+        new HeadObjectCommand({ Bucket: this.bucket, Key: key })
+      );
+      return {
+        etag: response.ETag?.replace(/"/g, '') || null,
+        cacheControl: response.CacheControl || null,
+        contentType: response.ContentType || null,
+      };
+    } catch (error: any) {
+      if (error.name === 'NotFound' || error.$metadata?.httpStatusCode === 404) {
+        return { etag: null, cacheControl: null, contentType: null };
+      }
+      logger.error('Error getting object headers from R2:', { error, key });
+      throw new Error(
+        `Failed to get object headers: ${(error as Error).message}`
+      );
+    }
+  }
+
+  /**
    * Calculate MD5 hash of content (matches R2's ETag for non-multipart uploads)
    */
   private calculateMD5(content: Buffer): string {
@@ -369,15 +398,25 @@ export class R2StorageAdapter implements IStorageService {
       // Calculate MD5 of new content
       const newETag = this.calculateMD5(body);
 
-      // Check existing ETag via HEAD request (Class B operation - $0.40/million)
-      const existingETag = await this.getObjectETag(key);
+      // One HEAD round-trip gives us everything we need to decide: ETag,
+      // existing Cache-Control, existing Content-Type. Class B operation.
+      const existing = await this.getObjectHeaders(key);
 
-      // Compare ETags
-      if (existingETag && existingETag === newETag) {
-        // Content unchanged - skip upload
+      // Skip only when content AND response headers match what's already
+      // live. If the Cache-Control or Content-Type policy changed in code
+      // (e.g. we shipped a new cache header), we force a re-upload even for
+      // byte-for-byte identical content so the new header reaches R2 / the
+      // edge / browsers.
+      const contentMatches = existing.etag !== null && existing.etag === newETag;
+      const cacheControlMatches =
+        cacheControl === undefined || existing.cacheControl === cacheControl;
+      const contentTypeMatches =
+        existing.contentType === null || existing.contentType === contentType;
+
+      if (contentMatches && cacheControlMatches && contentTypeMatches) {
         const duration = Date.now() - startTime;
         logger.info(
-          `[OPTIMIZATION] Skipped upload (content unchanged) in ${duration}ms: ${key}, ETag: ${newETag}`
+          `[OPTIMIZATION] Skipped upload (content + headers unchanged) in ${duration}ms: ${key}, ETag: ${newETag}`
         );
         return {
           key,
@@ -385,6 +424,12 @@ export class R2StorageAdapter implements IStorageService {
           uploaded: false,
           skipped: true,
         };
+      }
+
+      if (contentMatches && (!cacheControlMatches || !contentTypeMatches)) {
+        logger.info(
+          `[OPTIMIZATION] Header policy changed for ${key} (cacheControl: "${existing.cacheControl}" → "${cacheControl}", contentType: "${existing.contentType}" → "${contentType}") — forcing re-upload`
+        );
       }
 
       // Content changed or doesn't exist - proceed with upload

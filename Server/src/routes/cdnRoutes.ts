@@ -38,9 +38,9 @@ const router = Router();
  *                       type: boolean
  *                       description: Whether CDN is enabled
  */
-router.get('/version', (req: Request, res: Response) => {
+router.get('/version', async (req: Request, res: Response) => {
   try {
-    const version = jsonCdnService.getVersion();
+    const version = await jsonCdnService.getVersion();
     const enabled = jsonCdnService.isEnabled();
 
     res.status(200).json({
