@@ -1,7 +1,7 @@
 import logging
 import asyncio
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Dict
 from sqlalchemy.future import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 from tavily import TavilyClient
@@ -10,13 +10,14 @@ from app.models.database import Game
 from app.db.mongo import get_mongodb
 from app.config import settings
 from app.services.base import BaseAIClient, BaseService
+from app.models.schemas import KnowledgeChunk
 from app.models.enums import SearchDepth
 
 class LibrarianService(BaseService, BaseAIClient):
     """
     Stage 2 (The Librarian): Fetches deterministic metadata from PG, explores
     deep content across the web using Tavily (Victoria's Layer), 
-    chunks it, and upserts to MongoDB Atlas.
+    chunks it, and upserts to MongoDB Atlas following a 3-step flow.
     """
     
     def __init__(self, pg_session: AsyncSession):
@@ -32,7 +33,7 @@ class LibrarianService(BaseService, BaseAIClient):
             mongodb = await get_mongodb()
             self.mongo_collection = mongodb["game_knowledge_chunks"]
 
-    def _chunk_text(self, text: str, chunk_size: int = 1500, overlap: int = 200) -> List[str]:
+    def _chunk_text(self, text: str, chunk_size: int = 2000, overlap: int = 300) -> List[str]:
         """Splits text into character chunks with overlap for semantic retention."""
         if not text:
             return []
@@ -46,13 +47,14 @@ class LibrarianService(BaseService, BaseAIClient):
         
         return chunks
 
-    async def enrich_game(self, pg_id: str, depth: SearchDepth = SearchDepth.ADVANCED) -> Optional[int]:
+    async def enrich_game(self, pg_id: str, seo_blueprint: Optional[Dict] = None, depth: SearchDepth = SearchDepth.ADVANCED, persist: bool = True) -> Optional[int]:
         """
-        Deep enrichment loop for a single game.
+        Deep enrichment loop for a single game following the 3-step flow:
+        1. Websearch -> 2. Pydantic Validation -> 3. MongoDB Upsert (optional)
         """
-        self.logger.info(f"Librarian started for PG ID: {pg_id} with depth={depth}")
+        self.logger.info(f"Librarian started for PG ID: {pg_id} (persist={persist})")
         
-        # 1. Internal Query (Postgres)
+        # 0. Internal Query (Postgres)
         result = await self.pg_session.execute(select(Game).where(Game.id == pg_id))
         game = result.scalars().first()
         
@@ -62,9 +64,12 @@ class LibrarianService(BaseService, BaseAIClient):
             
         self.logger.info(f"Retrieved game from PG: {game.title}")
         
-        # 2. External Query (Tavily)
-        search_query = f"{game.title} game patch notes new update features guide"
-        self.logger.info(f"Executing Tavily search (Sync -> Async wrapper): '{search_query}'")
+        # 1. Websearch (Tavily)
+        search_query = f"{game.title} game official patch notes features and gameplay guide"
+        if seo_blueprint and seo_blueprint.get("required_entities"):
+            search_query += " " + " ".join(seo_blueprint["required_entities"][:3])
+
+        self.logger.info(f"Step 1: Executing Tavily search: '{search_query}'")
         
         try:
             # Tavily 0.3.3 search is synchronous, we run it in executor to avoid blocking
@@ -75,7 +80,7 @@ class LibrarianService(BaseService, BaseAIClient):
                     query=search_query,
                     search_depth=depth.value, 
                     include_raw_content=True,
-                    max_results=3
+                    max_results=3 # Adjusted back to 3
                 )
             )
         except Exception as e:
@@ -97,32 +102,40 @@ class LibrarianService(BaseService, BaseAIClient):
             self.logger.warning("Combined Tavily raw content is mostly empty.")
             return None
             
-        self.logger.info(f"Harvested {len(combined_text)} characters of raw content.")
+        self.logger.info(f"Step 1 Complete: Harvested {len(combined_text)} characters of raw content.")
         
-        # 3. Chunking & Storage initialization
+        # 2. Pydantic & Chunking
         chunks = self._chunk_text(combined_text)
         await self._init_mongo()
         
         # Clean previous chunks to prevent duplication
         await self.mongo_collection.delete_many({"pg_id": pg_id})
         
-        # 4. Embedding & Upsert
+        # 3. Embedding & MongoDB Upsert
         inserted_chunks = 0
         for idx, chunk_str in enumerate(chunks):
             try:
                 embedding = await self.generate_embedding(chunk_str)
-                document = {
-                    "pg_id": pg_id,
-                    "title": game.title,
-                    "chunk_index": idx,
-                    "content": chunk_str,
-                    "embedding": embedding,
-                    "timestamp": datetime.utcnow()
-                }
-                await self.mongo_collection.insert_one(document)
-                inserted_chunks += 1
+                
+                # Step 2: Pydantic Validation
+                chunk_data = KnowledgeChunk(
+                    pg_id=pg_id,
+                    title=game.title,
+                    chunk_index=idx,
+                    content=chunk_str,
+                    embedding=embedding,
+                    timestamp=datetime.utcnow()
+                )
+                
+                # Step 3: MongoDB Upsert
+                if persist:
+                    await self.mongo_collection.insert_one(chunk_data.model_dump())
+                    inserted_chunks += 1
+                else:
+                    self.logger.debug(f"[Trial] Would have inserted chunk {idx}")
+                    inserted_chunks += 1
             except Exception as e:
                 self.logger.error(f"Failed to embed/upsert chunk {idx}: {e}")
                 
-        self.logger.info(f"Successfully digested {inserted_chunks} chunks for '{game.title}'.")
+        self.logger.info(f"Step 3 Complete: Successfully saved {inserted_chunks} chunks for '{game.title}' to MongoDB.")
         return inserted_chunks

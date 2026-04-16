@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     # OpenAI
     OPENAI_API_KEY: str
     AI_PROVIDER: str = "openai"  # "openai" | "claude" — toggle without code changes
+    PRIMARY_LLM_MODEL: str = "gpt-4o"
+    SECONDARY_LLM_MODEL: str = "gpt-4o-mini"
     EMBEDDING_MODEL: str = "text-embedding-3-large"
 
     # Web Search

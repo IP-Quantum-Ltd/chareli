@@ -34,6 +34,32 @@ class EnrichedData(BaseModel):
     discovered_faq: list[FaqItem] = []
 
 
+class GroundTruth(BaseModel):
+    developer: Optional[str] = None
+    release_date: Optional[str] = None
+    genres: list[str] = []
+    platforms: list[str] = []
+
+
+class SEOBlueprint(BaseModel):
+    keyword: str
+    intent: Literal["informational", "transactional"]
+    reasoning: str
+    required_entities: list[str]
+    heading_suggestions: list[str]
+    suggested_faqs: list[FaqItem]
+    ground_truth: Optional[GroundTruth] = None
+
+
+class KnowledgeChunk(BaseModel):
+    pg_id: str
+    title: str
+    chunk_index: int
+    content: str
+    embedding: list[float]
+    timestamp: datetime
+
+
 class AiReviewResult(BaseModel):
     recommendation: Literal["approved", "manual_review", "declined"]
     reasoning: str

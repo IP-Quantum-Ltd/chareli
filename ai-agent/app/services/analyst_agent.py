@@ -67,6 +67,7 @@ class AnalystAgent(BaseService, BaseAIClient):
         2. Identify 'Required Entities' (topics/keywords Google expects for this intent based on top results).
         3. Extract observed competitor heading structures (H2/H3 ideas from titles/snippets).
         4. Suggest common FAQs based on the 'people_also_ask' data.
+        5. Extract 'Ground Truth' facts from the knowledge graph or results if available (Developer, Release Date, Genres, Platforms).
         
         Return ONLY valid JSON in the following format:
         {{
@@ -76,7 +77,13 @@ class AnalystAgent(BaseService, BaseAIClient):
             "heading_suggestions": ["str", "str"],
             "suggested_faqs": [
                 {{"question": "str", "answer": "str"}}
-            ]
+            ],
+            "ground_truth": {{
+                "developer": "string or null",
+                "release_date": "string or null",
+                "genres": ["str"],
+                "platforms": ["str"]
+            }}
         }}
         """
 
@@ -86,16 +93,23 @@ class AnalystAgent(BaseService, BaseAIClient):
         if not self.api_key or "sk-" not in self.api_key or "dummy" in self.api_key.lower():
             self.logger.warning("Using mock SEO analysis due to dummy API key.")
             return {
+                "keyword": keyword,
                 "intent": "informational",
                 "reasoning": "This is a mock response because a dummy API key was detected.",
                 "required_entities": ["Arcade Games", "Retro Gaming", "Boxing", "Multiplayer"],
                 "heading_suggestions": ["History of Arcade Boxing", "Top 10 Retro Hits", "How to Play"],
-                "suggested_faqs": [{"question": "What is the best boxing game?", "answer": "Mike Tyson's Punch-Out!!"}]
+                "suggested_faqs": [{"question": "What is the boxing arcade game called?", "answer": "Mike Tyson's Punch-Out!!"}],
+                "ground_truth": {
+                    "developer": "Nintendo",
+                    "release_date": "1984",
+                    "genres": ["Sports", "Boxing"],
+                    "platforms": ["Arcade", "NES"]
+                }
             }
 
         try:
             llm_response = await self.client.chat.completions.create(
-                model="gpt-4o",
+                model=settings.PRIMARY_LLM_MODEL,
                 messages=[
                     {"role": "system", "content": "You are a professional SEO analyst bot. Return JSON only."},
                     {"role": "user", "content": prompt}
@@ -104,6 +118,7 @@ class AnalystAgent(BaseService, BaseAIClient):
             )
             
             analysis_result = json.loads(llm_response.choices[0].message.content)
+            analysis_result["keyword"] = keyword
             self.logger.info(f"Analysis complete. Intent: {analysis_result.get('intent')}")
             return analysis_result
             
