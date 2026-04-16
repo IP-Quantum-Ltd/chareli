@@ -12,7 +12,13 @@ interface CDNConfig {
   timeout: number;
   version: number | null;
   etags: Record<string, string>;
+  pollIntervalMs: number;
 }
+
+type VersionChangeListener = (args: {
+  previous: number | null;
+  current: number;
+}) => void;
 
 interface FetchOptions {
   cdnPath: string;
@@ -47,6 +53,8 @@ class CDNFetchService {
   private versionFetchPromise: Promise<void> | null = null;
   private etagCache: Record<string, string> = {}; // In-memory ETag cache
   private cachedData: Record<string, any> = {}; // Cache for 304 responses
+  private pollTimer: ReturnType<typeof setInterval> | null = null;
+  private versionListeners = new Set<VersionChangeListener>();
   private metrics = {
     cdnHits: 0,
     cdnHits304: 0, // 304 Not Modified responses
@@ -59,6 +67,12 @@ class CDNFetchService {
       enabled: import.meta.env.VITE_CDN_ENABLED === 'true',
       baseUrl: import.meta.env.VITE_CDN_BASE_URL || '',
       timeout: parseInt(import.meta.env.VITE_CDN_TIMEOUT || '3000', 10),
+      // Poll /api/cdn/version at this cadence to detect server-side
+      // publish/unpublish/upload events. 0 disables polling.
+      pollIntervalMs: parseInt(
+        import.meta.env.VITE_CDN_POLL_INTERVAL_MS || '30000',
+        10
+      ),
       version: null,
       etags: {},
     };
@@ -71,10 +85,65 @@ class CDNFetchService {
         enabled: this.config.enabled,
         baseUrl: this.config.baseUrl,
         timeout: this.config.timeout,
+        pollIntervalMs: this.config.pollIntervalMs,
       });
 
       // Fetch initial version and ETags (deferred, non-blocking)
       this.versionFetchPromise = this.fetchVersionAndETags();
+
+      // Keep the version fresh so long-lived tabs see publish/unpublish
+      // events without a manual refresh.
+      this.startVersionPolling();
+      this.attachVisibilityRefresh();
+    }
+  }
+
+  /**
+   * Subscribe to CDN version changes. Listener fires whenever the polled
+   * version differs from the one we currently have cached. Use this to
+   * invalidate any react-query caches whose upstream JSON may have changed.
+   * Returns an unsubscribe function.
+   */
+  onVersionChange(listener: VersionChangeListener): () => void {
+    this.versionListeners.add(listener);
+    return () => {
+      this.versionListeners.delete(listener);
+    };
+  }
+
+  private startVersionPolling(): void {
+    if (this.pollTimer || this.config.pollIntervalMs <= 0) return;
+    this.pollTimer = setInterval(() => {
+      // Skip polls when the tab is hidden — visibilitychange fires on focus.
+      if (typeof document !== 'undefined' && document.hidden) return;
+      void this.pollVersion();
+    }, this.config.pollIntervalMs);
+  }
+
+  private attachVisibilityRefresh(): void {
+    if (typeof document === 'undefined') return;
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) {
+        void this.pollVersion();
+      }
+    });
+  }
+
+  private async pollVersion(): Promise<void> {
+    const previous = this.config.version;
+    await this.fetchVersion();
+    const current = this.config.version;
+    if (current !== null && current !== previous) {
+      console.log('[CDN] Version changed:', previous, '→', current);
+      // ETag map may have new entries too; refresh in parallel.
+      await this.fetchETags().catch(() => undefined);
+      this.versionListeners.forEach((listener) => {
+        try {
+          listener({ previous, current });
+        } catch (err) {
+          console.warn('[CDN] Version change listener threw:', err);
+        }
+      });
     }
   }
 

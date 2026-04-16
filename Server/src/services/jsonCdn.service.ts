@@ -86,6 +86,10 @@ class JsonCdnService {
       this.metrics.generationCount++;
       this.metrics.lastGenerationDuration = duration;
 
+      // Bump version so Client cache-buster (?v=) changes, forcing browsers
+      // past their max-age window to pick up the new content on reload.
+      this.lastVersion = Date.now();
+
       logger.info(`JSON CDN generation completed in ${duration}ms`);
     } catch (error) {
       this.metrics.failureCount++;
@@ -867,7 +871,12 @@ Disallow: /
           generatedAt: new Date().toISOString(),
           size: buffer.length.toString(),
         },
-        'public, max-age=300, must-revalidate' // 5 minutes, allows conditional requests
+        // Edge (Cloudflare) caches for 5 minutes via s-maxage; browsers set
+        // max-age=0 so they ALWAYS revalidate with Cloudflare. We bump
+        // lastVersion on every write, so the Client's `?v=` cache-buster
+        // also changes — but this header is a belt-and-suspenders guarantee
+        // that browsers won't serve stale data from their own HTTP cache.
+        'public, s-maxage=300, max-age=0, must-revalidate'
       );
 
       // Store ETag in Redis for 1 hour (regardless of whether uploaded or skipped)
@@ -1063,6 +1072,11 @@ Disallow: /
         'games_popular.json',
         'sitemap.xml',
       ]);
+
+      // Bump version so the Client's `?v=` cache-buster changes. Without
+      // this, browsers serve stale CDN JSON from their HTTP cache for up to
+      // max-age seconds even though R2 and the edge have fresh content.
+      this.lastVersion = Date.now();
 
       logger.info(`✅ [BATCH UPDATE] Completed ${gameIds.length} games`);
     } catch (error) {
