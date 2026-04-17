@@ -18,7 +18,13 @@ class ArchitectAgent(BaseService, BaseAIClient):
         self.logger.info(f"Architect designing outline for: {game_title}")
 
         prompt = f"""
-        You are a Content Architect. Your goal is to design a high-ranking article outline for the game '{game_title}'.
+        You are a Content Architect for ArcadeBox, a hyper-casual browser gaming platform. 
+        Your goal is to design a fun, high-ranking article outline for the arcade game '{game_title}'.
+        
+        CRITICAL CONSTRAINT: 
+        This is a simple ARCADE/BROWSER game. Do NOT write about realistic physics, professional sports conditioning, 
+        or complex simulation mechanics unless the SEO intel specifically confirms it is a 3D sim.
+        Keep the structure light, fun, and focused on quick tips.
         
         SEO Intelligence:
         {json.dumps(seo_intel, indent=2)}

@@ -37,7 +37,7 @@ class BaseAIClient:
             logger.warning(f"Embedding generation failed ({e}). Returning zero-vector fallback.")
             return [0.0] * dimension
 
-    async def chat_completion(self, messages: List[Dict[str, str]], response_format: Optional[Dict] = None, fallback_data: Optional[Dict] = None) -> Dict:
+    async def chat_completion(self, messages: List[Dict[str, str]], response_format: Optional[Dict] = None, fallback_data: Optional[Dict] = None):
         """Helper for Chat Completions (Native mode)."""
 
         try:
@@ -46,8 +46,14 @@ class BaseAIClient:
                 messages=messages,
                 response_format=response_format
             )
-            import json
-            return json.loads(response.choices[0].message.content)
+            content = response.choices[0].message.content
+            
+            # Only parse if JSON was requested
+            if response_format and response_format.get("type") == "json_object":
+                import json
+                return json.loads(content)
+            
+            return content
         except Exception as e:
             logger.error(f"Chat completion failed: {e}")
             raise

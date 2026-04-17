@@ -33,18 +33,32 @@ class LibrarianService(BaseService, BaseAIClient):
             self.mongo_collection = mongodb["game_knowledge_chunks"]
 
     def _chunk_text(self, text: str, chunk_size: int = 1500, overlap: int = 200) -> List[str]:
-        """Splits text into character chunks with overlap for semantic retention."""
+        """Splits text into character chunks with quality filtering."""
         if not text:
             return []
         
-        chunks = []
+        raw_chunks = []
         start = 0
         while start < len(text):
             end = start + chunk_size
-            chunks.append(text[start:end])
+            raw_chunks.append(text[start:end])
             start += chunk_size - overlap
         
-        return chunks
+        # QUALITY FILTER: Remove chunks that are likely noise
+        clean_chunks = []
+        for c in raw_chunks:
+            # 1. Skip if too short
+            if len(c.strip()) < 200:
+                continue
+            
+            # 2. Skip if high density of numbers/symbols (likely a data table or version list)
+            digit_count = sum(1 for char in c if char.isdigit())
+            if digit_count / len(c) > 0.3: # More than 30% numbers? Probably noise.
+                continue
+                
+            clean_chunks.append(c.strip())
+        
+        return clean_chunks
 
     async def enrich_game(self, pg_id: str, depth: SearchDepth = SearchDepth.ADVANCED) -> Optional[int]:
         """
@@ -62,9 +76,9 @@ class LibrarianService(BaseService, BaseAIClient):
             
         self.logger.info(f"Retrieved game from PG: {game.title}")
         
-        # 2. External Query (Tavily)
-        search_query = f"{game.title} game patch notes new update features guide"
-        self.logger.info(f"Executing Tavily search (Sync -> Async wrapper): '{search_query}'")
+        # 2. External Query (Tavily) with Arcade Focus
+        search_query = f"{game.title} arcade browser game guide walkthrough tricks"
+        self.logger.info(f"Executing Tavily search with Arcade Context: '{search_query}'")
         
         try:
             # Tavily 0.3.3 search is synchronous, we run it in executor to avoid blocking

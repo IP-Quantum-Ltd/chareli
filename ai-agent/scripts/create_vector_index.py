@@ -16,7 +16,7 @@ async def create_vector_search_index():
 
     # The index definition using the Cosine Rule
     index_definition = {
-        "name": "vector_index",
+        "name": "vector_index_v2",
         "type": "vectorSearch",
         "definition": {
             "fields": [
@@ -25,13 +25,17 @@ async def create_vector_search_index():
                     "numDimensions": 3072,
                     "path": "embedding",
                     "similarity": "cosine"
+                },
+                {
+                    "type": "filter",
+                    "path": "pg_id"
                 }
             ]
         }
     }
 
     try:
-        logger.info("Requesting creation of Vector Search index 'vector_index'...")
+        logger.info("Requesting creation of Vector Search index 'vector_index_v2'...")
         # Note: create_search_index is available in modern motor/pymongo versions
         result = await collection.create_search_index(model=index_definition)
         logger.info(f"✅ Index creation request successful! Name: {result}")

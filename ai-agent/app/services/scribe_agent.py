@@ -30,9 +30,9 @@ class ScribeAgent(BaseService, BaseAIClient):
             
             # 2. Write the section content
             prompt = f"""
-            Task: Write a highly engaging, SEO-optimized section for a game guide.
+            Task: Write a highly engaging, SEO-optimized section for a game guide on the **ArcadeBox** platform.
             
-            Game: {game_title}
+            Game: {game_title} (Arcade Browser Game)
             Section Heading: {heading}
             Objective: {section.get('objective')}
             
@@ -40,8 +40,10 @@ class ScribeAgent(BaseService, BaseAIClient):
             {context_text if facts else "No specific facts found, write based on general knowledge."}
             
             Guidelines:
+            - Platform: ArcadeBox (Hyper-casual browser gaming).
+            - Tone: Fun, energetic, and accessible for quick play.
             - Write in Markdown.
-            - Focus on 'Saturation' (use common terms users search for).
+            - Focus on 'Saturation' (use keywords players actually type, like 'unblocked', 'tips', 'highscore').
             - Keep it concise but helpful.
             
             Return ONLY the body text for this section (no heading).
@@ -74,7 +76,7 @@ class ScribeAgent(BaseService, BaseAIClient):
             pipeline = [
                 {
                     "$vectorSearch": {
-                        "index": "vector_index", # Name of your Atlas Vector Index
+                        "index": "vector_index_v2", # Name of your Atlas Vector Index
                         "path": "embedding",
                         "queryVector": query_embedding,
                         "numCandidates": 10,
