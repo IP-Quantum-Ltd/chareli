@@ -2,7 +2,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Header
 from app.config import settings
 from app.models.schemas import ProposalCreatedPayload
-from app.services import queue
+from app.services import task_queue as queue
 
 logger = logging.getLogger(__name__)
 

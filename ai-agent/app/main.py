@@ -7,7 +7,7 @@ from fastapi import FastAPI
 
 from app.config import settings
 from app.routers import health, webhook
-from app.services import queue, agent
+from app.services import task_queue as queue, agent
 from app.services.arcade_client import get_pending_proposals
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s — %(message)s")
