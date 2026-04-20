@@ -93,8 +93,11 @@ async def capture_external_page(url: str, output_path: str):
         page = await context.new_page()
 
         try:
-            # Set a generous timeout for potentially heavy gaming sites
-            await page.goto(url, wait_until="networkidle", timeout=30000)
+            # Switch to domcontentloaded to avoid getting stuck on heavy ads/trackers
+            await page.goto(url, wait_until="domcontentloaded", timeout=45000)
+            
+            # Wait a few seconds for the actual game assets to render
+            await page.wait_for_timeout(3000)
             
             # 1. Clear common obstructions (cookie banners, overlays)
             for selector in ["button:contains('Accept')", "button:contains('OK')", "#cookie-accept"]:
@@ -105,9 +108,9 @@ async def capture_external_page(url: str, output_path: str):
                         await page.wait_for_timeout(500)
                 except: continue
 
-            # 2. Capture the viewport
-            await page.screenshot(path=output_path)
-            print(f"External capture saved to {output_path}")
+            # 2. Capture the full page to ensure we catch instructions/controls at the bottom
+            await page.screenshot(path=output_path, full_page=True)
+            print(f"External full-page capture saved to {output_path}")
             return output_path
 
         except Exception as e:

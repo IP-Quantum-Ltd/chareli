@@ -23,33 +23,51 @@ class BaseAIClient:
             logger.error(f"Embedding failed: {e}")
             return [0.0] * 3072
 
-    async def chat_completion(self, messages: List[Dict[str, Any]], response_format: Optional[Dict] = None, fallback_data: Optional[Any] = None):
-        """Helper for Chat Completions with LangChain + LangSmith Tracing."""
+    async def chat_completion(self, messages: List[Dict[str, Any]], response_format: Optional[Dict] = None, fallback_data: Optional[Any] = None, metadata: Optional[Dict] = None):
+        """Helper for Chat Completions with LangChain + Metadata Tracing."""
         try:
-            # Prepare LangChain messages
             from langchain_core.messages import HumanMessage, SystemMessage
             formatted_messages = []
             for m in messages:
-                if m["role"] == "system": formatted_messages.append(SystemMessage(content=m["content"]))
-                else: formatted_messages.append(HumanMessage(content=m["content"]))
+                if m["role"] == "system": 
+                    formatted_messages.append(SystemMessage(content=m["content"]))
+                else: 
+                    # LangChain multimodal format for LangSmith image rendering
+                    formatted_messages.append(HumanMessage(content=m["content"]))
 
-            # Handle JSON mode
+            # Handle JSON mode and Tracing Metadata
+            config = {}
+            if metadata:
+                config = {"metadata": metadata, "tags": list(metadata.values())}
+            
             llm = self.llm
             if response_format and response_format.get("type") == "json_object":
                 llm = self.llm.bind(response_format={"type": "json_object"})
 
-            response = await llm.ainvoke(formatted_messages)
+            response = await llm.ainvoke(formatted_messages, config=config)
             
             # 1. Track Usage & Cost from LangChain metadata
             usage = response.usage_metadata
             self.last_cost = self._calculate_langchain_cost(usage)
             logger.info(f"[Financial Monitor] Step Cost: ${self.last_cost:.4f}")
-
             content = response.content
-            
+
             if response_format and response_format.get("type") == "json_object":
                 import json
-                return json.loads(content)
+                try:
+                    # Robust cleaning for Markdown-wrapped JSON
+                    raw_content = content.strip()
+                    if raw_content.startswith("```"):
+                        # Extract content between backticks
+                        lines = raw_content.splitlines()
+                        if lines[0].startswith("```"): lines = lines[1:]
+                        if lines[-1].startswith("```"): lines = lines[:-1]
+                        raw_content = "\n".join(lines).strip()
+                    
+                    return json.loads(raw_content)
+                except Exception as e:
+                    logger.error(f"JSON parsing failed for content: {content[:100]}... Error: {e}")
+                    return {"error": "JSON parse failed", "raw": content}
             
             return content
         except Exception as e:

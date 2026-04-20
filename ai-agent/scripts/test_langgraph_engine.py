@@ -26,11 +26,27 @@ async def test_full_flow():
         logger.info(f"Cumulative Run Cost: ${final_state['accumulated_cost']:.4f}")
         
         if final_state["status"] == "complete":
-            # Save the article
-            output_file = f"vision_graph_output_{test_id}.md"
+            # Save the raw investigation data for team verification
+            output_file = f"research_findings_{test_id}.json"
+            
+            report_data = {
+                "game_title": game_title,
+                "proposal_id": test_id,
+                "total_cost_usd": final_state["accumulated_cost"],
+                "best_match_url": final_state["investigation"]["best_match"]["url"],
+                "visual_confidence": final_state["investigation"]["best_match"]["confidence_score"],
+                "all_candidates": [
+                    {k: v for k, v in c.items() if k != "screenshot_base64"} 
+                    for c in final_state["investigation"]["all_candidates"]
+                ],
+                "seo_blueprint": final_state["seo_blueprint"]
+            }
+            
             with open(output_file, "w") as f:
-                f.write(final_state["article"])
-            logger.info(f"SEO Draft saved to: {output_file}")
+                json.dump(report_data, f, indent=4)
+                
+            logger.info(f"Team Investigation Report saved to: {output_file}")
+            logger.info(f"Visual Confidence: {report_data['visual_confidence']}%")
         else:
             logger.error(f"Reason for Failure: {final_state.get('error_message', 'Unknown Error')}")
             

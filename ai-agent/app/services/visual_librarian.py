@@ -48,7 +48,7 @@ class VisualLibrarian(BaseService, BaseAIClient):
                 with open(captured_path, "rb") as f:
                     ext_base64 = base64.b64encode(f.read()).decode("utf-8")
                 
-                # 3. Correlation Analysis (GPT-4o Vision)
+                # 3. Correlation Analysis (GPT-4o Vision + Tracing)
                 score_data = await self._calculate_correlation(
                     game_title, 
                     internal_screenshot_base64, 
@@ -71,6 +71,17 @@ class VisualLibrarian(BaseService, BaseAIClient):
             return {"status": "failed", "reason": "No valid external matches found."}
             
         best_match = max(candidates, key=lambda x: x["confidence_score"])
+        
+        # 5. Optional Deep Extraction for the Winner
+        best_match["deep_research_results"] = {} # Initialize
+        if best_match["confidence_score"] > 80:
+            self.logger.info(f"High confidence match ({best_match['confidence_score']}%). Performing deep content grab...")
+            deep_info = await self._extract_deep_content(best_match["url"])
+            if deep_info and isinstance(deep_info, dict):
+                best_match["deep_research_results"] = deep_info
+                # Also merge into facts for backward compatibility with Analyst/Scribe
+                best_match["extracted_facts"].update(deep_info)
+
         self.logger.info(f"Investigation complete. Best match found at {best_match['url']} with {best_match['confidence_score']}% confidence.")
         
         return {
@@ -136,5 +147,53 @@ class VisualLibrarian(BaseService, BaseAIClient):
         return await self.chat_completion(
             messages=messages,
             response_format={"type": "json_object"},
-            fallback_data={"confidence_score": 0, "reasoning": "Correlation check failed."}
+            fallback_data={"confidence_score": 0, "reasoning": "Correlation check failed."},
+            metadata={"source_url": url}
         )
+
+    async def _extract_deep_content(self, url: str) -> Dict[str, Any]:
+        """Performs a second, deep pass on the winner to extract granular SEO entities."""
+        from app.services.browser_agent import capture_external_page
+        
+        output_path = "deep_research_capture.png"
+        captured_path = await capture_external_page(url, output_path) 
+        
+        if not captured_path:
+            return {}
+
+        with open(captured_path, "rb") as f:
+            screenshot_base64 = base64.b64encode(f.read()).decode("utf-8")
+        
+        prompt = f"""
+        Analyze this game page screenshot from {url}.
+        Extract EXACT details for:
+        - How to Play / Instructions
+        - Key Game Controls (Keyboard, Mouse, Touch)
+        - Unique Features or Modes
+        
+        Return a JSON object with these fields.
+        """
+        
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/png;base64,{screenshot_base64}"}
+                    }
+                ]
+            }
+        ]
+        
+        res = await self.chat_completion(
+            messages=messages, 
+            response_format={"type": "json_object"},
+            metadata={"source_url": url, "mode": "deep_research"}
+        )
+        
+        # Cleanup
+        if os.path.exists(output_path): os.remove(output_path)
+        
+        return res if res else {}
