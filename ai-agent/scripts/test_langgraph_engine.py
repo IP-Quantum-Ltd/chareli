@@ -14,9 +14,9 @@ async def test_full_flow():
     """
     logger.info("=== STARTING LANGGRAPH TEST FLOW (COST TRACKING ENABLED) ===")
     
-    # Proposal ID for 'Football Kicks' in the local test DB context
-    test_id = "d1fbe524-b5e6-434c-91c4-bd3e7032fc72"
-    game_title = "Football Kicks"
+    # Proposal ID for 'Feed Monster' (or similar) based on available asset
+    test_id = "9927a533-92e2-40b5-956c-9bb7f9059b4d"
+    game_title = "Feed Monster"
     
     try:
         final_state = await run_pipeline_with_tracking(test_id, game_title)

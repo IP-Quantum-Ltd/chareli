@@ -151,8 +151,8 @@ async def run_pipeline_with_tracking(proposal_id: str, game_title: str) -> Dict[
     final_state = await app_graph.ainvoke(initial_state)
     logger.info(f"Pipeline finished with status: {final_state['status']} | Total Cost: ${final_state['accumulated_cost']:.4f}")
     
-    # Clean up image
-    if final_state["internal_img_path"] and os.path.exists(final_state["internal_img_path"]):
+    # Clean up image ONLY if it was a temporary internal capture
+    if final_state["internal_img_path"] and final_state["internal_img_path"].startswith("internal_") and os.path.exists(final_state["internal_img_path"]):
         os.remove(final_state["internal_img_path"])
         
     return final_state
