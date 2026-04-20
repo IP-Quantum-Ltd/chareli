@@ -30,15 +30,27 @@ class AgentState(TypedDict):
 async def capture_node(state: AgentState) -> AgentState:
     logger.info(f"Node: Capture | Proposal: {state['proposal_id']}")
     path = f"internal_{state['proposal_id']}.png"
+    fallback_path = f"screenshot_{state['proposal_id']}.png"
+    
     try:
         await capture_game_preview(state["proposal_id"], path)
-        with open(path, "rb") as f:
-            state["internal_img_base64"] = base64.b64encode(f.read()).decode("utf-8")
         state["internal_img_path"] = path
         state["status"] = "captured"
     except Exception as e:
-        state["status"] = "failed"
-        state["error_message"] = f"Capture failed: {e}"
+        logger.warning(f"Live capture failed, checking for fallback: {fallback_path}")
+        if os.path.exists(fallback_path):
+            state["internal_img_path"] = fallback_path
+            state["status"] = "captured"
+            logger.info(f"Using fallback screenshot: {fallback_path}")
+        else:
+            state["status"] = "failed"
+            state["error_message"] = f"Capture failed and no fallback found: {e}"
+            return state
+
+    # Encode for Vision
+    with open(state["internal_img_path"], "rb") as f:
+        state["internal_img_base64"] = base64.b64encode(f.read()).decode("utf-8")
+        
     return state
 
 async def research_node(state: AgentState) -> AgentState:
