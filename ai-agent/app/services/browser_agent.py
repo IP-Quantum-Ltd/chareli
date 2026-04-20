@@ -78,12 +78,52 @@ async def capture_game_preview(proposal_id: str, output_path: str = "screenshot.
             await browser.close()
 
 
-if __name__ == "__main__":
-    # Test with valid game IDs from the database to verify the player screenshot
-    test_ids = ["d1fbe524-b5e6-434c-91c4-bd3e7032fc72"]
+async def capture_external_page(url: str, output_path: str):
+    """
+    Stage 0 (Visual Librarian): Captures a screenshot of an external search result
+    for visual correlation with our internal game assets.
+    """
+    print(f"Investigating external source: {url}")
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        context = await browser.new_context(
+            viewport={"width": 1280, "height": 800},
+            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        )
+        page = await context.new_page()
 
-    for pid in test_ids:
         try:
-            asyncio.run(capture_game_preview(pid, f"screenshot_{pid}.png"))
-        except Exception as err:
-            print(f"Failed capture for {pid}: {err}")
+            # Set a generous timeout for potentially heavy gaming sites
+            await page.goto(url, wait_until="networkidle", timeout=30000)
+            
+            # 1. Clear common obstructions (cookie banners, overlays)
+            for selector in ["button:contains('Accept')", "button:contains('OK')", "#cookie-accept"]:
+                try:
+                    btn = page.locator(selector).first
+                    if await btn.is_visible():
+                        await btn.click()
+                        await page.wait_for_timeout(500)
+                except: continue
+
+            # 2. Capture the viewport
+            await page.screenshot(path=output_path)
+            print(f"External capture saved to {output_path}")
+            return output_path
+
+        except Exception as e:
+            print(f"Capture failed for {url}: {e}")
+            return None
+        finally:
+            await browser.close()
+
+
+if __name__ == "__main__":
+    # Test internal and external capture
+    import sys
+    loop = asyncio.get_event_loop()
+    if len(sys.argv) > 1:
+        test_id = sys.argv[1]
+        loop.run_until_complete(capture_game_preview(test_id, f"test_internal_{test_id}.png"))
+    else:
+        # Test external capture on a popular game site
+        loop.run_until_complete(capture_external_page("https://www.crazygames.com/game/football-kicks", "test_external.png"))
