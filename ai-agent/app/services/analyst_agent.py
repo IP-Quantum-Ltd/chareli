@@ -1,6 +1,7 @@
 import logging
 from typing import List, Dict, Any
 from app.services.base import BaseAIClient, BaseService
+from langsmith import traceable
 
 logger = logging.getLogger(__name__)
 
@@ -10,6 +11,7 @@ class AnalystAgent(BaseService, BaseAIClient):
     Performs keyword clustering, entity extraction, and intent alignment.
     """
 
+    @traceable(run_type="chain", name="SEO Intelligence Extraction")
     async def analyze_seo_potential(self, game_title: str, verified_facts: Dict[str, Any]) -> Dict[str, Any]:
         """
         Generates an SEO blueprint including high-impact keywords and semantic entities.

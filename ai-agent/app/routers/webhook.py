@@ -1,4 +1,5 @@
 import logging
+from typing import Optional
 from fastapi import APIRouter, HTTPException, Header
 from app.config import settings
 from app.models.schemas import ProposalCreatedPayload
@@ -12,7 +13,7 @@ router = APIRouter()
 @router.post("/webhook/proposal-created", status_code=202)
 async def proposal_created(
     payload: ProposalCreatedPayload,
-    x_webhook_secret: str | None = Header(default=None),
+    x_webhook_secret: Optional[str] = Header(default=None),
 ):
     """
     Receives a webhook from the main ArcadeBox app when a new GameProposal is created.

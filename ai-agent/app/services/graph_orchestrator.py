@@ -8,6 +8,7 @@ from app.services.architect_agent import ArchitectAgent
 from app.services.scribe_agent import ScribeAgent
 import base64
 import os
+from langsmith import traceable
 
 logger = logging.getLogger(__name__)
 
@@ -15,8 +16,8 @@ class AgentState(TypedDict):
     """The state object passed between nodes in LangGraph."""
     proposal_id: str
     game_title: str
-    internal_img_base64: str
-    internal_img_path: str
+    internal_imgs_base64: List[str]  # Updated to handle dual frames
+    internal_imgs_paths: List[str]
     investigation: Dict[str, Any]
     seo_blueprint: Dict[str, Any]
     outline: Dict[str, Any]
@@ -29,27 +30,28 @@ class AgentState(TypedDict):
 
 async def capture_node(state: AgentState) -> AgentState:
     logger.info(f"Node: Capture | Proposal: {state['proposal_id']}")
-    path = f"internal_{state['proposal_id']}.png"
-    fallback_path = f"screenshot_{state['proposal_id']}.png"
     
     try:
-        await capture_game_preview(state["proposal_id"], path)
-        state["internal_img_path"] = path
+        # returns a list of 2 paths
+        paths = await capture_game_preview(state["proposal_id"], "internal")
+        state["internal_imgs_paths"] = paths
+        
+        # FAIL-FAST: Verify we actually got screenshots
+        if not paths or len(paths) < 2:
+            raise ValueError("Failed to capture both internal frames.")
+            
+        # Encode both for multi-modal vision
+        state["internal_imgs_base64"] = []
+        for p in paths:
+            with open(p, "rb") as f:
+                state["internal_imgs_base64"].append(base64.b64encode(f.read()).decode("utf-8"))
+        
         state["status"] = "captured"
     except Exception as e:
-        logger.warning(f"Live capture failed, checking for fallback: {fallback_path}")
-        if os.path.exists(fallback_path):
-            state["internal_img_path"] = fallback_path
-            state["status"] = "captured"
-            logger.info(f"Using fallback screenshot: {fallback_path}")
-        else:
-            state["status"] = "failed"
-            state["error_message"] = f"Capture failed and no fallback found: {e}"
-            return state
-
-    # Encode for Vision
-    with open(state["internal_img_path"], "rb") as f:
-        state["internal_img_base64"] = base64.b64encode(f.read()).decode("utf-8")
+        logger.error(f"Capture Integrity Failed: {e}")
+        state["status"] = "failed"
+        state["error_message"] = f"CRITICAL: Internal capture failed. Pipeline terminated. Detail: {e}"
+        # Pipeline stops here because research_node checks status
         
     return state
 
@@ -58,7 +60,8 @@ async def research_node(state: AgentState) -> AgentState:
     logger.info("Node: Visual Research (Stage 0)")
     
     librarian = VisualLibrarian()
-    result = await librarian.verify_and_research(state["game_title"], state["internal_img_base64"])
+    # Pass the list of images
+    result = await librarian.verify_and_research(state["game_title"], state["internal_imgs_base64"])
     
     state["accumulated_cost"] += librarian.last_cost
     
@@ -131,12 +134,13 @@ workflow.add_edge("analyze", END)
 # Compile
 app_graph = workflow.compile()
 
+@traceable(run_type="chain", name="ArcadeBox SEO Pipeline")
 async def run_pipeline_with_tracking(proposal_id: str, game_title: str) -> Dict[str, Any]:
     initial_state = {
         "proposal_id": proposal_id,
         "game_title": game_title,
-        "internal_img_base64": "",
-        "internal_img_path": "",
+        "internal_imgs_base64": [],
+        "internal_imgs_paths": [],
         "investigation": {},
         "seo_blueprint": {},
         "outline": {},
@@ -149,8 +153,11 @@ async def run_pipeline_with_tracking(proposal_id: str, game_title: str) -> Dict[
     final_state = await app_graph.ainvoke(initial_state)
     logger.info(f"Pipeline finished with status: {final_state['status']} | Total Cost: ${final_state['accumulated_cost']:.4f}")
     
-    # Clean up image ONLY if it was a temporary internal capture
-    if final_state["internal_img_path"] and final_state["internal_img_path"].startswith("internal_") and os.path.exists(final_state["internal_img_path"]):
-        os.remove(final_state["internal_img_path"])
-        
+    # Clean up multiple internal frames
+    for path in final_state.get("internal_imgs_paths", []):
+        if os.path.exists(path):
+            os.remove(path)
+            logger.info(f"Cleaned up temporal asset: {path}")
+            
     return final_state
+

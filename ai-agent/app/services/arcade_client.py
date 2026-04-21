@@ -15,7 +15,10 @@ _headers = {
 }
 
 
-async def get_pending_proposals() -> list[dict]:
+from typing import List, Dict
+
+
+async def get_pending_proposals() -> List[Dict]:
     """
     Cron fallback: fetch all PENDING proposals.
     Endpoint: GET /api/game-proposals/pending  (editor-accessible)
@@ -29,7 +32,7 @@ async def get_pending_proposals() -> list[dict]:
         return resp.json().get("data", [])
 
 
-async def get_proposal(proposal_id: str) -> dict:
+async def get_proposal(proposal_id: str) -> Dict:
     async with httpx.AsyncClient(timeout=15) as client:
         resp = await client.get(
             f"{settings.ARCADE_API_BASE_URL}/api/game-proposals/{proposal_id}",
@@ -39,7 +42,7 @@ async def get_proposal(proposal_id: str) -> dict:
         return resp.json().get("data", {})
 
 
-async def submit_review(proposal_id: str, review: dict) -> None:
+async def submit_review(proposal_id: str, review: Dict) -> None:
     """
     Submit the AI review as an editor using the existing proposal revision endpoint.
     The review payload is embedded in proposedData so the admin sees it on review.

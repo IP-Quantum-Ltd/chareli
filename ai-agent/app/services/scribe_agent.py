@@ -2,6 +2,7 @@ import logging
 import json
 from typing import Dict, Any
 from app.services.base import BaseAIClient, BaseService
+from langsmith import traceable
 
 logger = logging.getLogger(__name__)
 
@@ -11,6 +12,7 @@ class ScribeAgent(BaseService, BaseAIClient):
     Drafts the final article using the Fact Sheet from the Research Agent.
     """
 
+    @traceable(run_type="chain", name="Final Content Drafting")
     async def draft_from_facts(self, game_title: str, fact_sheet: Dict[str, Any]) -> str:
         """
         Drafts a full, SEO-optimized article based on the research fact sheet.

@@ -3,55 +3,57 @@ import asyncio
 import base64
 import os
 from typing import List, Dict, Any
-from tavily import TavilyClient
 from app.config import settings
 from app.services.base import BaseAIClient, BaseService
 from app.services.browser_agent import capture_external_page
+from langsmith import traceable
 
 logger = logging.getLogger(__name__)
 
 class VisualLibrarian(BaseService, BaseAIClient):
     """
     Stage 0: Visual Librarian.
-    Implements Triple-Image Correlation Analysis as defined in the updated 14-Day Scope.
+    Implements Triple-Image Correlation Analysis using BROWSER-ONLY search (Zero-API).
     """
 
     def __init__(self):
         super().__init__()
-        self.tavily = TavilyClient(api_key=settings.TAVILY_API_KEY)
+        # Removed TavilyClient initialization
 
-    async def verify_and_research(self, game_title: str, internal_screenshot_base64: str) -> Dict[str, Any]:
+    @traceable(run_type="chain", name="Visual Librarian Investigation")
+    async def verify_and_research(self, game_title: str, internal_screenshots: List[str]) -> Dict[str, Any]:
         """
         Executes the Visual Correlation Loop:
-        1. Multi-source Search
-        2. Live Content Capturing
-        3. Visual Correlation Scoring
+        1. Browser-based Search (Zero-API)
+        2. Live Content Capturing (5 candidates)
+        3. Visual Correlation Scoring (using 2 internal reference images)
         """
-        self.logger.info(f"Visual Librarian initiating investigation for: {game_title}")
+        from app.services.browser_agent import search_for_urls
+        self.logger.info(f"Visual Librarian initiating zero-API investigation for: {game_title}")
 
-        # 1. Image-Weighted Search (Multi-source)
-        search_query = f"{game_title} arcade browser game play online"
-        search_results = await self._get_candidate_urls(search_query)
+        # 1. Zero-API Browser Search
+        search_results = await search_for_urls(game_title, count=5)
         
+        if not search_results:
+            return {"status": "failed", "reason": "Zero search results found via browser scraper."}
+
         candidates = []
         
-        # 2. Live Content Acquisition (Recursive Capturing)
-        # Limit to Top 3 for efficiency in this sprint, but scalable to 5
-        for i, result in enumerate(search_results[:3]):
-            url = result["url"]
+        # 2. Live Content Acquisition (5 candidates)
+        for i, url in enumerate(search_results):
             output_path = f"external_candidate_{i}.png"
             
-            # Use BrowserAgent to visit and capture
+            # Use BrowserAgent to visit and capture (10s wait implemented in capture_external_page)
             captured_path = await capture_external_page(url, output_path)
             
             if captured_path:
                 with open(captured_path, "rb") as f:
                     ext_base64 = base64.b64encode(f.read()).decode("utf-8")
                 
-                # 3. Correlation Analysis (GPT-4o Vision + Tracing)
+                # 3. Correlation Analysis (GPT-4o Vision + Dual Internal Reference)
                 score_data = await self._calculate_correlation(
                     game_title, 
-                    internal_screenshot_base64, 
+                    internal_screenshots, 
                     ext_base64,
                     url
                 )
@@ -66,20 +68,19 @@ class VisualLibrarian(BaseService, BaseAIClient):
                 # Cleanup temporal files
                 if os.path.exists(output_path): os.remove(output_path)
 
-        # 4. Selection (Best Visual Match)
+        # Selection (Best Visual Match)
         if not candidates:
-            return {"status": "failed", "reason": "No valid external matches found."}
+            return {"status": "failed", "reason": "No valid external matches captured."}
             
         best_match = max(candidates, key=lambda x: x["confidence_score"])
         
-        # 5. Optional Deep Extraction for the Winner
-        best_match["deep_research_results"] = {} # Initialize
+        # Optional Deep Extraction for the Winner
+        best_match["deep_research_results"] = {}
         if best_match["confidence_score"] > 80:
             self.logger.info(f"High confidence match ({best_match['confidence_score']}%). Performing deep content grab...")
             deep_info = await self._extract_deep_content(best_match["url"])
             if deep_info and isinstance(deep_info, dict):
                 best_match["deep_research_results"] = deep_info
-                # Also merge into facts for backward compatibility with Analyst/Scribe
                 best_match["extracted_facts"].update(deep_info)
 
         self.logger.info(f"Investigation complete. Best match found at {best_match['url']} with {best_match['confidence_score']}% confidence.")
@@ -90,35 +91,32 @@ class VisualLibrarian(BaseService, BaseAIClient):
             "all_candidates": candidates
         }
 
-    async def _get_candidate_urls(self, query: str) -> List[Dict[str, str]]:
-        loop = asyncio.get_event_loop()
-        results = await loop.run_in_executor(
-            None, 
-            lambda: self.tavily.search(query=query, search_depth="advanced", max_results=5)
-        )
-        return results.get("results", [])
-
-    async def _calculate_correlation(self, title: str, internal_img: str, external_img: str, url: str) -> Dict[str, Any]:
+    async def _calculate_correlation(self, title: str, internal_imgs: List[str], external_img: str, url: str) -> Dict[str, Any]:
         """
         Uses GPT-4o Vision to perform the 'Triple-Image Correlation Analysis'.
-        Compares the internal gameplay vs the external web page content.
+        Compares TWO internal gameplay frames vs the external web page content.
         """
         prompt = f"""
-        Task: Triple-Image Correlation Analysis.
-        You are an Autonomous Content Verifier. Compare these two images to determine if they represent the same game: '{title}'.
+        Task: Triple-Image Correlation Analysis (Grounded Verification).
+        You are an Autonomous Content Verifier. Compare the provided images to determine if they represent the same game: '{title}'.
         
-        Image 1: Internal Gameplay (Reference)
-        Image 2: External Web Page (Search Result from {url})
+        Reference Materials:
+        - Internal Frame A: Initial gameplay/menu state.
+        - Internal Frame B: Advanced gameplay state (taken 5s after A).
+        - External Candidate: A webpage found at {url}.
+        
+        Mission:
+        Identify if 'External Candidate' is the official version or a highly accurate distribution page for the same game seen in Frames A & B.
         
         Evaluation Criteria:
-        1. UI Consistency (Icons, buttons, HUD).
-        2. Art Style (Assets, characters, color palette).
-        3. Branding (Is this the official distribution page or a wiki?).
+        1. Character/Asset Consistency (Are the sprites/models identical?).
+        2. UI/UX Signature (Buttons, HUD, font styles).
+        3. Mechanic Matching (Do the instructions on the web match the gameplay scene?).
         
         Return ONLY valid JSON:
         {{
             "confidence_score": int (0-100),
-            "reasoning": "brief explanation",
+            "reasoning": "detailed explanation comparing all 3 images",
             "facts": {{
                 "controls": "string",
                 "rules": "string",
@@ -134,7 +132,11 @@ class VisualLibrarian(BaseService, BaseAIClient):
                     {"type": "text", "text": prompt},
                     {
                         "type": "image_url",
-                        "image_url": {"url": f"data:image/png;base64,{internal_img}"}
+                        "image_url": {"url": f"data:image/png;base64,{internal_imgs[0]}"}
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/png;base64,{internal_imgs[1]}"}
                     },
                     {
                         "type": "image_url",
@@ -150,6 +152,7 @@ class VisualLibrarian(BaseService, BaseAIClient):
             fallback_data={"confidence_score": 0, "reasoning": "Correlation check failed."},
             metadata={"source_url": url}
         )
+
 
     async def _extract_deep_content(self, url: str) -> Dict[str, Any]:
         """Performs a second, deep pass on the winner to extract granular SEO entities."""

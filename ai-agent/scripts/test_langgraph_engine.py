@@ -14,8 +14,8 @@ async def test_full_flow():
     """
     logger.info("=== STARTING LANGGRAPH TEST FLOW (COST TRACKING ENABLED) ===")
     
-    # Proposal ID for 'Feed Monster' (or similar) based on available asset
-    test_id = "9927a533-92e2-40b5-956c-9bb7f9059b4d"
+    # Proposal ID for 'Feed Monster' based on live staging slug
+    test_id = "feed-monster"
     game_title = "Feed Monster"
     
     try:

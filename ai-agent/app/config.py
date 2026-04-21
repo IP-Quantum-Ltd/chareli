@@ -9,9 +9,11 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str
     AI_PROVIDER: str = "openai"
 
-    # Search & Research
-    SERPER_API_KEY: str = ""
-    TAVILY_API_KEY: str = ""
+    # Observability (LangSmith)
+    LANGCHAIN_TRACING_V2: bool = False
+    LANGCHAIN_API_KEY: str = ""
+    LANGCHAIN_PROJECT: str = "ArcadeBox-SEO-Agent"
+    LANGCHAIN_ENDPOINT: str = "https://api.smith.langchain.com"
 
     # Databases
     DATABASE_URL: str = ""  # Postgres

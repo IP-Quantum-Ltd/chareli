@@ -16,63 +16,55 @@ if not all([BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD]):
     )
 
 
-async def capture_game_preview(proposal_id: str, output_path: str = "screenshot.png"):
+async def capture_game_preview(proposal_id: str, output_path_prefix: str = "internal"):
     """
-    Agent 1 (Day 1): Navigates to Arcade platform, logs in, and captures a screenshot of the game proposal.
+    Agent 1 (Day 1): Navigates to Arcade platform, logs in, and captures TWO screenshots 
+    of the game proposal (offset by 5 seconds) for visual consistency checking.
     """
     print(f"Starting Agent 1 for Proposal ID: {proposal_id}")
     async with async_playwright() as p:
-        # Launch browser in background (headless=True)
         browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(
-            viewport={"width": 1280, "height": 800}  # Standard desktop viewport
-        )
+        context = await browser.new_context(viewport={"width": 1280, "height": 800})
         page = await context.new_page()
 
         try:
             print(f"Navigating to login: {BASE_URL}/admin/login...")
             await page.goto(f"{BASE_URL}/admin/login")
 
-            #  Authenticate
             await page.fill('input[type="email"]', ADMIN_EMAIL)
             await page.fill('input[type="password"]', ADMIN_PASSWORD)
             await page.click('button[type="submit"]')
 
-            print("Waiting for authentication to complete...")
-            await page.wait_for_url("**/admin", timeout=15000)
+            await page.wait_for_url("**/admin", timeout=30000)
             print("Successfully authenticated.")
 
-            # Navigate to the actual playable game screen
             preview_url = f"{BASE_URL}/gameplay/{proposal_id}"
             print(f"Navigating to game preview: {preview_url}")
             await page.goto(preview_url)
 
-            # Wait for the game engine to mount the canvas/iframe
-            print("Waiting for game engine to mount...")
-            await page.wait_for_selector("iframe", state="visible", timeout=15000)
-
-            await page.wait_for_timeout(5000)
-
-            # Dismiss any cookie banners or "Accept" overlays that block the view
-            try:
-                accept_button = page.get_by_role("button", name="Accept")
-                if await accept_button.is_visible():
-                    print("Dismissing cookie banner...")
-                    await accept_button.click()
-                    await page.wait_for_timeout(1000)
-            except Exception:
-                pass
-
-            # Capture ONLY the game iframe to reduce visual noise for the AI
-            print("Capturing precision screenshot of the game iframe...")
+            # Increased to 30s for staging loading screens
+            await page.wait_for_selector("iframe", state="visible", timeout=30000)
             game_element = page.locator("iframe")
-            await game_element.screenshot(path=output_path)
-            print(f"Precision game screenshot successfully saved to {output_path}")
 
-            return output_path
+            # Capture 1: Initial state (after 5s)
+            print("Waiting for initial frame...")
+            await page.wait_for_timeout(5000)
+            path_a = f"{output_path_prefix}_A_{proposal_id}.png"
+            await game_element.screenshot(path=path_a)
+            
+            # Capture 2: Advanced state (after another 5s)
+            print("Waiting for second frame...")
+            await page.wait_for_timeout(5000)
+            path_b = f"{output_path_prefix}_B_{proposal_id}.png"
+            await game_element.screenshot(path=path_b)
+
+            print(f"Dual internal captures saved: {path_a}, {path_b}")
+            return [path_a, path_b]
 
         except Exception as e:
-            print(f"Error during browser automation: {e}")
+            error_screenshot = f"error_capture_{proposal_id}.png"
+            await page.screenshot(path=error_screenshot)
+            print(f"Error during internal browser automation: {e}. Saved debug screenshot to {error_screenshot}")
             raise e
         finally:
             await browser.close()
@@ -80,26 +72,26 @@ async def capture_game_preview(proposal_id: str, output_path: str = "screenshot.
 
 async def capture_external_page(url: str, output_path: str):
     """
-    Stage 0 (Visual Librarian): Captures a screenshot of an external search result
-    for visual correlation with our internal game assets.
+    Stage 0 (Visual Librarian): Captures a screenshot of an external search result.
+    Extended wait time (10s) to ensure heavy game assets are settled.
     """
     print(f"Investigating external source: {url}")
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context(
             viewport={"width": 1280, "height": 800},
-            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
         )
         page = await context.new_page()
 
         try:
-            # Switch to domcontentloaded to avoid getting stuck on heavy ads/trackers
-            await page.goto(url, wait_until="domcontentloaded", timeout=45000)
+            await page.goto(url, wait_until="networkidle", timeout=60000)
             
-            # Wait a few seconds for the actual game assets to render
-            await page.wait_for_timeout(3000)
+            # WAIT Logic: 10 seconds per your latest requirement
+            print("Waiting 10s for external assets to stabilize...")
+            await page.wait_for_timeout(10000)
             
-            # 1. Clear common obstructions (cookie banners, overlays)
+            # Dismiss banners
             for selector in ["button:contains('Accept')", "button:contains('OK')", "#cookie-accept"]:
                 try:
                     btn = page.locator(selector).first
@@ -108,9 +100,8 @@ async def capture_external_page(url: str, output_path: str):
                         await page.wait_for_timeout(500)
                 except: continue
 
-            # 2. Capture the full page to ensure we catch instructions/controls at the bottom
             await page.screenshot(path=output_path, full_page=True)
-            print(f"External full-page capture saved to {output_path}")
+            print(f"External capture saved: {output_path}")
             return output_path
 
         except Exception as e:
@@ -118,6 +109,38 @@ async def capture_external_page(url: str, output_path: str):
             return None
         finally:
             await browser.close()
+
+
+async def search_for_urls(game_title: str, count: int = 5) -> list[str]:
+    """
+    [ZERO-API SEARCH] Bypasses Tavily/Serper by using Playwright to scrape DuckDuckGo.
+    """
+    print(f"Perfroming browser-based search for: {game_title}")
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        context = await browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+        page = await context.new_page()
+        
+        try:
+            query = f"{game_title} arcade browser game play online"
+            search_url = f"https://duckduckgo.com/?q={query.replace(' ', '+')}"
+            
+            await page.goto(search_url, wait_until="networkidle")
+            await page.wait_for_selector(".result__a", timeout=10000)
+            
+            # Extract top N organic links
+            links = await page.eval_on_selector_all(".result__a", "nodes => nodes.map(n => n.href)")
+            
+            # Filter out advertisements or non-game sites if possible, or just return top organic
+            results = links[:count]
+            print(f"Found {len(results)} candidate URLs via browser search.")
+            return results
+        except Exception as e:
+            print(f"Search failed: {e}")
+            return []
+        finally:
+            await browser.close()
+
 
 
 if __name__ == "__main__":
