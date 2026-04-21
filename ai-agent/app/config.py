@@ -8,9 +8,14 @@ class Settings(BaseSettings):
     # OpenAI
     OPENAI_API_KEY: str
     AI_PROVIDER: str = "openai"
+    PRIMARY_LLM_MODEL: str = "gpt-4o"
+    SECONDARY_LLM_MODEL: str = "gpt-4o-mini"
+    CLIENT_URL: str = "https://staging.arcadesbox.com/"
+    SUPERADMIN_EMAIL: str
+    SUPERADMIN_PASSWORD: str
 
     # Observability (LangSmith)
-    LANGCHAIN_TRACING_V2: bool = False
+    LANGCHAIN_TRACING_V2: bool = True
     LANGCHAIN_API_KEY: str = ""
     LANGCHAIN_PROJECT: str = "ArcadeBox-SEO-Agent"
     LANGCHAIN_ENDPOINT: str = "https://api.smith.langchain.com"

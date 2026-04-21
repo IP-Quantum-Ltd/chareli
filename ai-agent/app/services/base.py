@@ -10,8 +10,20 @@ class BaseAIClient:
     """Integrated AI Client with LangSmith Tracing and Cost Tracking."""
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.llm = ChatOpenAI(model="gpt-4o", api_key=settings.OPENAI_API_KEY)
-        self.embeddings = OpenAIEmbeddings(model="text-embedding-3-large", api_key=settings.OPENAI_API_KEY)
+        
+        # Sync Pydantic settings to os.environ for LangChain tracers
+        if settings.LANGCHAIN_TRACING_V2:
+            os.environ["LANGCHAIN_TRACING_V2"] = "true"
+            os.environ["LANGCHAIN_API_KEY"] = settings.LANGCHAIN_API_KEY
+            os.environ["LANGCHAIN_PROJECT"] = settings.LANGCHAIN_PROJECT
+            os.environ["LANGCHAIN_ENDPOINT"] = settings.LANGCHAIN_ENDPOINT
+
+        self.llm = ChatOpenAI(
+            model=settings.PRIMARY_LLM_MODEL, 
+            api_key=settings.OPENAI_API_KEY,
+            stream_usage=True # Ensure usage metadata is included even in streaming if used later
+        )
+        self.embeddings = OpenAIEmbeddings(model="text-embedding-3-small", api_key=settings.OPENAI_API_KEY)
         self.last_cost = 0.0
 
     async def generate_embedding(self, text: str, model: str = "text-embedding-3-large") -> List[float]:

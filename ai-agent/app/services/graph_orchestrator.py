@@ -129,7 +129,9 @@ workflow.add_node("scribe", scribe_node)
 workflow.set_entry_point("capture")
 workflow.add_edge("capture", "research")
 workflow.add_edge("research", "analyze")
-workflow.add_edge("analyze", END)
+workflow.add_edge("analyze", "architect")
+workflow.add_edge("architect", "scribe")
+workflow.add_edge("scribe", END)
 
 # Compile
 app_graph = workflow.compile()
@@ -154,10 +156,9 @@ async def run_pipeline_with_tracking(proposal_id: str, game_title: str) -> Dict[
     logger.info(f"Pipeline finished with status: {final_state['status']} | Total Cost: ${final_state['accumulated_cost']:.4f}")
     
     # Clean up multiple internal frames
-    for path in final_state.get("internal_imgs_paths", []):
-        if os.path.exists(path):
-            os.remove(path)
-            logger.info(f"Cleaned up temporal asset: {path}")
+    # for path in final_state.get("internal_imgs_paths", []):
+    #     if os.path.exists(path):
+    #         os.remove(path)
+    #         logger.info(f"Cleaned up temporal asset: {path}")
             
     return final_state
-

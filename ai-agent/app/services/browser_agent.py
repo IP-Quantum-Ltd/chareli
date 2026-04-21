@@ -1,14 +1,11 @@
-import os
 import asyncio
 from playwright.async_api import async_playwright
-from dotenv import load_dotenv
+from app.config import settings
 
-load_dotenv()
-
-# Pull credentials strictly from the .env file
-BASE_URL = os.getenv("CLIENT_URL")
-ADMIN_EMAIL = os.getenv("SUPERADMIN_EMAIL")
-ADMIN_PASSWORD = os.getenv("SUPERADMIN_PASSWORD")
+# Pull credentials strictly from the settings
+BASE_URL = settings.CLIENT_URL
+ADMIN_EMAIL = settings.SUPERADMIN_EMAIL
+ADMIN_PASSWORD = settings.SUPERADMIN_PASSWORD
 
 if not all([BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD]):
     raise ValueError(
