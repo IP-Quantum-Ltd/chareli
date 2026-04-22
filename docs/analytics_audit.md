@@ -132,6 +132,9 @@ the app does not send it explicitly.
 
 ---
 
+> **For a one-page summary suitable for sharing with the client, see
+> [`ga4_vs_dashboard.md`](./ga4_vs_dashboard.md).**
+
 ## 4. In-house dashboard ↔ GA4 reconciliation
 
 Dashboard entry point: `Client/src/pages/Admin/Home/Home.tsx`. Tile
@@ -202,3 +205,23 @@ the team has consciously narrowed the gap. Concrete remaining differences:
 4. **Add a regression test** that fails if `AdminExclusionService` is
    bypassed in any new write path — admin contamination is the most common
    way the dashboard drifts from reality.
+
+---
+
+## 6. Zaraz tool configuration
+
+The end-to-end Cloudflare-dashboard runbook lives in a dedicated file —
+it's long enough to warrant its own page and covers every event the app
+emits, every trigger to create, every action on every tool, consent mode,
+the GA4 DebugView gotcha, and a verification order.
+
+**See [`zaraz_setup_runbook.md`](./zaraz_setup_runbook.md).**
+
+Quick reminders that belong here rather than in the runbook:
+
+- Zaraz config lives only in the Cloudflare dashboard. There is no
+  `zaraz.json` / `wrangler.toml` in this repo — nothing to diff, nothing
+  to review on PR.
+- After any config change, verify in **Zaraz Monitoring** (dashboard
+  live-stream) *and* **GA4 Realtime** before trusting it. GA4 DebugView
+  is not fully reliable with Zaraz; see the runbook §7.

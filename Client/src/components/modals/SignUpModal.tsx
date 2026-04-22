@@ -26,6 +26,7 @@ import { Checkbox } from '../../components/ui/checkbox';
 import { Eye, EyeOff, User, Mail } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { getOrCreateSessionId } from '../../utils/sessionUtils';
+import { trackConversion } from '../../utils/analytics';
 import { useUserCountry } from '../../hooks/useUserCountry';
 import { WelcomeModal } from './WelcomeModal';
 
@@ -221,6 +222,9 @@ export function SignUpModal({
         isAdult: values.ageConfirm,
         hasAcceptedTerms: values.terms,
       });
+
+      // Fire signup conversion: GA4 sign_up via Zaraz + Meta CompleteRegistration.
+      trackConversion.signUp('email');
 
       // Close signup modal
       onOpenChange(false);
