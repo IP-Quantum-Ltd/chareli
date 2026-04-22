@@ -2,7 +2,7 @@ import base64
 import logging
 import asyncio
 import os
-from app.services.arcade_client import get_proposal
+from app.services.arcade_client import get_game
 from app.services.browser_agent import capture_game_preview
 from app.services.visual_librarian import VisualLibrarian
 from app.services.analyst_agent import AnalystAgent
@@ -12,19 +12,19 @@ from app.services.scribe_agent import ScribeAgent
 logger = logging.getLogger(__name__)
 
 
-async def run_full_generation(proposal_id: str) -> str:
+async def run_full_generation(game_id: str) -> str:
     """
     Stages: 0, 1, 3, 5, 7.
     """
-    logger.info(f"[Orchestrator] Starting 14-Day SEO Sprint for: {proposal_id}")
+    logger.info(f"[Orchestrator] Starting 14-Day SEO Sprint for Game: {game_id}")
 
-    # 1. Fetch proposal data
-    proposal = await get_proposal(proposal_id)
-    title = proposal.get("proposedData", {}).get("title", "Untitled Game")
+    # 1. Fetch game data
+    game = await get_game(game_id)
+    title = game.get("title", "Untitled Game")
 
     # 2. Stage -1: Capture Internal Game Asset
-    target_id = proposal.get("gameId") or proposal_id
-    internal_screenshot = f"internal_{proposal_id}.png"
+    target_id = game_id
+    internal_screenshot = f"internal_{game_id}.png"
 
     try:
         await capture_game_preview(target_id, internal_screenshot)
@@ -74,7 +74,7 @@ async def run_full_generation(proposal_id: str) -> str:
     if os.path.exists(internal_screenshot):
         os.remove(internal_screenshot)
 
-    output_path = f"draft_{proposal_id}.md"
+    output_path = f"draft_{game_id}.md"
     with open(output_path, "w") as f:
         f.write(article)
 

@@ -30,8 +30,8 @@ async def capture_game_preview(game_id: str, output_path: str = "screenshot.png"
         page = await context.new_page()
 
         try:
-            print(f"Navigating to login: {BASE_URL}/admin/login...")
-            await page.goto(f"{BASE_URL}/admin/login")
+            print(f"Navigating to login: {BASE_URL}/login...")
+            await page.goto(f"{BASE_URL}/login")
 
             #  Authenticate
             await page.fill('input[type="email"]', ADMIN_EMAIL)
@@ -39,7 +39,8 @@ async def capture_game_preview(game_id: str, output_path: str = "screenshot.png"
             await page.click('button[type="submit"]')
 
             print("Waiting for authentication to complete...")
-            await page.wait_for_url("**/admin", timeout=15000)
+            # Normal login redirects to home or profile
+            await page.wait_for_timeout(5000) 
             print("Successfully authenticated.")
 
             # Navigate to the actual playable game screen
