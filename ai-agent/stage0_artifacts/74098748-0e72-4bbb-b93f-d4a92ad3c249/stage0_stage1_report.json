@@ -1,0 +1,886 @@
+{
+  "proposal_id": "74098748-0e72-4bbb-b93f-d4a92ad3c249",
+  "game_title": "Football Kicks",
+  "comparison_confidence_source": "stage0_visual_librarian",
+  "comparison_scores_path": "/workspace/stage0_artifacts/74098748-0e72-4bbb-b93f-d4a92ad3c249/comparison_scores.json",
+  "investigation": {
+    "status": "failed",
+    "reason": "Stage 0 captured 3 playable external renders after trying 10 ranked search results; 5 are required.",
+    "search_query": "\"Football Kicks\" \"American Football Kicks\" browser game play online",
+    "failures": [
+      {
+        "rank": 1,
+        "url": "https://www.miniplay.com/game/football-kicks",
+        "reason": "No playable render could be captured."
+      },
+      {
+        "rank": 3,
+        "url": "https://arcadespot.com/game/american-football-kicks/",
+        "reason": "No playable render could be captured."
+      },
+      {
+        "rank": 5,
+        "url": "https://www.gameforge.com/en-US/littlegames/american-football-kicks/",
+        "reason": "No playable render could be captured."
+      },
+      {
+        "rank": 6,
+        "url": "https://www.yad.com/American-Football-Kicks",
+        "reason": "No playable render could be captured."
+      },
+      {
+        "rank": 7,
+        "url": "https://www.footballgames.org/american-football-kicks/",
+        "reason": "No playable render could be captured."
+      },
+      {
+        "rank": 8,
+        "url": "https://www.funnygames.org/game/american_football_kicks.html",
+        "reason": "No playable render could be captured."
+      },
+      {
+        "rank": 9,
+        "url": "https://www.gamepix.com/play/american-football-kicks",
+        "reason": "No playable render could be captured."
+      }
+    ],
+    "all_candidates": [
+      {
+        "rank": 2,
+        "url": "https://www.safekidgames.com/american-football-kicks/",
+        "search_query": "\"Football Kicks\" \"American Football Kicks\" browser game play online",
+        "screenshot_path": "/workspace/stage0_artifacts/74098748-0e72-4bbb-b93f-d4a92ad3c249/external/candidate_02_render.png",
+        "metadata_path": "/workspace/stage0_artifacts/74098748-0e72-4bbb-b93f-d4a92ad3c249/external/candidate_02_render.json",
+        "metadata": {
+          "requested_url": "https://www.safekidgames.com/american-football-kicks/",
+          "final_url": "https://www.safekidgames.com/american-football-kicks/",
+          "title": "American Football Kicks - Safe Kid Games",
+          "meta_description": "Step up for the win in American Football Kicks! Line up your shot, aim perfectly, and score goals to earn the highest score in this exciting sports challenge!",
+          "meta_keywords": "",
+          "og_title": "American Football Kicks",
+          "og_description": "Step up for the win in American Football Kicks! Line up your shot, aim perfectly, and score goals to earn the highest score in this exciting sports challenge!",
+          "og_image": "https://www.safekidgames.com/home/wp-content/uploads/2020/11/american-football-kicks.png",
+          "og_type": "article",
+          "og_site_name": "Safe Kid Games",
+          "twitter_title": "American Football Kicks",
+          "twitter_description": "Step up for the win in American Football Kicks! Line up your shot, aim perfectly, and score goals to earn the highest score in this exciting sports challenge!",
+          "twitter_image": "https://www.safekidgames.com/home/wp-content/uploads/2020/11/american-football-kicks.png",
+          "canonical_url": "https://www.safekidgames.com/american-football-kicks/",
+          "headings": [
+            {
+              "level": "h2",
+              "text": "Game Description"
+            },
+            {
+              "level": "h2",
+              "text": "Game Instructions"
+            },
+            {
+              "level": "h2",
+              "text": "Games You May Like"
+            },
+            {
+              "level": "h2",
+              "text": "Grade Games"
+            },
+            {
+              "level": "h2",
+              "text": "Learning Games"
+            },
+            {
+              "level": "h2",
+              "text": "Fun Games"
+            },
+            {
+              "level": "h2",
+              "text": "Holiday Fun"
+            },
+            {
+              "level": "h2",
+              "text": "About Us"
+            },
+            {
+              "level": "h2",
+              "text": "Privacy"
+            },
+            {
+              "level": "h2",
+              "text": "Safety Tips"
+            }
+          ],
+          "breadcrumb": [],
+          "categories": [
+            "Action Games",
+            "Sports Games",
+            "Game",
+            "HTML5",
+            "Mobile"
+          ],
+          "tags": [
+            "Action Games",
+            "Sports Games",
+            "Game",
+            "HTML5",
+            "Mobile"
+          ],
+          "ratings": {
+            "rating_value": "",
+            "rating_count": "",
+            "review_count": "",
+            "votes_text": []
+          },
+          "structured_data": [
+            {
+              "type": "Organization",
+              "name": "Safe Kid Games",
+              "headline": "",
+              "description": "",
+              "genre": [],
+              "category": [],
+              "operating_system": "",
+              "url": "https://www.safekidgames.com",
+              "image": "",
+              "author": [],
+              "creator": [],
+              "publisher": [],
+              "aggregate_rating": null
+            },
+            {
+              "type": "WebSite",
+              "name": "Safe Kid Games",
+              "headline": "",
+              "description": "Safe, Fun, Games for Kids!",
+              "genre": [],
+              "category": [],
+              "operating_system": "",
+              "url": "https://www.safekidgames.com/",
+              "image": "",
+              "author": [],
+              "creator": [],
+              "publisher": [
+                "Safe Kid Games"
+              ],
+              "aggregate_rating": null
+            },
+            {
+              "type": "WebPage",
+              "name": "American Football Kicks - Safe Kid Games",
+              "headline": "",
+              "description": "Step up for the win in American Football Kicks! Line up your shot, aim perfectly, and score goals to earn the highest score in this exciting sports challenge!",
+              "genre": [],
+              "category": [],
+              "operating_system": "",
+              "url": "https://www.safekidgames.com/american-football-kicks/",
+              "image": "",
+              "author": [
+                "safekidgames"
+              ],
+              "creator": [],
+              "publisher": [],
+              "aggregate_rating": null
+            }
+          ],
+          "faq_items": [],
+          "section_blocks": [
+            {
+              "heading": "Game Description",
+              "level": "h2",
+              "text": "Game Description Let\u2019s play football! In this challenging sports game, it\u2019s penalty kick time and the pressure\u2019s on for the perfect kick. Line up the football just right and score the GOAL!",
+              "list_items": [],
+              "links": []
+            },
+            {
+              "heading": "Game Instructions",
+              "level": "h2",
+              "text": "Game Instructions Tap or click START to play. The object of the game is to kick the football perfectly into the goal. There are two slides, one at the top and one on the side. On your keyboard, press the spacebar or use your mouse to choose the point where you\u2019d like to kick on BOTH slides. The closer to the green markers you are, the better chance at kicking the perfect goal and earning the highest score. Good luck!",
+              "list_items": [],
+              "links": []
+            },
+            {
+              "heading": "Games You May Like",
+              "level": "h2",
+              "text": "Games You May Like",
+              "list_items": [],
+              "links": []
+            },
+            {
+              "heading": "Grade Games",
+              "level": "h2",
+              "text": "Grade Games Kindergarten Games 1st Grade Games 2nd Grade Games 3rd Grade Games 4th Grade Games 5th Grade Games 6th Grade Games 7th Grade Games",
+              "list_items": [
+                "Kindergarten Games",
+                "1st Grade Games",
+                "2nd Grade Games",
+                "3rd Grade Games",
+                "4th Grade Games",
+                "5th Grade Games",
+                "6th Grade Games",
+                "7th Grade Games"
+              ],
+              "links": [
+                "Kindergarten Games",
+                "1st Grade Games",
+                "2nd Grade Games",
+                "3rd Grade Games",
+                "4th Grade Games",
+                "5th Grade Games",
+                "6th Grade Games",
+                "7th Grade Games"
+              ]
+            },
+            {
+              "heading": "Learning Games",
+              "level": "h2",
+              "text": "Learning Games Board Games Engineering Games Jigsaw Games Math Games Memory Games Puzzle Games Typing Games Word Games",
+              "list_items": [
+                "Board Games",
+                "Engineering Games",
+                "Jigsaw Games",
+                "Math Games",
+                "Memory Games",
+                "Puzzle Games",
+                "Typing Games",
+                "Word Games"
+              ],
+              "links": [
+                "Board Games",
+                "Engineering Games",
+                "Jigsaw Games",
+                "Math Games",
+                "Memory Games",
+                "Puzzle Games",
+                "Typing Games",
+                "Word Games"
+              ]
+            },
+            {
+              "heading": "Fun Games",
+              "level": "h2",
+              "text": "Fun Games Action Games Adventure Games Cooking Games Driving Games Popular Games Skill Games Sports Games Strategy Games",
+              "list_items": [
+                "Action Games",
+                "Adventure Games",
+                "Cooking Games",
+                "Driving Games",
+                "Popular Games",
+                "Skill Games",
+                "Sports Games",
+                "Strategy Games"
+              ],
+              "links": [
+                "Action Games",
+                "Adventure Games",
+                "Cooking Games",
+                "Driving Games",
+                "Popular Games",
+                "Skill Games",
+                "Sports Games",
+                "Strategy Games"
+              ]
+            },
+            {
+              "heading": "Holiday Fun",
+              "level": "h2",
+              "text": "Holiday Fun Easter Games Christmas Games Halloween Games Thanksgiving Games Valentine's Games Winter Games More Games",
+              "list_items": [
+                "Easter Games",
+                "Christmas Games",
+                "Halloween Games",
+                "Thanksgiving Games",
+                "Valentine's Games",
+                "Winter Games"
+              ],
+              "links": [
+                "Easter Games",
+                "Christmas Games",
+                "Halloween Games",
+                "Thanksgiving Games",
+                "Valentine's Games",
+                "Winter Games",
+                "More Games"
+              ]
+            },
+            {
+              "heading": "About Us",
+              "level": "h2",
+              "text": "About Us About Us Contact Us",
+              "list_items": [
+                "About Us",
+                "Contact Us"
+              ],
+              "links": [
+                "About Us",
+                "Contact Us"
+              ]
+            },
+            {
+              "heading": "Privacy",
+              "level": "h2",
+              "text": "Privacy Privacy Policy Terms of Service Payment Terms",
+              "list_items": [
+                "Privacy Policy",
+                "Terms of Service",
+                "Payment Terms"
+              ],
+              "links": [
+                "Privacy Policy",
+                "Terms of Service",
+                "Payment Terms"
+              ]
+            },
+            {
+              "heading": "Safety Tips",
+              "level": "h2",
+              "text": "Safety Tips Internet Safety Healthy Screen Habits",
+              "list_items": [
+                "Internet Safety",
+                "Healthy Screen Habits"
+              ],
+              "links": [
+                "Internet Safety",
+                "Healthy Screen Habits"
+              ]
+            }
+          ],
+          "key_sections": {
+            "about": {
+              "heading": "Game Description",
+              "level": "h2",
+              "text": "Game Description Let\u2019s play football! In this challenging sports game, it\u2019s penalty kick time and the pressure\u2019s on for the perfect kick. Line up the football just right and score the GOAL!",
+              "list_items": [],
+              "links": []
+            },
+            "how_to_play": {
+              "heading": "Game Instructions",
+              "level": "h2",
+              "text": "Game Instructions Tap or click START to play. The object of the game is to kick the football perfectly into the goal. There are two slides, one at the top and one on the side. On your keyboard, press the spacebar or use your mouse to choose the point where you\u2019d like to kick on BOTH slides. The closer to the green markers you are, the better chance at kicking the perfect goal and earning the highest score. Good luck!",
+              "list_items": [],
+              "links": []
+            },
+            "controls": null,
+            "faq": null,
+            "developer": null,
+            "features": null
+          },
+          "developer_mentions": [
+            "Safe Kid Games",
+            "safekidgames"
+          ],
+          "content_blocks": [
+            "Let\u2019s play football! In this challenging sports game, it\u2019s penalty kick time and the pressure\u2019s on for the perfect kick. Line up the football just right and score the GOAL!",
+            "Tap or click START to play. The object of the game is to kick the football perfectly into the goal. There are two slides, one at the top and one on the side. On your keyboard, press the spacebar or use your mouse to choose the point where you\u2019d like to kick on BOTH slides. The closer to the green markers you are, the better chance at kicking the perfect goal and earning the highest score."
+          ],
+          "main_text_excerpt": "Play Full Screen Game Description Let\u2019s play football! In this challenging sports game, it\u2019s penalty kick time and the pressure\u2019s on for the perfect kick. Line up the football just right and score the GOAL! Game Instructions Tap or click START to play. The object of the game is to kick the football perfectly into the goal. There are two slides, one at the top and one on the side. On your keyboard, press the spacebar or use your mouse to choose the point where you\u2019d like to kick on BOTH slides. The closer to the green markers you are, the better chance at kicking the perfect goal and earning the highest score. Good luck! Games You May Like Categories: Action Games, Sports Games Tags: Game, HTML5, Mobile",
+          "visible_text_length": 711,
+          "surface_type": "iframe",
+          "screenshot_path": "/workspace/stage0_artifacts/74098748-0e72-4bbb-b93f-d4a92ad3c249/external/candidate_02_render.png"
+        },
+        "correlation": {
+          "visual_similarity_score": 90,
+          "mechanic_match_score": 85,
+          "text_relevance_score": 95,
+          "brand_alignment_score": 90,
+          "reasoning": "All three images depict elements consistent with the game 'American Football Kicks', such as the focus on kicking a football. The first image shows the game's title and a football theme, matching the metadata description. The second and third images show a similar gameplay start screen with a football theme. Therefore, there is a strong visual and thematic correlation among the images and the game description.",
+          "facts": {
+            "controls": "Use spacebar or mouse to choose kick point on slides.",
+            "rules": "Kick the football perfectly into the goal by aligning with green markers for the highest score.",
+            "original_developer": "Safe Kid Games"
+          }
+        },
+        "scoring": {
+          "weights": {
+            "visual_similarity_score": 0.45,
+            "mechanic_match_score": 0.2,
+            "text_relevance_score": 0.2,
+            "brand_alignment_score": 0.15
+          },
+          "breakdown": {
+            "visual_similarity_score": {
+              "raw_score": 90,
+              "weight": 0.45,
+              "weighted_score": 40.5
+            },
+            "mechanic_match_score": {
+              "raw_score": 85,
+              "weight": 0.2,
+              "weighted_score": 17.0
+            },
+            "text_relevance_score": {
+              "raw_score": 95,
+              "weight": 0.2,
+              "weighted_score": 19.0
+            },
+            "brand_alignment_score": {
+              "raw_score": 90,
+              "weight": 0.15,
+              "weighted_score": 13.5
+            }
+          },
+          "confidence_score": 90
+        },
+        "confidence_score": 90,
+        "reasoning": "All three images depict elements consistent with the game 'American Football Kicks', such as the focus on kicking a football. The first image shows the game's title and a football theme, matching the metadata description. The second and third images show a similar gameplay start screen with a football theme. Therefore, there is a strong visual and thematic correlation among the images and the game description.",
+        "extracted_facts": {
+          "controls": "Use spacebar or mouse to choose kick point on slides.",
+          "rules": "Kick the football perfectly into the goal by aligning with green markers for the highest score.",
+          "original_developer": "Safe Kid Games"
+        }
+      },
+      {
+        "rank": 4,
+        "url": "https://www.cokogames.com/american-football-kicks/",
+        "search_query": "\"Football Kicks\" \"American Football Kicks\" browser game play online",
+        "screenshot_path": "/workspace/stage0_artifacts/74098748-0e72-4bbb-b93f-d4a92ad3c249/external/candidate_04_render.png",
+        "metadata_path": "/workspace/stage0_artifacts/74098748-0e72-4bbb-b93f-d4a92ad3c249/external/candidate_04_render.json",
+        "metadata": {
+          "requested_url": "https://www.cokogames.com/american-football-kicks/",
+          "final_url": "https://www.cokogames.com/american-football-kicks/#google_vignette",
+          "title": "AMERICAN FOOTBALL KICKS \u2013 COKOGAMES",
+          "meta_description": "",
+          "meta_keywords": "",
+          "og_title": "",
+          "og_description": "",
+          "og_image": "",
+          "og_type": "",
+          "og_site_name": "",
+          "twitter_title": "",
+          "twitter_description": "",
+          "twitter_image": "",
+          "canonical_url": "https://www.cokogames.com/american-football-kicks/",
+          "headings": [
+            {
+              "level": "h1",
+              "text": "AMERICAN FOOTBALL KICKS"
+            },
+            {
+              "level": "h3",
+              "text": "Tag list"
+            },
+            {
+              "level": "h3",
+              "text": "LEAVE A REPLY"
+            }
+          ],
+          "breadcrumb": [],
+          "categories": [
+            "FRIV Games",
+            "ADULT Online Games",
+            "Educational Games for SECONDARY Students (~15 year olds)",
+            "Blog"
+          ],
+          "tags": [
+            "Accuracy Games",
+            "AIMING Games",
+            "FREE KICKS Games",
+            "Games for Tablets",
+            "SOCCER / FOOTBALL Games Online",
+            "<img loading=\"lazy\" src=\"https://www.cokogames.com/wp-content/uploads/thumbs/custom/W/world-cup-2026-game-150x150.jpg\" width=\"80\" height=\"80\" class=\"background-placeholder\" alt=\"WORLD CUP 2026 Soccer Heads Game\" />",
+            "FRIV Games",
+            "WORLD CUP 2026 Soccer Heads Game",
+            "<img loading=\"lazy\" src=\"https://www.cokogames.com/wp-content/uploads/2023/02/geometry-dash-150x150.jpg\" width=\"80\" height=\"80\" class=\"background-placeholder\" alt=\"GEOMETRY DASH online\" />",
+            "GEOMETRY DASH online",
+            "<img loading=\"lazy\" src=\"https://www.cokogames.com/wp-content/uploads/thumbs/custom/X/x-to-y-150x150.jpeg\" width=\"80\" height=\"80\" class=\"background-placeholder\" alt=\"X to Y: Precision and Reflexes Game\" />",
+            "ADULT Online Games",
+            "Educational Games for SECONDARY Students (~15 year olds)",
+            "X to Y: Precision and Reflexes Game",
+            "<img loading=\"lazy\" src=\"https://www.cokogames.com/wp-content/uploads/thumbs/custom/I/icy-party-slide-150x150.jpg\" width=\"80\" height=\"80\" class=\"background-placeholder\" alt=\"ICY PURPLE HEAD The Party Slide\" />",
+            "ICY PURPLE HEAD The Party Slide",
+            "<img loading=\"lazy\" src=\"https://www.cokogames.com/wp-content/uploads/thumbs/custom/B/bouncy-blob-150x150.jpg\" width=\"80\" height=\"80\" class=\"background-placeholder\" alt=\"BOUNCY BLOB: Obstacle Course with Boost\" />",
+            "BOUNCY BLOB: Obstacle Course with Boost",
+            "<img loading=\"lazy\" src=\"https://www.cokogames.com/wp-content/uploads/2024/03/gold-miner-game-online-150x150.jpg\" width=\"80\" height=\"80\" class=\"background-placeholder\" alt=\"GOLD MINER Game Online\" />",
+            "GOLD MINER Game Online",
+            "<img loading=\"lazy\" src=\"https://www.cokogames.com/wp-content/uploads/thumbs/custom/B/bubble-tower-150x150.jpg\" width=\"80\" height=\"80\" class=\"background-placeholder\" alt=\"BUBBLE TOWER Shooter 3D\" />",
+            "BUBBLE TOWER Shooter 3D",
+            "<img loading=\"lazy\" src=\"https://www.cokogames.com/wp-content/uploads/2026/03/drift-boss-150x150.jpg\" width=\"80\" height=\"80\" class=\"background-placeholder\" alt=\"DRIFT BOSS\" />",
+            "DRIFT BOSS",
+            "<img loading=\"lazy\" src=\"https://www.cokogames.com/wp-content/uploads/2026/03/1vs1-soccer-150x150.jpg\" width=\"80\" height=\"80\" class=\"background-placeholder\" alt=\"1VS1 SOCCER: 2-Player Soccer\" />",
+            "1VS1 SOCCER: 2-Player Soccer",
+            "<img loading=\"lazy\" src=\"https://www.cokogames.com/wp-content/uploads/thumbs/custom/C/coreball-150x150.jpg\" width=\"80\" height=\"80\" class=\"background-placeholder\" alt=\"COREBALL\" />",
+            "COREBALL",
+            "2048",
+            "Cryptogram"
+          ],
+          "ratings": {
+            "rating_value": "3",
+            "rating_count": "2",
+            "review_count": "",
+            "votes_text": [
+              "(2 votes, average: 3.00 out of 5)",
+              "/* <![CDATA[ */ var ratingsL10n = {\"plugin_url\":\"https:\\/\\/www.cokogames.com\\/wp-content\\/plugins\\/wp-postratings\",\"ajax_url\":\"https:\\/\\/www.cokogames.com\\/wp-admin\\/admin-ajax.php\",\"text_wait\":\"Please rate only 1 item at a time.\",\"image\":\"stars\",\"image_ext\":\"gif\",\"max\":\"5\",\"show_loading\":\"1\",\"show_fading\":\"1\",\"custom\":\"0\"}; var ratings_mouseover_image=new Image();ratings_mouseover_image.src=\"https://www.cokogames.com/wp-content/plugins/wp-postratings/images/stars/rating_over.gif\";; /* ]]> */"
+            ]
+          },
+          "structured_data": [
+            {
+              "type": "",
+              "name": "AMERICAN FOOTBALL KICKS",
+              "headline": "",
+              "description": "American Football Kicks is an online sports game to test your accuracy by shooting the ball and scoring a field goal in the goal, in the area defined by the crossbar and the two vertical posts. Decide the launching point to determine the height, by clicking at the right moment, and also the direction of the shot. Kick a field goal in American soccer as if you were in the NFL. &nbsp;",
+              "genre": [
+                "FRIV Games"
+              ],
+              "category": [
+                "Game"
+              ],
+              "operating_system": "Web Browser",
+              "url": "https://www.cokogames.com/american-football-kicks/",
+              "image": "https://www.cokogames.com/wp-content/uploads/thumbs/custom/A/american-football-game-online-150x150.jpg",
+              "author": [],
+              "creator": [],
+              "publisher": [],
+              "aggregate_rating": {
+                "rating_value": "3",
+                "rating_count": "",
+                "review_count": "2"
+              }
+            }
+          ],
+          "faq_items": [],
+          "section_blocks": [
+            {
+              "heading": "AMERICAN FOOTBALL KICKS",
+              "level": "h1",
+              "text": "AMERICAN FOOTBALL KICKS GAME INFO American Football Kicks is an online sports game to test your accuracy by shooting the ball and scoring a field goal in the goal, in the area defined by the crossbar and the two vertical posts. Decide the launching point to determine the height, by clicking at the right moment, and also the direction of the shot. Kick a field goal in American soccer as if you were in the NFL. Tag list Accuracy Games AIMING Games FREE KICKS Games Games for Tablets SOCCER / FOOTBALL Games Online (2 votes, average: 3.00 out of 5) PLAY",
+              "list_items": [
+                "Accuracy Games",
+                "AIMING Games",
+                "FREE KICKS Games",
+                "Games for Tablets",
+                "SOCCER / FOOTBALL Games Online"
+              ],
+              "links": [
+                "AMERICAN FOOTBALL KICKS",
+                "Accuracy Games",
+                "AIMING Games",
+                "FREE KICKS Games",
+                "Games for Tablets",
+                "SOCCER / FOOTBALL Games Online",
+                "PLAY"
+              ]
+            },
+            {
+              "heading": "Tag list",
+              "level": "h3",
+              "text": "GAME INFO American Football Kicks is an online sports game to test your accuracy by shooting the ball and scoring a field goal in the goal, in the area defined by the crossbar and the two vertical posts. Decide the launching point to determine the height, by clicking at the right moment, and also the direction of the shot. Kick a field goal in American soccer as if you were in the NFL. Tag list Accuracy Games AIMING Games FREE KICKS Games Games for Tablets SOCCER / FOOTBALL Games Online (2 votes, average: 3.00 out of 5) PLAY",
+              "list_items": [
+                "Accuracy Games",
+                "AIMING Games",
+                "FREE KICKS Games",
+                "Games for Tablets",
+                "SOCCER / FOOTBALL Games Online"
+              ],
+              "links": [
+                "Accuracy Games",
+                "AIMING Games",
+                "FREE KICKS Games",
+                "Games for Tablets",
+                "SOCCER / FOOTBALL Games Online",
+                "PLAY"
+              ]
+            },
+            {
+              "heading": "LEAVE A REPLY",
+              "level": "h3",
+              "text": "LEAVE A REPLY Your email address will not be published.",
+              "list_items": [],
+              "links": [
+                "Cancel reply"
+              ]
+            }
+          ],
+          "key_sections": {
+            "about": null,
+            "how_to_play": null,
+            "controls": null,
+            "faq": null,
+            "developer": null,
+            "features": null
+          },
+          "developer_mentions": [],
+          "content_blocks": [
+            "GAME INFO American Football Kicks is an online sports game to test your accuracy by shooting the ball and scoring a field goal in the goal, in the area defined by the crossbar and the two vertical posts. Decide the launching point to determine the height, by clicking at the right moment, and also the direction of the shot. Kick a field goal in American soccer as if you were in the NFL.",
+            "SOCCER / FOOTBALL Games Online",
+            "Your email address will not be published."
+          ],
+          "main_text_excerpt": "AMERICAN FOOTBALL KICKS GAME INFO American Football Kicks is an online sports game to test your accuracy by shooting the ball and scoring a field goal in the goal, in the area defined by the crossbar and the two vertical posts. Decide the launching point to determine the height, by clicking at the right moment, and also the direction of the shot. Kick a field goal in American soccer as if you were in the NFL. Tag list Accuracy Games AIMING Games FREE KICKS Games Games for Tablets SOCCER / FOOTBALL Games Online (2 votes, average: 3.00 out of 5) PLAY WALKTHROUGH VIDEO RELATED GAMES WORLD CUP 2026 Soccer Heads Game WORLD CUP 2026 Soccer Heads Game GEOMETRY DASH online GEOMETRY DASH online X to Y: Precision and Reflexes Game X to Y: Precision and Reflexes Game ICY PURPLE HEAD The Party Slide ICY PURPLE HEAD The Party Slide BOUNCY BLOB: Obstacle Course with Boost BOUNCY BLOB: Obstacle Course with Boost GOLD MINER Game Online GOLD MINER Game Online BUBBLE TOWER Shooter 3D BUBBLE TOWER Shooter 3D DRIFT BOSS DRIFT BOSS 1VS1 SOCCER: 2-Player Soccer 1VS1 SOCCER: 2-Player Soccer COREBALL COREBALL LEAVE A REPLY Your email address will not be published.",
+          "visible_text_length": 1158,
+          "surface_type": "iframe",
+          "screenshot_path": "/workspace/stage0_artifacts/74098748-0e72-4bbb-b93f-d4a92ad3c249/external/candidate_04_render.png"
+        },
+        "correlation": {
+          "visual_similarity_score": 85,
+          "mechanic_match_score": 90,
+          "text_relevance_score": 95,
+          "brand_alignment_score": 90,
+          "reasoning": "Images and metadata suggest a high correlation. Image A shows the title 'American Football Kicks' with an American football theme, Image B shows a gameplay start screen with a football player, aligning well with the game theme. The external image shows the game info page for 'American Football Kicks', confirming it as the same game described on cokogames.com. The metadata supports the theme and mechanics of kicking a field goal, consistent across all sources.",
+          "facts": {
+            "controls": "Decide the launching point and direction by clicking.",
+            "rules": "Score a field goal by shooting the ball into the goal area defined by the crossbar and vertical posts.",
+            "original_developer": "Not specified in the provided data."
+          }
+        },
+        "scoring": {
+          "weights": {
+            "visual_similarity_score": 0.45,
+            "mechanic_match_score": 0.2,
+            "text_relevance_score": 0.2,
+            "brand_alignment_score": 0.15
+          },
+          "breakdown": {
+            "visual_similarity_score": {
+              "raw_score": 85,
+              "weight": 0.45,
+              "weighted_score": 38.25
+            },
+            "mechanic_match_score": {
+              "raw_score": 90,
+              "weight": 0.2,
+              "weighted_score": 18.0
+            },
+            "text_relevance_score": {
+              "raw_score": 95,
+              "weight": 0.2,
+              "weighted_score": 19.0
+            },
+            "brand_alignment_score": {
+              "raw_score": 90,
+              "weight": 0.15,
+              "weighted_score": 13.5
+            }
+          },
+          "confidence_score": 89
+        },
+        "confidence_score": 89,
+        "reasoning": "Images and metadata suggest a high correlation. Image A shows the title 'American Football Kicks' with an American football theme, Image B shows a gameplay start screen with a football player, aligning well with the game theme. The external image shows the game info page for 'American Football Kicks', confirming it as the same game described on cokogames.com. The metadata supports the theme and mechanics of kicking a field goal, consistent across all sources.",
+        "extracted_facts": {
+          "controls": "Decide the launching point and direction by clicking.",
+          "rules": "Score a field goal by shooting the ball into the goal area defined by the crossbar and vertical posts.",
+          "original_developer": "Not specified in the provided data."
+        }
+      },
+      {
+        "rank": 10,
+        "url": "https://www.outlawsgameroom.com/game/american-football-kicks",
+        "search_query": "\"Football Kicks\" \"American Football Kicks\" browser game play online",
+        "screenshot_path": "/workspace/stage0_artifacts/74098748-0e72-4bbb-b93f-d4a92ad3c249/external/candidate_10_render.png",
+        "metadata_path": "/workspace/stage0_artifacts/74098748-0e72-4bbb-b93f-d4a92ad3c249/external/candidate_10_render.json",
+        "metadata": {
+          "requested_url": "https://www.outlawsgameroom.com/game/american-football-kicks",
+          "final_url": "https://www.outlawsgameroom.com/game/american-football-kicks",
+          "title": "American Football Kicks - Outlaws Gameroom",
+          "meta_description": "American Football Kicks is a HTML5 Sport Game. The crowd is screaming\u2026 All eyes are on you\u2026 How many points will you score?",
+          "meta_keywords": "",
+          "og_title": "American Football Kicks",
+          "og_description": "American Football Kicks is a HTML5 Sport Game. The crowd is screaming\u2026 All eyes are on you\u2026 How many points will you score?",
+          "og_image": "/images/american-football-kick.webp",
+          "og_type": "game",
+          "og_site_name": "Outlaws Gameroom",
+          "twitter_title": "American Football Kicks",
+          "twitter_description": "American Football Kicks is a HTML5 Sport Game. The crowd is screaming\u2026 All eyes are on you\u2026 How many points will you score?",
+          "twitter_image": "/images/american-football-kick.webp",
+          "canonical_url": "https://www.outlawsgameroom.com/game/american-football-kicks",
+          "headings": [
+            {
+              "level": "h1",
+              "text": "American Football Kicks"
+            }
+          ],
+          "breadcrumb": [],
+          "categories": [
+            "Multiplayer",
+            "Racing",
+            "Action",
+            "Puzzle",
+            "Arcade",
+            "Sports",
+            "Sports 3"
+          ],
+          "tags": [
+            "Word",
+            "Geometry",
+            "Mobile",
+            "Cards",
+            "Android",
+            "HTML5",
+            "Match 3",
+            "1 Player",
+            "1 Player 8",
+            "Football 0",
+            "Mobile 2",
+            "Sport 1"
+          ],
+          "ratings": {
+            "rating_value": "",
+            "rating_count": "",
+            "review_count": "",
+            "votes_text": []
+          },
+          "structured_data": [],
+          "faq_items": [],
+          "section_blocks": [
+            {
+              "heading": "American Football Kicks",
+              "level": "h1",
+              "text": "Games \u00bb Sports \u00bb 1 Player American Football Kicks American Football Kicks is a HTML5 Sport Game. The crowd is screaming\u2026 All eyes are on you\u2026 How many points will you score? Sports 3 1 Player 8 Football 0 Mobile 2 Sport 1",
+              "list_items": [],
+              "links": [
+                "Games",
+                "Sports",
+                "1 Player",
+                "Sports 3",
+                "1 Player 8",
+                "Football 0",
+                "Mobile 2",
+                "Sport 1"
+              ]
+            }
+          ],
+          "key_sections": {
+            "about": null,
+            "how_to_play": null,
+            "controls": null,
+            "faq": null,
+            "developer": null,
+            "features": null
+          },
+          "developer_mentions": [],
+          "content_blocks": [
+            "Football Stars Championship",
+            "Super Football Kicking 2020",
+            "Space shooter Galaxy attack Galaxy shooter",
+            "Sworded.io - Spin and Rub"
+          ],
+          "main_text_excerpt": "Home New Games Best Games Featured Games Played Games Multiplayer Racing Action Puzzle Arcade More Categories Word Geometry Mobile Cards Android HTML5 Match 3 More Tags Blog Contact YouTube Terms About Partners Facebook Privacy American Football Kicks Play Now American Football Kicks --- Games \u00bb Sports \u00bb 1 Player American Football Kicks American Football Kicks is a HTML5 Sport Game. The crowd is screaming\u2026 All eyes are on you\u2026 How many points will you score? Sports 3 1 Player 8 Football 0 Mobile 2 Sport 1 Play American Football Kicks",
+          "visible_text_length": 539,
+          "surface_type": "iframe",
+          "screenshot_path": "/workspace/stage0_artifacts/74098748-0e72-4bbb-b93f-d4a92ad3c249/external/candidate_10_render.png"
+        },
+        "correlation": {
+          "visual_similarity_score": 80,
+          "mechanic_match_score": 85,
+          "text_relevance_score": 90,
+          "brand_alignment_score": 95,
+          "reasoning": "The images and metadata suggest a consistent theme and subject. Image A shows branding for 'American Football Kicks,' which aligns with the game's title. Images B and C both depict a similar start screen featuring a football player in a stadium, consistent with the theme of football kicks. The color scheme and elements in Images B and C are similar, indicating gameplay related to Image A's branding. The metadata confirms the game's focus on American football and scoring, which is visually represented in the images.",
+          "facts": {
+            "controls": "Mouse or touchscreen to aim and kick the football.",
+            "rules": "Score points by aiming kicks accurately through the goalposts.",
+            "original_developer": "Not specified"
+          }
+        },
+        "scoring": {
+          "weights": {
+            "visual_similarity_score": 0.45,
+            "mechanic_match_score": 0.2,
+            "text_relevance_score": 0.2,
+            "brand_alignment_score": 0.15
+          },
+          "breakdown": {
+            "visual_similarity_score": {
+              "raw_score": 80,
+              "weight": 0.45,
+              "weighted_score": 36.0
+            },
+            "mechanic_match_score": {
+              "raw_score": 85,
+              "weight": 0.2,
+              "weighted_score": 17.0
+            },
+            "text_relevance_score": {
+              "raw_score": 90,
+              "weight": 0.2,
+              "weighted_score": 18.0
+            },
+            "brand_alignment_score": {
+              "raw_score": 95,
+              "weight": 0.15,
+              "weighted_score": 14.25
+            }
+          },
+          "confidence_score": 85
+        },
+        "confidence_score": 85,
+        "reasoning": "The images and metadata suggest a consistent theme and subject. Image A shows branding for 'American Football Kicks,' which aligns with the game's title. Images B and C both depict a similar start screen featuring a football player in a stadium, consistent with the theme of football kicks. The color scheme and elements in Images B and C are similar, indicating gameplay related to Image A's branding. The metadata confirms the game's focus on American football and scoring, which is visually represented in the images.",
+        "extracted_facts": {
+          "controls": "Mouse or touchscreen to aim and kick the football.",
+          "rules": "Score points by aiming kicks accurately through the goalposts.",
+          "original_developer": "Not specified"
+        }
+      }
+    ],
+    "comparison_scores_path": "/workspace/stage0_artifacts/74098748-0e72-4bbb-b93f-d4a92ad3c249/comparison_scores.json"
+  },
+  "seo_blueprint": {
+    "primary_keywords": [
+      "Football Kicks",
+      "American Football Kicks"
+    ],
+    "secondary_keywords": [
+      "browser game",
+      "play online"
+    ],
+    "long_tail_keywords": [
+      "unblocked American Football Kicks game",
+      "how to play Football Kicks online"
+    ],
+    "semantic_entities": [
+      "sports challenge",
+      "score goals",
+      "HTML5 game"
+    ],
+    "keyword_clusters": [
+      {
+        "cluster_name": "Football Kicks Gameplay",
+        "search_intent": "Users looking to play and learn about the game",
+        "keywords": [
+          "Football Kicks",
+          "American Football Kicks",
+          "play online"
+        ]
+      },
+      {
+        "cluster_name": "Unblocked Games",
+        "search_intent": "Users seeking access to unblocked games at school or work",
+        "keywords": [
+          "unblocked American Football Kicks",
+          "unblocked browser games"
+        ]
+      }
+    ],
+    "search_intents": [
+      "Play online",
+      "Learn how to play",
+      "Access unblocked games"
+    ],
+    "audience_segments": [
+      "students seeking unblocked games",
+      "casual gamers interested in sports games"
+    ],
+    "content_angles": [
+      "How to score high in Football Kicks",
+      "Playing Football Kicks unblocked"
+    ],
+    "serp_features": [
+      "Rich snippets for FAQs",
+      "Featured snippets for gameplay instructions"
+    ],
+    "faq_opportunities": [
+      {
+        "question": "How do I play Football Kicks online?",
+        "source_signal": "Game Instructions",
+        "answer_angle": "Provide step-by-step instructions for gameplay"
+      },
+      {
+        "question": "Is Football Kicks an unblocked game?",
+        "source_signal": "Grade Games",
+        "answer_angle": "Explain the availability of the game on unblocked platforms"
+      }
+    ],
+    "metadata_recommendations": {
+      "slug": "football-kicks-browser-game",
+      "title_tag": "Football Kicks - Play Free Browser Game Online",
+      "meta_description": "Step into the world of Football Kicks, a thrilling sports challenge. Play online in your browser and aim for the top score!",
+      "primary_h1": "Play Football Kicks Online"
+    },
+    "intent_strategy": "Focus on delivering comprehensive gameplay instructions and highlighting the unblocked nature of the game.",
+    "suggested_title": "Master Football Kicks: The Ultimate Online Sports Challenge"
+  }
+}

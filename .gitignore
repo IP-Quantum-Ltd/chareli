@@ -87,3 +87,4 @@ ai-agent/**/*.pyc
 ai-agent/.pytest_cache/
 ai-agent/.mypy_cache/
 ai-agent/.ruff_cache/
+scope_comparison.md

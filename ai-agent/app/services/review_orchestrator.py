@@ -1,11 +1,11 @@
 import base64
 import logging
 import asyncio
-import os
 from app.services.arcade_client import get_proposal
 from app.services.browser_agent import capture_game_preview
 from app.services.visual_librarian import VisualLibrarian
 from app.services.analyst_agent import AnalystAgent
+from app.services.librarian_agent import LibrarianAgent
 from app.services.architect_agent import ArchitectAgent
 from app.services.scribe_agent import ScribeAgent
 
@@ -24,19 +24,25 @@ async def run_full_generation(proposal_id: str) -> str:
 
     # 2. Stage -1: Capture Internal Game Asset
     target_id = proposal.get("gameId") or proposal_id
-    internal_screenshot = f"internal_{proposal_id}.png"
     
     try:
-        await capture_game_preview(target_id, internal_screenshot)
-        with open(internal_screenshot, "rb") as f:
-            internal_base64 = base64.b64encode(f.read()).decode("utf-8")
+        capture_result = await capture_game_preview(
+            proposal_id=target_id,
+            proposal_snapshot=proposal,
+            game_title=title,
+        )
+        internal_paths = capture_result["paths"]
+        internal_base64 = []
+        for path in internal_paths:
+            with open(path, "rb") as f:
+                internal_base64.append(base64.b64encode(f.read()).decode("utf-8"))
     except Exception as e:
         logger.error(f"Internal capture failed: {e}")
         return "Critical Failure: Could not capture reference screenshot."
 
     # 3. Stage 0: Visual Librarian (Correlation Analysis)
     librarian = VisualLibrarian()
-    investigation = await librarian.verify_and_research(title, internal_base64)
+    investigation = await librarian.verify_and_research(target_id, title, internal_base64)
     
     if investigation["status"] == "failed":
         logger.warning(f"Visual Verification Failed: {investigation['reason']}")
@@ -47,26 +53,35 @@ async def run_full_generation(proposal_id: str) -> str:
     
     # 4. Stage 1: SEO Intelligence
     analyst = AnalystAgent()
-    seo_blueprint = await analyst.analyze_seo_potential(title, verified_facts)
+    seo_blueprint = await analyst.analyze_seo_potential(title, investigation)
 
-    # 5. Stage 3: Architect (Outline)
+    # 5. Stage 2: Librarian (Grounded Context)
+    librarian = LibrarianAgent()
+    grounded_context = await librarian.build_grounded_context(title, investigation, seo_blueprint)
+
+    # 6. Stage 3: Architect (Outline)
     architect = ArchitectAgent()
     outline = await architect.build_outline(title, {
         "visual_description": best_match["reasoning"],
-        "canonical_url": best_match["url"]
+        "canonical_url": best_match["url"],
+        "verified_facts": verified_facts,
+        "source_metadata": best_match.get("metadata") or {},
+        "seo_blueprint": seo_blueprint,
+        "grounded_context": grounded_context,
     })
 
-    # 6. Stage 5: Scribe (Drafting)
+    # 7. Stage 5: Scribe (Drafting)
     scribe = ScribeAgent()
     article = await scribe.draft_from_facts(title, {
         "source_url": best_match["url"],
         "facts": verified_facts,
-        "seo": seo_blueprint
+        "source_metadata": best_match.get("metadata") or {},
+        "seo": seo_blueprint,
+        "grounded_context": grounded_context,
+        "content_plan": outline,
     })
 
-    # 7. Final Cleanup & Export
-    if os.path.exists(internal_screenshot): os.remove(internal_screenshot)
-    
+    # 8. Final Cleanup & Export
     output_path = f"draft_{proposal_id}.md"
     with open(output_path, "w") as f:
         f.write(article)

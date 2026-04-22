@@ -23,14 +23,16 @@ class BaseAIClient:
             api_key=settings.OPENAI_API_KEY,
             stream_usage=True # Ensure usage metadata is included even in streaming if used later
         )
-        self.embeddings = OpenAIEmbeddings(model="text-embedding-3-small", api_key=settings.OPENAI_API_KEY)
+        self.embeddings = OpenAIEmbeddings(model=settings.EMBEDDING_MODEL, api_key=settings.OPENAI_API_KEY)
         self.last_cost = 0.0
 
     async def generate_embedding(self, text: str, model: str = "text-embedding-3-large") -> List[float]:
         """Generates a high-dimension vector for RAG."""
         try:
-            response = await self.client.embeddings.create(input=text, model=model)
-            return response.data[0].embedding
+            if model != settings.EMBEDDING_MODEL:
+                temp_embeddings = OpenAIEmbeddings(model=model, api_key=settings.OPENAI_API_KEY)
+                return await temp_embeddings.aembed_query(text)
+            return await self.embeddings.aembed_query(text)
         except Exception as e:
             logger.error(f"Embedding failed: {e}")
             return [0.0] * 3072
@@ -79,6 +81,8 @@ class BaseAIClient:
                     return json.loads(raw_content)
                 except Exception as e:
                     logger.error(f"JSON parsing failed for content: {content[:100]}... Error: {e}")
+                    if fallback_data is not None:
+                        return fallback_data
                     return {"error": "JSON parse failed", "raw": content}
             
             return content

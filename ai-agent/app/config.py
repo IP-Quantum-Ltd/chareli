@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     AI_PROVIDER: str = "openai"
     PRIMARY_LLM_MODEL: str = "gpt-4o"
     SECONDARY_LLM_MODEL: str = "gpt-4o-mini"
+    EMBEDDING_MODEL: str = "text-embedding-3-large"
     CLIENT_URL: str = "https://staging.arcadesbox.com/"
     SUPERADMIN_EMAIL: str
     SUPERADMIN_PASSWORD: str
@@ -22,8 +23,15 @@ class Settings(BaseSettings):
 
     # Databases
     DATABASE_URL: str = ""  # Postgres
+    DB_HOST: str = ""
+    DB_PORT: int = 5432
+    DB_USERNAME: str = ""
+    DB_PASSWORD: str = ""
+    DB_DATABASE: str = ""
     MONGODB_URL: str = ""
     MONGODB_DB_NAME: str = "ai_review_db"
+    MONGODB_RAG_COLLECTION: str = "stage2_grounded_contexts"
+    MONGODB_VECTOR_INDEX: str = "stage2_grounded_context_vector_index"
 
     # Webhook & Cron
     WEBHOOK_SECRET: str = ""

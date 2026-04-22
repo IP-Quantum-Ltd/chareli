@@ -1,9 +1,10 @@
 import logging
-from typing import TypedDict, Dict, Any, List
+from typing import TypedDict, Dict, Any, List, Optional
 from langgraph.graph import StateGraph, END
 from app.services.browser_agent import capture_game_preview
 from app.services.visual_librarian import VisualLibrarian
 from app.services.analyst_agent import AnalystAgent
+from app.services.librarian_agent import LibrarianAgent
 from app.services.architect_agent import ArchitectAgent
 from app.services.scribe_agent import ScribeAgent
 import base64
@@ -15,11 +16,15 @@ logger = logging.getLogger(__name__)
 class AgentState(TypedDict):
     """The state object passed between nodes in LangGraph."""
     proposal_id: str
+    game_id: str
     game_title: str
-    internal_imgs_base64: List[str]  # Updated to handle dual frames
+    proposal_snapshot: Dict[str, Any]
+    internal_capture_metadata: Dict[str, Any]
+    internal_imgs_base64: List[str]  # [thumbnail, gameplay_start]
     internal_imgs_paths: List[str]
     investigation: Dict[str, Any]
     seo_blueprint: Dict[str, Any]
+    grounded_context: Dict[str, Any]
     outline: Dict[str, Any]
     article: str
     accumulated_cost: float
@@ -32,13 +37,18 @@ async def capture_node(state: AgentState) -> AgentState:
     logger.info(f"Node: Capture | Proposal: {state['proposal_id']}")
     
     try:
-        # returns a list of 2 paths
-        paths = await capture_game_preview(state["proposal_id"], "internal")
+        capture_result = await capture_game_preview(
+            proposal_id=state["proposal_id"],
+            proposal_snapshot=state.get("proposal_snapshot") or {},
+            game_title=state["game_title"],
+        )
+        paths = capture_result["paths"]
         state["internal_imgs_paths"] = paths
+        state["internal_capture_metadata"] = capture_result.get("metadata", {})
         
         # FAIL-FAST: Verify we actually got screenshots
         if not paths or len(paths) < 2:
-            raise ValueError("Failed to capture both internal frames.")
+            raise ValueError("Failed to capture both internal reference images.")
             
         # Encode both for multi-modal vision
         state["internal_imgs_base64"] = []
@@ -60,8 +70,11 @@ async def research_node(state: AgentState) -> AgentState:
     logger.info("Node: Visual Research (Stage 0)")
     
     librarian = VisualLibrarian()
-    # Pass the list of images
-    result = await librarian.verify_and_research(state["game_title"], state["internal_imgs_base64"])
+    result = await librarian.verify_and_research(
+        proposal_id=state["proposal_id"],
+        game_title=state["game_title"],
+        internal_screenshots=state["internal_imgs_base64"],
+    )
     
     state["accumulated_cost"] += librarian.last_cost
     
@@ -78,10 +91,7 @@ async def analyze_node(state: AgentState) -> AgentState:
     logger.info("Node: SEO Intelligence (Stage 1)")
     
     analyst = AnalystAgent()
-    blueprint = await analyst.analyze_seo_potential(
-        state["game_title"], 
-        state["investigation"]["best_match"]["extracted_facts"]
-    )
+    blueprint = await analyst.analyze_seo_potential(state["game_title"], state["investigation"])
     state["accumulated_cost"] += analyst.last_cost
     state["seo_blueprint"] = blueprint
     state["status"] = "analyzed"
@@ -92,9 +102,14 @@ async def architect_node(state: AgentState) -> AgentState:
     logger.info("Node: Architect (Stage 3)")
     
     architect = ArchitectAgent()
+    best_match = state["investigation"]["best_match"]
     outline = await architect.build_outline(state["game_title"], {
-        "visual_description": state["investigation"]["best_match"]["reasoning"],
-        "canonical_url": state["investigation"]["best_match"]["url"]
+        "visual_description": best_match["reasoning"],
+        "canonical_url": best_match["url"],
+        "verified_facts": best_match.get("extracted_facts") or {},
+        "source_metadata": best_match.get("metadata") or {},
+        "seo_blueprint": state["seo_blueprint"],
+        "grounded_context": state["grounded_context"],
     })
     state["accumulated_cost"] += architect.last_cost
     state["outline"] = outline
@@ -106,14 +121,38 @@ async def scribe_node(state: AgentState) -> AgentState:
     logger.info("Node: Scribe (Stage 5)")
     
     scribe = ScribeAgent()
+    best_match = state["investigation"]["best_match"]
     article = await scribe.draft_from_facts(state["game_title"], {
-        "source_url": state["investigation"]["best_match"]["url"],
-        "facts": state["investigation"]["best_match"]["extracted_facts"],
-        "seo": state["seo_blueprint"]
+        "source_url": best_match["url"],
+        "facts": best_match.get("extracted_facts") or {},
+        "source_metadata": best_match.get("metadata") or {},
+        "seo": state["seo_blueprint"],
+        "grounded_context": state["grounded_context"],
+        "content_plan": state["outline"],
     })
     state["accumulated_cost"] += scribe.last_cost
     state["article"] = article
     state["status"] = "complete"
+    return state
+
+async def librarian_node(state: AgentState) -> AgentState:
+    if state["status"] == "failed": return state
+    logger.info("Node: Librarian (Stage 2)")
+
+    try:
+        librarian = LibrarianAgent()
+        grounded_context = await librarian.build_grounded_context(
+            state["game_title"],
+            state["investigation"],
+            state["seo_blueprint"],
+        )
+        state["accumulated_cost"] += librarian.last_cost
+        state["grounded_context"] = grounded_context
+        state["status"] = "grounded"
+    except Exception as e:
+        logger.error(f"Librarian Stage Failed: {e}")
+        state["status"] = "failed"
+        state["error_message"] = f"CRITICAL: Stage 2 grounded retrieval failed. Detail: {e}"
     return state
 
 # --- Build the Graph ---
@@ -123,13 +162,15 @@ workflow = StateGraph(AgentState)
 workflow.add_node("capture", capture_node)
 workflow.add_node("research", research_node)
 workflow.add_node("analyze", analyze_node)
+workflow.add_node("librarian", librarian_node)
 workflow.add_node("architect", architect_node)
 workflow.add_node("scribe", scribe_node)
 
 workflow.set_entry_point("capture")
 workflow.add_edge("capture", "research")
 workflow.add_edge("research", "analyze")
-workflow.add_edge("analyze", "architect")
+workflow.add_edge("analyze", "librarian")
+workflow.add_edge("librarian", "architect")
 workflow.add_edge("architect", "scribe")
 workflow.add_edge("scribe", END)
 
@@ -137,14 +178,22 @@ workflow.add_edge("scribe", END)
 app_graph = workflow.compile()
 
 @traceable(run_type="chain", name="ArcadeBox SEO Pipeline")
-async def run_pipeline_with_tracking(proposal_id: str, game_title: str) -> Dict[str, Any]:
+async def run_pipeline_with_tracking(
+    proposal_id: str,
+    game_title: str,
+    proposal_snapshot: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     initial_state = {
         "proposal_id": proposal_id,
+        "game_id": ((proposal_snapshot or {}).get("gameId") or ((proposal_snapshot or {}).get("game") or {}).get("id") or ""),
         "game_title": game_title,
+        "proposal_snapshot": proposal_snapshot or {},
+        "internal_capture_metadata": {},
         "internal_imgs_base64": [],
         "internal_imgs_paths": [],
         "investigation": {},
         "seo_blueprint": {},
+        "grounded_context": {},
         "outline": {},
         "article": "",
         "accumulated_cost": 0.0,
