@@ -40,6 +40,7 @@ import {
 } from '../validation';
 import { paginationMiddleware } from '../middlewares/pagination.middleware';
 import { likeLimiter, uploadLimiter } from '../middlewares/rateLimitMiddleware';
+import { multerErrorHandler } from '../middlewares/multerErrorHandler';
 
 const router = Router();
 
@@ -90,7 +91,7 @@ router.post('/multipart/abort', isEditor, uploadLimiter, abortMultipartUpload);
 router.post('/bulk-update-free-time', isAdmin, bulkUpdateFreeTime);
 
 // Create Game - Allow Editors
-router.post('/', isEditor, uploadGameFiles, createGame);
+router.post('/', isEditor, uploadGameFiles, multerErrorHandler, createGame);
 
 // Update Game - Allow Editors
 router.put(
@@ -98,6 +99,7 @@ router.put(
   isEditor,
   validateParams(gameIdParamSchema),
   uploadGameFilesForUpdate,
+  multerErrorHandler,
   updateGame
 );
 

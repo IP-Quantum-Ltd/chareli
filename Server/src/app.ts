@@ -5,6 +5,7 @@ import helmet from 'helmet';
 import swaggerUi from 'swagger-ui-express';
 import routes from './routes';
 import { errorHandler } from './middlewares/errorHandler';
+import { requestId } from './middlewares/requestId';
 import { requestLogger } from './middlewares/requestLogger';
 import { sanitizeInput } from './middlewares/sanitizationMiddleware';
 import logger from './utils/logger';
@@ -14,6 +15,10 @@ import { redisService } from './services/redis.service';
 
 
 const app: Express = express();
+
+// Attach a request ID + AsyncLocalStorage context. Must run first so every
+// downstream log line can pick up `reqId` automatically.
+app.use(requestId);
 
 // Request logging middleware
 app.use(requestLogger);

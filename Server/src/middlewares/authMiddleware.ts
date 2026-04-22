@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { authService, TokenPayload } from '../services/auth.service';
 import { ApiError } from './errorHandler';
+import { attachUserToRequestContext } from './requestId';
 import { RoleType } from '../entities/Role';
 import { AppDataSource } from '../config/database';
 import { User } from '../entities/User';
@@ -25,6 +26,7 @@ export const optionalAuthenticate = (req: Request, res: Response, next: NextFunc
     // Verify token and attach user if valid
     const decoded = authService.verifyToken(token);
     req.user = decoded;
+    attachUserToRequestContext(decoded.userId);
     next();
   } catch (error) {
     // If token is invalid, continue without authentication
@@ -59,9 +61,10 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
 
     // Verify token
     const decoded = authService.verifyToken(token);
-    
+
     // Attach user to request
     req.user = decoded;
+    attachUserToRequestContext(decoded.userId);
     
     // Update user's lastSeen timestamp (fire and forget - don't wait for it)
     if (decoded.userId) {
