@@ -208,73 +208,20 @@ the team has consciously narrowed the gap. Concrete remaining differences:
 
 ---
 
-## 6. Zaraz tool configuration (out-of-repo runbook)
+## 6. Zaraz tool configuration
 
-Cloudflare Zaraz config lives in the Cloudflare dashboard, not in this
-repo. This section is the checklist the next person needs when the tags
-stop behaving.
+The end-to-end Cloudflare-dashboard runbook lives in a dedicated file —
+it's long enough to warrant its own page and covers every event the app
+emits, every trigger to create, every action on every tool, consent mode,
+the GA4 DebugView gotcha, and a verification order.
 
-### 6.1 Google Ads Conversion tool (`AW-17063551057`)
+**See [`zaraz_setup_runbook.md`](./zaraz_setup_runbook.md).**
 
-As of this audit the tool exists in Zaraz with one **Automated action**
-(Pageview) and **no Custom actions**. Conversion events fired by the app
-therefore never reach Google Ads unless a custom action is wired up.
+Quick reminders that belong here rather than in the runbook:
 
-**Custom actions to configure** (Cloudflare → Zaraz → Tools → Google Ads
-Conversion → **Custom actions** → **Add action**):
-
-| Action name     | Trigger event   | Conversion label source                                      | Notes                                                    |
-| --------------- | --------------- | ------------------------------------------------------------ | -------------------------------------------------------- |
-| Signup          | `sign_up`       | Google Ads → Conversions → [signup action] → Tag setup       | Event is emitted by `trackConversion.signUp` at both signup paths |
-| Game Start      | `game_start`    | Google Ads → Conversions → [game-start action] → Tag setup   | Event already emitted by `trackGameplay.gameStart` in `GamePlay.tsx` |
-
-**How to retrieve a conversion label**: in Google Ads, Tools → Conversions
-→ click the conversion → "Tag setup" → **Install the tag yourself** →
-copy the `send_to` value after the `/` (format: `AW-17063551057/<LABEL>`).
-Paste just the label (everything after the `/`) into the Zaraz action.
-
-**Custom parameters**: forward `method` (for `sign_up`) so Ads can
-segment email vs invitation signups. For `game_start`, forward `game_id`
-and `game_title` if Ads audience rules need them.
-
-### 6.2 GA4 tool
-
-- **Measurement ID**: set in the GA4 tool's Settings. Do not check this
-  into the repo.
-- **Key Events**: in GA4 admin → Events, mark `sign_up` and `game_start`
-  as Key Events so they count as conversions in GA4 reports (and are
-  eligible for auto-import into Google Ads via the GA4↔Ads link).
-- **DebugView**: add a default event field `debug_mode` with value `true`.
-  Every event will then appear in GA4 → Admin → DebugView. Standard
-  reports, Realtime, and Key Event counts are unaffected — `debug_mode`
-  does not flag events as test data and does not exclude them from
-  reports. Tradeoff: DebugView becomes a live firehose (accepted; client
-  prefers simplicity over conditional gating).
-
-### 6.3 Consent Mode
-
-- Confirm `ad_storage` defaults to `granted`, or that the cookie banner's
-  accept handler fires `zaraz.consent.set({ ad_storage: 'granted' })`.
-  Without it, the Google Ads tool drops everything regardless of custom
-  actions.
-- Check in Chrome DevTools → Application → Cookies for the Zaraz consent
-  cookie; it should reflect the user's last choice.
-
-### 6.4 Meta Pixel
-
-- Pixel ID `1940362026887774` loads from `Client/src/analytics.ts`
-  (not via Zaraz).
-- `trackConversion.signUp` fires `fbq('track', 'CompleteRegistration', { method })`.
-- Verify in Meta Events Manager → Test Events (browser Test Event ID) →
-  expect `CompleteRegistration` to appear after a real signup.
-
-### 6.5 Verification recipe
-
-After any Zaraz change:
-
-1. Trigger the event in production (signup, game click).
-2. GA4 DebugView should show the event within ~5 seconds. If not, the
-   `debug_mode` field in the GA4 tool didn't save.
-3. Google Ads → Conversions → [action]: "Recording conversions" status
-   flips within ~3 hours of the first real conversion.
-4. Meta Events Manager → Test Events: `CompleteRegistration` for signups.
+- Zaraz config lives only in the Cloudflare dashboard. There is no
+  `zaraz.json` / `wrangler.toml` in this repo — nothing to diff, nothing
+  to review on PR.
+- After any config change, verify in **Zaraz Monitoring** (dashboard
+  live-stream) *and* **GA4 Realtime** before trusting it. GA4 DebugView
+  is not fully reliable with Zaraz; see the runbook §7.
