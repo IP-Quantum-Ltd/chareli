@@ -133,6 +133,31 @@ export const trackGameplay = {
 };
 
 /**
+ * Track conversion events for ad platforms.
+ *
+ * Dual-emit: Zaraz → GA4 → Google Ads (via a Zaraz custom action on the
+ * Google Ads Conversion tool) AND Meta Pixel directly. Production-gated
+ * through the same `isAnalyticsEnabled` check as `trackEvent`; `fbq` is
+ * separately guarded since it loads async after `window.load`.
+ */
+export const trackConversion = {
+  /**
+   * Track successful account creation. Fire immediately after the server
+   * persists the new user — not on first-login OTP verification.
+   */
+  signUp: (method: 'email' | 'invitation') => {
+    trackEvent('sign_up', { method });
+    if (typeof window !== 'undefined' && typeof (window as any).fbq === 'function') {
+      try {
+        (window as any).fbq('track', 'CompleteRegistration', { method });
+      } catch (error) {
+        console.error('Failed to track Meta CompleteRegistration:', error);
+      }
+    }
+  },
+};
+
+/**
  * Track user interaction events
  */
 export const trackInteraction = {
