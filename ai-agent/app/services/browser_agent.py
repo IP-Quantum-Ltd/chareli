@@ -16,11 +16,11 @@ if not all([BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD]):
     )
 
 
-async def capture_game_preview(proposal_id: str, output_path: str = "screenshot.png"):
+async def capture_game_preview(game_id: str, output_path: str = "screenshot.png"):
     """
-    Agent 1 (Day 1): Navigates to Arcade platform, logs in, and captures a screenshot of the game proposal.
+    Agent 1 (Day 1): Navigates to Arcade platform, logs in, and captures a screenshot of the game.
     """
-    print(f"Starting Agent 1 for Proposal ID: {proposal_id}")
+    print(f"Starting Agent 1 for Game ID: {game_id}")
     async with async_playwright() as p:
         # Launch browser in background (headless=True)
         browser = await p.chromium.launch(headless=True)
@@ -43,7 +43,7 @@ async def capture_game_preview(proposal_id: str, output_path: str = "screenshot.
             print("Successfully authenticated.")
 
             # Navigate to the actual playable game screen
-            preview_url = f"{BASE_URL}/gameplay/{proposal_id}"
+            preview_url = f"{BASE_URL}/gameplay/{game_id}"
             print(f"Navigating to game preview: {preview_url}")
             await page.goto(preview_url)
 

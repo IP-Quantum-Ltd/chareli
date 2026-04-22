@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 class AgentState(TypedDict):
     """The state object passed between nodes in LangGraph."""
-    proposal_id: str
+    game_id: str
     game_title: str
     internal_img_base64: str
     internal_img_path: str
@@ -28,12 +28,12 @@ class AgentState(TypedDict):
 # --- Node Implementations ---
 
 async def capture_node(state: AgentState) -> AgentState:
-    logger.info(f"Node: Capture | Proposal: {state['proposal_id']}")
-    path = f"internal_{state['proposal_id']}.png"
-    fallback_path = f"screenshot_{state['proposal_id']}.png"
+    logger.info(f"Node: Capture | Game ID: {state['game_id']}")
+    path = f"internal_{state['game_id']}.png"
+    fallback_path = f"screenshot_{state['game_id']}.png"
     
     try:
-        await capture_game_preview(state["proposal_id"], path)
+        await capture_game_preview(state["game_id"], path)
         state["internal_img_path"] = path
         state["status"] = "captured"
     except Exception as e:
@@ -131,9 +131,9 @@ workflow.add_edge("analyze", END)
 # Compile
 app_graph = workflow.compile()
 
-async def run_pipeline_with_tracking(proposal_id: str, game_title: str) -> Dict[str, Any]:
+async def run_pipeline_with_tracking(game_id: str, game_title: str) -> Dict[str, Any]:
     initial_state = {
-        "proposal_id": proposal_id,
+        "game_id": game_id,
         "game_title": game_title,
         "internal_img_base64": "",
         "internal_img_path": "",

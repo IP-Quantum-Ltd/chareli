@@ -31,7 +31,7 @@ async def test_full_flow():
             
             report_data = {
                 "game_title": game_title,
-                "proposal_id": test_id,
+                "game_id": test_id,
                 "total_cost_usd": final_state["accumulated_cost"],
                 "best_match_url": final_state["investigation"]["best_match"]["url"],
                 "visual_confidence": final_state["investigation"]["best_match"]["confidence_score"],

@@ -15,40 +15,40 @@ _headers = {
 }
 
 
-async def get_pending_proposals() -> list[dict]:
+async def get_pending_games() -> list[dict]:
     """
-    Cron fallback: fetch all PENDING proposals.
-    Endpoint: GET /api/game-proposals/pending  (editor-accessible)
+    Cron fallback: fetch all PENDING games.
+    Endpoint: GET /api/games/pending  (editor-accessible)
     """
     async with httpx.AsyncClient(timeout=15) as client:
         resp = await client.get(
-            f"{settings.ARCADE_API_BASE_URL}/api/game-proposals/pending",
+            f"{settings.ARCADE_API_BASE_URL}/api/games/pending",
             headers=_headers,
         )
         resp.raise_for_status()
         return resp.json().get("data", [])
 
 
-async def get_proposal(proposal_id: str) -> dict:
+async def get_game(game_id: str) -> dict:
     async with httpx.AsyncClient(timeout=15) as client:
         resp = await client.get(
-            f"{settings.ARCADE_API_BASE_URL}/api/game-proposals/{proposal_id}",
+            f"{settings.ARCADE_API_BASE_URL}/api/games/{game_id}",
             headers=_headers,
         )
         resp.raise_for_status()
         return resp.json().get("data", {})
 
 
-async def submit_review(proposal_id: str, review: dict) -> None:
+async def submit_review(game_id: str, review: dict) -> None:
     """
-    Submit the AI review as an editor using the existing proposal revision endpoint.
+    Submit the AI review as an editor using the existing game revision endpoint.
     The review payload is embedded in proposedData so the admin sees it on review.
     """
     async with httpx.AsyncClient(timeout=15) as client:
         resp = await client.put(
-            f"{settings.ARCADE_API_BASE_URL}/api/game-proposals/{proposal_id}",
+            f"{settings.ARCADE_API_BASE_URL}/api/games/{game_id}",
             headers=_headers,
             json={"proposedData": {"aiReview": review}},
         )
         resp.raise_for_status()
-        logger.info(f"[arcade_client] Submitted AI review for proposal {proposal_id}")
+        logger.info(f"[arcade_client] Submitted AI review for game {game_id}")
