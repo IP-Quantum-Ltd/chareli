@@ -457,11 +457,24 @@ class QueueService {
     worker.on('failed', (job: any, error: any) => {
       activeJobs--;
       totalFailed++;
-      const duration = job.finishedOn ? job.finishedOn - job.processedOn : 0;
-      logger.error(
-        `[PERF:${queueName}] Job ${job?.id} failed after ${duration}ms | Active: ${activeJobs}/${WORKER_CONCURRENCY} | Total failed: ${totalFailed}`,
-        error
-      );
+      const duration = job?.finishedOn ? job.finishedOn - job.processedOn : 0;
+      // Surface enough job context that CloudWatch filtering by gameId / userId
+      // ties the failure back to the HTTP request that enqueued it.
+      logger.error(`worker.job.failed`, {
+        event: 'worker.job.failed',
+        queue: queueName,
+        jobId: job?.id,
+        jobData: job?.data,
+        attemptsMade: job?.attemptsMade,
+        maxAttempts: job?.opts?.attempts,
+        durationMs: duration,
+        activeJobs,
+        totalFailed,
+        errorName: error?.name,
+        errorMessage: error?.message,
+        errorCode: error?.code,
+        stack: error?.stack,
+      });
     });
 
     worker.on('progress', (job: any, progress: any) => {

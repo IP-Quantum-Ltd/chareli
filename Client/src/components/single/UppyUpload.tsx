@@ -11,6 +11,13 @@ import logger from '../../utils/logger';
 // AWS recommends multipart upload for files >= 100MB
 const MULTIPART_THRESHOLD = 100 * 1024 * 1024; // 100MB in bytes
 
+// Append the server-issued trace ID (X-Request-Id) to an error message so the
+// user can paste one string when reporting a failed upload.
+const traceSuffix = (response: Response): string => {
+  const id = response.headers.get('X-Request-Id');
+  return id ? ` [trace: ${id}]` : '';
+};
+
 interface UploadedFile {
   name: string;
   publicUrl: string;
@@ -186,7 +193,9 @@ export const UppyUpload: React.FC<UppyUploadProps> = ({
 
         if (!response.ok) {
           const errorText = await response.text();
-          throw new Error(`Failed to create multipart upload: ${errorText}`);
+          throw new Error(
+            `Failed to create multipart upload: ${errorText}${traceSuffix(response)}`
+          );
         }
 
         const result = await response.json();
@@ -235,7 +244,9 @@ export const UppyUpload: React.FC<UppyUploadProps> = ({
           );
 
           if (!response.ok) {
-            throw new Error(`Failed to get part URL for part ${part.number}`);
+            throw new Error(
+              `Failed to get part URL for part ${part.number}${traceSuffix(response)}`
+            );
           }
 
           const result = await response.json();
@@ -279,7 +290,9 @@ export const UppyUpload: React.FC<UppyUploadProps> = ({
 
         if (!response.ok) {
           const errorText = await response.text();
-          throw new Error(`Failed to complete multipart upload: ${errorText}`);
+          throw new Error(
+            `Failed to complete multipart upload: ${errorText}${traceSuffix(response)}`
+          );
         }
 
         const result = await response.json();
@@ -343,7 +356,7 @@ export const UppyUpload: React.FC<UppyUploadProps> = ({
             const errorText = await response.text();
             logger.error('Failed to get presigned URL');
             throw new Error(
-              `HTTP error! status: ${response.status}, message: ${errorText}`
+              `HTTP error! status: ${response.status}, message: ${errorText}${traceSuffix(response)}`
             );
           }
 

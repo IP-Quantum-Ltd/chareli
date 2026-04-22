@@ -16,6 +16,7 @@ import { zipService } from '../services/zip.service';
 import { queueService } from '../services/queue.service';
 import multer from 'multer';
 import logger from '../utils/logger';
+import { logUploadEvent, toErrorFields, getZipMode } from '../utils/uploadEvents';
 import { v4 as uuidv4 } from 'uuid';
 import jwt from 'jsonwebtoken';
 import config from '../config/config';
@@ -1028,6 +1029,15 @@ export const createGame = async (
     const thumbnailFileKey = rawThumbnailFileKey?.replace(/&#x2F;/g, '/');
     const gameFileKey = rawGameFileKey?.replace(/&#x2F;/g, '/');
 
+    logUploadEvent('game.create.start', {
+      userId: req.user?.userId,
+      role: req.user?.role,
+      thumbnailFileKey,
+      gameFileKey,
+      publishOnReady,
+      hasCategory: !!categoryId,
+    });
+
     if (!title) {
       return next(ApiError.badRequest('Game title is required'));
     }
@@ -1138,9 +1148,16 @@ export const createGame = async (
       await queryRunner.commitTransaction();
 
       // We still queue the thumbnail image processing since the file record exists
-       await queueService.addImageProcessingJob({
+      await queueService.addImageProcessingJob({
         fileId: thumbnailFileRecord.id,
         s3Key: permanentThumbnailKey,
+      });
+
+      logUploadEvent('game.proposal.created', {
+        userId: req.user?.userId,
+        proposalId: proposal.id,
+        fileId: thumbnailFileRecord.id,
+        fileKey: permanentThumbnailKey,
       });
 
       res.status(200).json({
@@ -1214,7 +1231,7 @@ export const createGame = async (
       // R2 event notification triggers worker when ZIP is uploaded to temp-games/
       // Worker will send webhook to /api/internal/game-processed when complete
       // ============================================================================
-      
+
       // Store the temp file path in metadata so webhook can find it
       game.metadata = {
         ...game.metadata,
@@ -1222,16 +1239,14 @@ export const createGame = async (
         _uploadedAt: new Date().toISOString(),
       } as any; // Casting to any since metadata is JSONB and can store arbitrary fields
       await queryRunner.manager.save(game);
-      
-      logger.info('[CLOUDFLARE WORKER] ZIP will be processed by edge worker', {
+
+      logUploadEvent('zip.cloudflare.dispatched', {
+        userId: req.user?.userId,
         gameId: game.id,
-        gameFileKey,
+        fileKey: gameFileKey,
+        mode: 'cloudflare',
       });
-      console.log('☁️  [CLOUDFLARE WORKER] Queued for edge processing:', {
-        gameId: game.id,
-        gameFileKey,
-      });
-      
+
       // No job ID needed - worker processes automatically
       // Game will be activated via webhook when processing completes
     } else {
@@ -1239,13 +1254,6 @@ export const createGame = async (
       // [LEGACY] Local BullMQ Worker - Original system (kept for rollback)
       // Can be re-enabled by setting ZIP_PROCESSING_MODE=local in .env
       // ============================================================================
-      logger.info('[LOCAL WORKER] Queuing background job for ZIP processing...');
-      console.log('🚀 [CREATE GAME] Queuing job for game:', {
-        gameId: game.id,
-        title,
-        gameFileKey,
-      });
-
       const job = await queueService.addGameZipProcessingJob({
         gameId: game.id,
         gameFileKey,
@@ -1256,9 +1264,12 @@ export const createGame = async (
       game.jobId = job.id as string;
       await queryRunner.manager.save(game);
 
-      console.log('✅ [CREATE GAME] Job queued successfully:', {
+      logUploadEvent('zip.local.enqueued', {
+        userId: req.user?.userId,
         gameId: game.id,
         jobId: job.id,
+        fileKey: gameFileKey,
+        mode: 'local',
       });
     }
 
@@ -1294,9 +1305,14 @@ export const createGame = async (
     );
 
     const apiResponseTime = Date.now() - requestStartTime;
-    logger.info(
-      `[PERF] Game creation API completed in ${apiResponseTime}ms - Game ID: ${game.id}, Title: "${title}"`
-    );
+
+    logUploadEvent('game.create.complete', {
+      userId: req.user?.userId,
+      gameId: game.id,
+      jobId: game.jobId,
+      durationMs: apiResponseTime,
+      mode: getZipMode(),
+    });
 
     res.status(201).json({
       success: true,
@@ -1309,6 +1325,15 @@ export const createGame = async (
   } catch (error) {
     // Rollback transaction on error
     await queryRunner.rollbackTransaction();
+    logUploadEvent(
+      'game.create.failed',
+      {
+        userId: req.user?.userId,
+        durationMs: Date.now() - requestStartTime,
+        ...toErrorFields(error),
+      },
+      'error'
+    );
     next(error);
   } finally {
     // Release query runner
@@ -2027,34 +2052,55 @@ export const generatePresignedUrl = async (
   res: Response,
   next: NextFunction
 ): Promise<void> => {
-  try {
-    const { filename, contentType, fileType } = req.body;
+  const started = Date.now();
+  const { filename, contentType, fileType } = req.body;
 
+  logUploadEvent('presign.request', {
+    userId: req.user?.userId,
+    fileType,
+    mime: contentType,
+    filename,
+  });
+
+  try {
     if (!filename || !fileType) {
+      logUploadEvent(
+        'presign.denied',
+        { userId: req.user?.userId, reason: 'missing_fields', fileType, filename },
+        'warn'
+      );
       return next(ApiError.badRequest('Filename and fileType are required'));
     }
 
-    // Validate fileType
     if (!['thumbnail', 'game'].includes(fileType)) {
+      logUploadEvent(
+        'presign.denied',
+        { userId: req.user?.userId, reason: 'invalid_file_type', fileType },
+        'warn'
+      );
       return next(
         ApiError.badRequest('FileType must be either "thumbnail" or "game"')
       );
     }
 
-    // Generate unique path
     const timestamp = Date.now();
     const gameId = uuidv4();
     const folder = fileType === 'thumbnail' ? 'temp-thumbnails' : 'temp-games';
     const key = `${folder}/${gameId}-${timestamp}/${filename}`;
 
-    logger.info(`Generating presigned URL for: ${key}`);
-
-    // Generate presigned URL using storage service
     const presignedUrl = await storageService.generatePresignedUrl(
       key,
       contentType
     );
     const publicUrl = storageService.getPublicUrl(key);
+
+    logUploadEvent('presign.granted', {
+      userId: req.user?.userId,
+      fileType,
+      fileKey: key,
+      mime: contentType,
+      durationMs: Date.now() - started,
+    });
 
     res.status(200).json({
       success: true,
@@ -2065,7 +2111,17 @@ export const generatePresignedUrl = async (
       },
     });
   } catch (error) {
-    logger.error('Error generating presigned URL:', error);
+    logUploadEvent(
+      'presign.denied',
+      {
+        userId: req.user?.userId,
+        reason: 'storage_error',
+        fileType,
+        durationMs: Date.now() - started,
+        ...toErrorFields(error),
+      },
+      'error'
+    );
     next(error);
   }
 };

@@ -18,6 +18,7 @@ import crypto from 'crypto';
 import { IStorageService, UploadResult } from './storage.interface';
 import config from '../config/config';
 import logger from '../utils/logger';
+import { instrumentStorage, logUploadEvent, toErrorFields } from '../utils/uploadEvents';
 
 /**
  * An adapter for the IStorageService interface that connects to Cloudflare R2.
@@ -93,131 +94,118 @@ export class R2StorageAdapter implements IStorageService {
     contentType: string,
     folder: string = 'files'
   ): Promise<UploadResult> {
-    try {
-      const fileId = uuidv4();
-      const extension = path.extname(originalname);
-      const filename = path
-        .basename(originalname, extension)
-        .replace(/\s+/g, '-')
-        .toLowerCase();
+    const fileId = uuidv4();
+    const extension = path.extname(originalname);
+    const filename = path
+      .basename(originalname, extension)
+      .replace(/\s+/g, '-')
+      .toLowerCase();
+    const key = `${folder}/${fileId}-${filename}${extension}`;
 
-      // The key is the full path in the bucket, e.g., "thumbnails/123-abc-my-image.jpg"
-      const key = `${folder}/${fileId}-${filename}${extension}`;
-
-      const command = new PutObjectCommand({
-        Bucket: this.bucket,
-        Key: key,
-        Body: file,
-        ContentType: contentType,
-        CacheControl: 'public, max-age=31536000, immutable', // 1 year cache
-      });
-
-      await this.s3Client.send(command);
-      logger.info(`Successfully uploaded file to R2 with key: ${key}`);
-
-      return {
-        key,
-        publicUrl: this.getPublicUrl(key),
-      };
-    } catch (error) {
-      logger.error('Error uploading file to R2:', { error, originalname });
-      throw new Error(
-        `Failed to upload file to R2: ${(error as Error).message}`
-      );
-    }
+    return instrumentStorage(
+      'storage.upload',
+      {
+        provider: 'r2',
+        bucket: this.bucket,
+        fileKey: key,
+        fileSize: file.length,
+        mime: contentType,
+      },
+      async () => {
+        const command = new PutObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+          Body: file,
+          ContentType: contentType,
+          CacheControl: 'public, max-age=31536000, immutable',
+        });
+        await this.s3Client.send(command);
+        return { key, publicUrl: this.getPublicUrl(key) };
+      }
+    );
   }
 
   /**
    * @inheritdoc
    */
   async uploadDirectory(localPath: string, remotePath: string): Promise<void> {
-    try {
-      const files = await fs.readdir(localPath, { withFileTypes: true });
+    return instrumentStorage(
+      'storage.upload_directory',
+      { provider: 'r2', bucket: this.bucket, fileKey: remotePath, localPath },
+      async () => {
+        const files = await fs.readdir(localPath, { withFileTypes: true });
+        for (const file of files) {
+          const fullLocalPath = path.join(localPath, file.name);
+          const fullRemotePath = path
+            .join(remotePath, file.name)
+            .replace(/\\/g, '/');
 
-      for (const file of files) {
-        const fullLocalPath = path.join(localPath, file.name);
-        const fullRemotePath = path
-          .join(remotePath, file.name)
-          .replace(/\\/g, '/');
-
-        if (file.isDirectory()) {
-          // Recursively upload subdirectories
-          await this.uploadDirectory(fullLocalPath, fullRemotePath);
-        } else {
-          // Upload the file
-          const fileContent = await fs.readFile(fullLocalPath);
-          const contentType =
-            mime.lookup(fullLocalPath) || 'application/octet-stream';
-
-          const command = new PutObjectCommand({
-            Bucket: this.bucket,
-            Key: fullRemotePath,
-            Body: fileContent,
-            ContentType: contentType,
-            CacheControl: 'public, max-age=31536000, immutable', // 1 year cache
-          });
-
-          await this.s3Client.send(command);
+          if (file.isDirectory()) {
+            await this.uploadDirectory(fullLocalPath, fullRemotePath);
+          } else {
+            const fileContent = await fs.readFile(fullLocalPath);
+            const contentType =
+              mime.lookup(fullLocalPath) || 'application/octet-stream';
+            const command = new PutObjectCommand({
+              Bucket: this.bucket,
+              Key: fullRemotePath,
+              Body: fileContent,
+              ContentType: contentType,
+              CacheControl: 'public, max-age=31536000, immutable',
+            });
+            await this.s3Client.send(command);
+          }
         }
       }
-      logger.info(
-        `Successfully uploaded directory "${localPath}" to R2 at "${remotePath}"`
-      );
-    } catch (error) {
-      logger.error('Error uploading directory to R2:', {
-        error,
-        localPath,
-        remotePath,
-      });
-      throw new Error(
-        `Failed to upload directory to R2: ${(error as Error).message}`
-      );
-    }
+    );
   }
 
   /**
    * @inheritdoc
    */
   async downloadFile(key: string): Promise<Buffer> {
-    try {
-      const command = new GetObjectCommand({
-        Bucket: this.bucket,
-        Key: key,
-      });
-
-      const response = await this.s3Client.send(command);
-
-      if (!response.Body) {
-        throw new Error('No file content received');
+    return instrumentStorage(
+      'storage.download',
+      { provider: 'r2', bucket: this.bucket, fileKey: key },
+      async () => {
+        const command = new GetObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+        });
+        const response = await this.s3Client.send(command);
+        if (!response.Body) {
+          throw new Error('No file content received');
+        }
+        return Buffer.from(await response.Body.transformToByteArray());
       }
-
-      const buffer = Buffer.from(await response.Body.transformToByteArray());
-      logger.info(`Successfully downloaded file from R2 with key: ${key}`);
-      return buffer;
-    } catch (error) {
-      logger.error('Error downloading file from R2:', { error, key });
-      throw new Error(
-        `Failed to download file from R2: ${(error as Error).message}`
-      );
-    }
+    );
   }
 
   /**
    * @inheritdoc
    */
   async deleteFile(key: string): Promise<boolean> {
+    const started = Date.now();
+    const ctx = { provider: 'r2', bucket: this.bucket, fileKey: key };
+    logUploadEvent('storage.delete.start', ctx);
     try {
       const command = new DeleteObjectCommand({
         Bucket: this.bucket,
         Key: key,
       });
-
       await this.s3Client.send(command);
-      logger.info(`Successfully deleted file from R2 with key: ${key}`);
+      logUploadEvent('storage.delete.complete', {
+        ...ctx,
+        durationMs: Date.now() - started,
+      });
       return true;
     } catch (error) {
-      logger.error('Error deleting file from R2:', { error, key });
-      // Don't throw, just return false for a failed deletion
+      // Preserve the return-false contract rather than throwing.
+      logUploadEvent(
+        'storage.delete.failed',
+        { ...ctx, durationMs: Date.now() - started, ...toErrorFields(error) },
+        'error'
+      );
       return false;
     }
   }
@@ -227,53 +215,37 @@ export class R2StorageAdapter implements IStorageService {
    * Uses S3 CopyObject for efficient server-side copy (80-90% faster than download/upload)
    */
   async moveFile(sourceKey: string, destinationKey: string): Promise<string> {
-    const startTime = Date.now();
-    try {
-      // First, get the source object metadata to preserve content type
-      const headCommand = new HeadObjectCommand({
-        Bucket: this.bucket,
-        Key: sourceKey,
-      });
-
-      const headResponse = await this.s3Client.send(headCommand);
-      const contentType =
-        headResponse.ContentType || 'application/octet-stream';
-      const fileSize = headResponse.ContentLength || 0;
-
-      // Use CopyObject for efficient server-side copy (no data transfer through app)
-      const copyCommand = new CopyObjectCommand({
-        Bucket: this.bucket,
-        CopySource: `${this.bucket}/${sourceKey}`,
-        Key: destinationKey,
-        ContentType: contentType,
-        CacheControl: 'public, max-age=31536000, immutable', // 1 year cache
-        MetadataDirective: 'REPLACE', // Replace to add CacheControl
-      });
-
-      await this.s3Client.send(copyCommand);
-
-      // Delete the source file after successful copy
-      await this.deleteFile(sourceKey);
-
-      const duration = Date.now() - startTime;
-      logger.info(
-        `[PERF] File move completed in ${duration}ms (${(
-          fileSize /
-          1024 /
-          1024
-        ).toFixed(2)}MB) - ${sourceKey} → ${destinationKey}`
-      );
-
-      return destinationKey;
-    } catch (error) {
-      const duration = Date.now() - startTime;
-      logger.error(`[PERF] File move failed after ${duration}ms:`, {
-        error,
+    return instrumentStorage(
+      'storage.move',
+      {
+        provider: 'r2',
+        bucket: this.bucket,
+        fileKey: destinationKey,
         sourceKey,
-        destinationKey,
-      });
-      throw new Error(`Failed to move file in R2: ${(error as Error).message}`);
-    }
+      },
+      async () => {
+        const headResponse = await this.s3Client.send(
+          new HeadObjectCommand({ Bucket: this.bucket, Key: sourceKey })
+        );
+        const contentType =
+          headResponse.ContentType || 'application/octet-stream';
+
+        await this.s3Client.send(
+          new CopyObjectCommand({
+            Bucket: this.bucket,
+            CopySource: `${this.bucket}/${sourceKey}`,
+            Key: destinationKey,
+            ContentType: contentType,
+            CacheControl: 'public, max-age=31536000, immutable',
+            MetadataDirective: 'REPLACE',
+          })
+        );
+
+        // Delete the source file after successful copy
+        await this.deleteFile(sourceKey);
+        return destinationKey;
+      }
+    );
   }
 
   /**
