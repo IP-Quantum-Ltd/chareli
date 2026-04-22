@@ -322,18 +322,13 @@ export const useToggleGameStatus = () => {
       gameId: string;
       currentStatus: string;
     }) => {
-      const newStatus = currentStatus === 'active' ? 'disabled' : 'active';
-      const formData = new FormData();
-      formData.append('status', newStatus);
-
-      const response = await backendService.put(
-        BackendRoute.GAME_BY_ID.replace(':id', gameId),
-        formData,
-        {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
-        }
+      const shouldUnpublish = currentStatus === 'active';
+      const route = shouldUnpublish
+        ? BackendRoute.GAME_UNPUBLISH
+        : BackendRoute.GAME_PUBLISH;
+      const response = await backendService.post(
+        route.replace(':id', gameId),
+        {}
       );
       return response.data;
     },
@@ -341,7 +336,6 @@ export const useToggleGameStatus = () => {
       // Invalidate all games queries (this will update Home and Categories pages)
       queryClient.invalidateQueries({ queryKey: [BackendRoute.GAMES] });
       queryClient.invalidateQueries({ queryKey: [BackendRoute.GAMES, gameId] });
-      // Invalidate admin queries
       queryClient.invalidateQueries({
         queryKey: [BackendRoute.ADMIN_GAMES_ANALYTICS],
       });

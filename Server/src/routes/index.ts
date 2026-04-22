@@ -13,7 +13,12 @@ import cdnRoutes from './cdnRoutes';
 import gameProposalRoutes from './gameProposalRoutes';
 import webhookRoutes from './webhookRoutes';
 import { ApiError } from '../middlewares/errorHandler';
-import { debugConfig } from '../controllers/debugController';
+import {
+  debugConfig,
+  debugUpload,
+  debugUploadHealth,
+} from '../controllers/debugController';
+import { authenticate, isAdmin } from '../middlewares/authMiddleware';
 
 const router = Router();
 
@@ -47,6 +52,11 @@ router.get('/health', (_req, res) => {
  *         description: Config debug info
  */
 router.get('/debug/config', debugConfig);
+
+// Admin-only upload diagnostics. Returns aggregated game + file + BullMQ state
+// for a single upload, plus a pipeline health probe (storage / redis / queues).
+router.get('/debug/upload-health', authenticate, isAdmin, debugUploadHealth);
+router.get('/debug/upload/:gameId', authenticate, isAdmin, debugUpload);
 
 // API routes
 router.use('/auth', authRoutes);

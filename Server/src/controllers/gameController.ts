@@ -16,6 +16,7 @@ import { zipService } from '../services/zip.service';
 import { queueService } from '../services/queue.service';
 import multer from 'multer';
 import logger from '../utils/logger';
+import { logUploadEvent, toErrorFields, getZipMode } from '../utils/uploadEvents';
 import { v4 as uuidv4 } from 'uuid';
 import jwt from 'jsonwebtoken';
 import config from '../config/config';
@@ -26,14 +27,25 @@ import { cacheService } from '../services/cache.service';
 import { cacheInvalidationService } from '../services/cache-invalidation.service';
 import { redisService } from '../services/redis.service';
 import { multipartUploadHelpers } from '../utils/multipartUpload';
-import { calculateLikeCount } from '../utils/gameUtils';
+import {
+  calculateLikeCount,
+  canSeeUnpublishedGames,
+  isGamePubliclyVisible,
+  publiclyVisibleGameFilter,
+} from '../utils/gameUtils';
 // import { processImage } from '../services/file.service';
 
 import { GameProposal, GameProposalStatus, GameProposalType } from '../entities/GameProposal';
+import {
+  GamePublishHistory,
+  GamePublishAction,
+} from '../entities/GamePublishHistory';
 
 const gameRepository = AppDataSource.getRepository(Game);
 const gamePositionHistoryRepository =
   AppDataSource.getRepository(GamePositionHistory);
+const gamePublishHistoryRepository =
+  AppDataSource.getRepository(GamePublishHistory);
 const categoryRepository = AppDataSource.getRepository(Category);
 const fileRepository = AppDataSource.getRepository(File);
 const gameLikeRepository = AppDataSource.getRepository(GameLike);
@@ -232,6 +244,19 @@ export const getAllGames = async (
       .leftJoinAndSelect('game.gameFile', 'gameFile')
       .leftJoinAndSelect('game.createdBy', 'createdBy');
 
+    // Non-admins see only published + processed games, regardless of the
+    // status query param. Admins can filter freely via ?status= below.
+    const isAdminViewer = canSeeUnpublishedGames(req.user?.role);
+    if (!isAdminViewer) {
+      queryBuilder
+        .andWhere('game.status = :publicStatus', {
+          publicStatus: GameStatus.ACTIVE,
+        })
+        .andWhere('game.processingStatus = :publicProcessing', {
+          publicProcessing: GameProcessingStatus.COMPLETED,
+        });
+    }
+
     // Handle special filters
     // Flag to control ordering - recently_added uses createdAt DESC only
     let orderByRecent = false;
@@ -239,8 +264,12 @@ export const getAllGames = async (
     if (filter === 'recently_added') {
       // Set flag to order by creation date instead of position
       orderByRecent = true;
-      // Apply active status filter for recently_added
-      queryBuilder.andWhere('game.status = :status', { status: GameStatus.ACTIVE });
+      // Apply published + processed filter for recently_added
+      queryBuilder
+        .andWhere('game.status = :status', { status: GameStatus.ACTIVE })
+        .andWhere('game.processingStatus = :ps', {
+          ps: GameProcessingStatus.COMPLETED,
+        });
     } else if (filter === 'popular') {
       // Try cache first for popular filter
       const cacheKey = 'filter:popular';
@@ -271,7 +300,7 @@ export const getAllGames = async (
           const games = await gameRepository.find({
             where: {
               id: In(gameIds),
-              status: GameStatus.ACTIVE,
+              ...publiclyVisibleGameFilter,
             },
             relations: ['category', 'thumbnailFile', 'gameFile', 'createdBy'],
             order: { position: 'ASC' }, // Order by position
@@ -325,6 +354,9 @@ export const getAllGames = async (
           .leftJoin('a.user', 'user')
           .leftJoin('user.role', 'role')
           .where('game.status = :status', { status: GameStatus.ACTIVE })
+          .andWhere('game.processingStatus = :ps', {
+            ps: GameProcessingStatus.COMPLETED,
+          })
           .andWhere(
             '(a.createdAt >= :startDate OR a.createdAt IS NULL)',
             { startDate: thirtyDaysAgo }
@@ -466,7 +498,10 @@ export const getAllGames = async (
           .where('game.categoryId = :topCategoryId', {
             topCategoryId: userTopCategory.categoryId,
           })
-          .andWhere('game.status = :status', { status: 'active' });
+          .andWhere('game.status = :status', { status: GameStatus.ACTIVE })
+          .andWhere('game.processingStatus = :ps', {
+            ps: GameProcessingStatus.COMPLETED,
+          });
 
         if (playedIds.length > 0) {
           sameCategoryQuery.andWhere('game.id NOT IN (:...playedIds)', {
@@ -494,7 +529,10 @@ export const getAllGames = async (
             .where('game.categoryId != :topCategoryId', {
               topCategoryId: userTopCategory.categoryId,
             })
-            .andWhere('game.status = :status', { status: 'active' });
+            .andWhere('game.status = :status', { status: GameStatus.ACTIVE })
+          .andWhere('game.processingStatus = :ps', {
+            ps: GameProcessingStatus.COMPLETED,
+          });
 
           if (playedIds.length > 0) {
             otherCategoryQuery.andWhere('game.id NOT IN (:...playedIds)', {
@@ -548,7 +586,8 @@ export const getAllGames = async (
       queryBuilder.andWhere('game.categoryId = :categoryId', { categoryId });
     }
 
-    if (status) {
+    // Only admins are allowed to override the status filter.
+    if (status && isAdminViewer) {
       queryBuilder.andWhere('game.status = :status', { status });
     }
 
@@ -728,6 +767,14 @@ export const getGameById = async (
       );
     }
 
+    // 404 drafts / processing games for non-admins. Do not distinguish from
+    // "not found" - we don't want to leak that the slug exists.
+    if (!canSeeUnpublishedGames(req.user?.role) && !isGamePubliclyVisible(game)) {
+      return next(
+        ApiError.notFound(`Game with ${isUUID ? 'id' : 'slug'} ${id} not found`)
+      );
+    }
+
     // Transform game file and thumbnail URLs to direct storage URLs
     if (game.gameFile) {
       const s3Key = game.gameFile.s3Key;
@@ -751,6 +798,9 @@ export const getGameById = async (
         .where('game.categoryId = :categoryId', { categoryId: game.categoryId })
         .andWhere('game.id != :gameId', { gameId: game.id })
         .andWhere('game.status = :status', { status: GameStatus.ACTIVE })
+        .andWhere('game.processingStatus = :ps', {
+          ps: GameProcessingStatus.COMPLETED,
+        })
         .orderBy('game.createdAt', 'DESC') // Use deterministic ordering
         .take(10) // Get more than needed
         .getMany();
@@ -766,6 +816,9 @@ export const getGameById = async (
         .where('game.categoryId != :categoryId', { categoryId: game.categoryId })
         .andWhere('game.id != :gameId', { gameId: game.id })
         .andWhere('game.status = :status', { status: GameStatus.ACTIVE })
+        .andWhere('game.processingStatus = :ps', {
+          ps: GameProcessingStatus.COMPLETED,
+        })
         .orderBy('game.createdAt', 'DESC') // Use deterministic ordering
         .take(15) // Get more than needed
         .getMany();
@@ -962,11 +1015,28 @@ export const createGame = async (
       thumbnailFileKey: rawThumbnailFileKey,
       gameFileKey: rawGameFileKey,
       metadata, // Destructure metadata
+      publishImmediately, // Optional; default false (save as draft).
     } = req.body;
+
+    // The publish/draft choice is captured here. The actual status flip
+    // happens in the ZIP-processing worker / webhook when processing completes.
+    const publishOnReady =
+      publishImmediately === true ||
+      publishImmediately === 'true' ||
+      publishImmediately === 1;
 
     // Decode HTML entities in file keys
     const thumbnailFileKey = rawThumbnailFileKey?.replace(/&#x2F;/g, '/');
     const gameFileKey = rawGameFileKey?.replace(/&#x2F;/g, '/');
+
+    logUploadEvent('game.create.start', {
+      userId: req.user?.userId,
+      role: req.user?.role,
+      thumbnailFileKey,
+      gameFileKey,
+      publishOnReady,
+      hasCategory: !!categoryId,
+    });
 
     if (!title) {
       return next(ApiError.badRequest('Game title is required'));
@@ -1078,9 +1148,16 @@ export const createGame = async (
       await queryRunner.commitTransaction();
 
       // We still queue the thumbnail image processing since the file record exists
-       await queueService.addImageProcessingJob({
+      await queueService.addImageProcessingJob({
         fileId: thumbnailFileRecord.id,
         s3Key: permanentThumbnailKey,
+      });
+
+      logUploadEvent('game.proposal.created', {
+        userId: req.user?.userId,
+        proposalId: proposal.id,
+        fileId: thumbnailFileRecord.id,
+        fileKey: permanentThumbnailKey,
       });
 
       res.status(200).json({
@@ -1104,6 +1181,10 @@ export const createGame = async (
 
     // Create new game with thumbnail file ID already set (since we processed it synchronously)
     logger.info('Creating game record with thumbnail file ID...');
+    const initialMetadata = {
+      ...(metadata || {}),
+      ...(publishOnReady ? { _publishOnReady: true } : {}),
+    } as any;
     const game = gameRepository.create({
       title,
       slug,
@@ -1116,7 +1197,7 @@ export const createGame = async (
       position: assignedPosition,
       processingStatus: GameProcessingStatus.PENDING,
       createdById: req.user?.userId,
-      metadata: metadata || undefined,
+      metadata: Object.keys(initialMetadata).length > 0 ? initialMetadata : undefined,
     });
 
     await queryRunner.manager.save(game);
@@ -1150,7 +1231,7 @@ export const createGame = async (
       // R2 event notification triggers worker when ZIP is uploaded to temp-games/
       // Worker will send webhook to /api/internal/game-processed when complete
       // ============================================================================
-      
+
       // Store the temp file path in metadata so webhook can find it
       game.metadata = {
         ...game.metadata,
@@ -1158,16 +1239,14 @@ export const createGame = async (
         _uploadedAt: new Date().toISOString(),
       } as any; // Casting to any since metadata is JSONB and can store arbitrary fields
       await queryRunner.manager.save(game);
-      
-      logger.info('[CLOUDFLARE WORKER] ZIP will be processed by edge worker', {
+
+      logUploadEvent('zip.cloudflare.dispatched', {
+        userId: req.user?.userId,
         gameId: game.id,
-        gameFileKey,
+        fileKey: gameFileKey,
+        mode: 'cloudflare',
       });
-      console.log('☁️  [CLOUDFLARE WORKER] Queued for edge processing:', {
-        gameId: game.id,
-        gameFileKey,
-      });
-      
+
       // No job ID needed - worker processes automatically
       // Game will be activated via webhook when processing completes
     } else {
@@ -1175,13 +1254,6 @@ export const createGame = async (
       // [LEGACY] Local BullMQ Worker - Original system (kept for rollback)
       // Can be re-enabled by setting ZIP_PROCESSING_MODE=local in .env
       // ============================================================================
-      logger.info('[LOCAL WORKER] Queuing background job for ZIP processing...');
-      console.log('🚀 [CREATE GAME] Queuing job for game:', {
-        gameId: game.id,
-        title,
-        gameFileKey,
-      });
-
       const job = await queueService.addGameZipProcessingJob({
         gameId: game.id,
         gameFileKey,
@@ -1192,9 +1264,12 @@ export const createGame = async (
       game.jobId = job.id as string;
       await queryRunner.manager.save(game);
 
-      console.log('✅ [CREATE GAME] Job queued successfully:', {
+      logUploadEvent('zip.local.enqueued', {
+        userId: req.user?.userId,
         gameId: game.id,
         jobId: job.id,
+        fileKey: gameFileKey,
+        mode: 'local',
       });
     }
 
@@ -1230,9 +1305,14 @@ export const createGame = async (
     );
 
     const apiResponseTime = Date.now() - requestStartTime;
-    logger.info(
-      `[PERF] Game creation API completed in ${apiResponseTime}ms - Game ID: ${game.id}, Title: "${title}"`
-    );
+
+    logUploadEvent('game.create.complete', {
+      userId: req.user?.userId,
+      gameId: game.id,
+      jobId: game.jobId,
+      durationMs: apiResponseTime,
+      mode: getZipMode(),
+    });
 
     res.status(201).json({
       success: true,
@@ -1245,6 +1325,15 @@ export const createGame = async (
   } catch (error) {
     // Rollback transaction on error
     await queryRunner.rollbackTransaction();
+    logUploadEvent(
+      'game.create.failed',
+      {
+        userId: req.user?.userId,
+        durationMs: Date.now() - requestStartTime,
+        ...toErrorFields(error),
+      },
+      'error'
+    );
     next(error);
   } finally {
     // Release query runner
@@ -1319,6 +1408,16 @@ export const updateGame = async (
   res: Response,
   next: NextFunction
 ): Promise<void> => {
+  // Reject status changes up-front before we touch the DB so the caller
+  // sees a clear 400 rather than a downstream transaction error.
+  if (req.body?.status !== undefined) {
+    return next(
+      ApiError.badRequest(
+        'Game status cannot be changed via update. Use POST /games/:id/publish or /games/:id/unpublish.'
+      )
+    );
+  }
+
   // Start a transaction
   const queryRunner = AppDataSource.createQueryRunner();
   await queryRunner.connect();
@@ -1337,19 +1436,6 @@ export const updateGame = async (
       gameFileKey: rawGameFileKey,
       metadata, // Add metadata to destructured fields
     } = req.body;
-
-    // Check if user is trying to update status and has permission
-    if (status !== undefined) {
-      const userRole = req.user?.role;
-      if (
-        userRole !== RoleType.ADMIN &&
-        userRole !== RoleType.SUPERADMIN
-      ) {
-        return next(
-          ApiError.forbidden('Editors cannot change game status. Please contact an Admin.')
-        );
-      }
-    }
 
     // Decode HTML entities in file keys if provided
     const thumbnailFileKey = rawThumbnailFileKey?.replace(/&#x2F;/g, '/');
@@ -1682,7 +1768,7 @@ export const updateGame = async (
       game.slug = await generateUniqueSlug(title, game.id);
     }
     if (description !== undefined) game.description = description;
-    if (status) game.status = status as GameStatus;
+    // status intentionally not handled here - see the 400 short-circuit above.
     if (config !== undefined) game.config = config;
 
     // Update metadata if provided
@@ -1895,6 +1981,12 @@ export const getGameByPosition = async (
       );
     }
 
+    if (!canSeeUnpublishedGames(req.user?.role) && !isGamePubliclyVisible(game)) {
+      return next(
+        ApiError.notFound(`No game found at position ${positionNumber}`)
+      );
+    }
+
     // Transform game file and thumbnail URLs to direct storage URLs
     if (game.gameFile) {
       const s3Key = game.gameFile.s3Key;
@@ -1960,34 +2052,55 @@ export const generatePresignedUrl = async (
   res: Response,
   next: NextFunction
 ): Promise<void> => {
-  try {
-    const { filename, contentType, fileType } = req.body;
+  const started = Date.now();
+  const { filename, contentType, fileType } = req.body;
 
+  logUploadEvent('presign.request', {
+    userId: req.user?.userId,
+    fileType,
+    mime: contentType,
+    filename,
+  });
+
+  try {
     if (!filename || !fileType) {
+      logUploadEvent(
+        'presign.denied',
+        { userId: req.user?.userId, reason: 'missing_fields', fileType, filename },
+        'warn'
+      );
       return next(ApiError.badRequest('Filename and fileType are required'));
     }
 
-    // Validate fileType
     if (!['thumbnail', 'game'].includes(fileType)) {
+      logUploadEvent(
+        'presign.denied',
+        { userId: req.user?.userId, reason: 'invalid_file_type', fileType },
+        'warn'
+      );
       return next(
         ApiError.badRequest('FileType must be either "thumbnail" or "game"')
       );
     }
 
-    // Generate unique path
     const timestamp = Date.now();
     const gameId = uuidv4();
     const folder = fileType === 'thumbnail' ? 'temp-thumbnails' : 'temp-games';
     const key = `${folder}/${gameId}-${timestamp}/${filename}`;
 
-    logger.info(`Generating presigned URL for: ${key}`);
-
-    // Generate presigned URL using storage service
     const presignedUrl = await storageService.generatePresignedUrl(
       key,
       contentType
     );
     const publicUrl = storageService.getPublicUrl(key);
+
+    logUploadEvent('presign.granted', {
+      userId: req.user?.userId,
+      fileType,
+      fileKey: key,
+      mime: contentType,
+      durationMs: Date.now() - started,
+    });
 
     res.status(200).json({
       success: true,
@@ -1998,7 +2111,17 @@ export const generatePresignedUrl = async (
       },
     });
   } catch (error) {
-    logger.error('Error generating presigned URL:', error);
+    logUploadEvent(
+      'presign.denied',
+      {
+        userId: req.user?.userId,
+        reason: 'storage_error',
+        fileType,
+        durationMs: Date.now() - started,
+        ...toErrorFields(error),
+      },
+      'error'
+    );
     next(error);
   }
 };
@@ -2304,7 +2427,7 @@ export const likeGame = async (
       where: isUUID ? { id } : { slug: id },
     });
 
-    if (!game) {
+    if (!game || game.status !== GameStatus.ACTIVE) {
       return next(
         ApiError.notFound(`Game with ${isUUID ? 'id' : 'slug'} ${id} not found`)
       );
@@ -2365,7 +2488,7 @@ export const unlikeGame = async (
       where: isUUID ? { id } : { slug: id },
     });
 
-    if (!game) {
+    if (!game || game.status !== GameStatus.ACTIVE) {
       return next(
         ApiError.notFound(`Game with ${isUUID ? 'id' : 'slug'} ${id} not found`)
       );
@@ -2546,6 +2669,152 @@ export const abortMultipartUpload = async (
     });
   } catch (error) {
     logger.error('Error aborting multipart upload:', error);
+    next(error);
+  }
+};
+
+const recordPublishHistory = async (
+  gameId: string,
+  action: GamePublishAction,
+  actorId: string | null,
+  actorRole: string | null
+): Promise<void> => {
+  const entry = gamePublishHistoryRepository.create({
+    gameId,
+    action,
+    actorId,
+    actorRole,
+  });
+  await gamePublishHistoryRepository.save(entry);
+};
+
+/**
+ * @swagger
+ * /games/{id}/publish:
+ *   post:
+ *     summary: Publish a draft or previously unpublished game
+ *     tags: [Games]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200: { description: Game published }
+ *       404: { description: Game not found }
+ *       409: { description: Game is already published or not ready to publish }
+ */
+export const publishGame = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const game = await gameRepository.findOne({ where: { id } });
+
+    if (!game) {
+      return next(ApiError.notFound(`Game with id ${id} not found`));
+    }
+
+    if (game.processingStatus !== GameProcessingStatus.COMPLETED) {
+      return next(
+        ApiError.conflict(
+          `Game is not ready to publish (processingStatus=${game.processingStatus})`
+        )
+      );
+    }
+
+    if (game.status === GameStatus.ACTIVE) {
+      return next(ApiError.conflict('Game is already published'));
+    }
+
+    const now = new Date();
+    game.status = GameStatus.ACTIVE;
+    game.publishedAt = now;
+    game.lastLikeIncrement = now;
+
+    await gameRepository.save(game);
+
+    await recordPublishHistory(
+      game.id,
+      GamePublishAction.PUBLISHED,
+      req.user?.userId ?? null,
+      req.user?.role ?? null
+    );
+
+    await cacheInvalidationService.invalidateGameUpdate(game.id, game.categoryId);
+
+    res.status(200).json({ success: true, data: game });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @swagger
+ * /games/{id}/unpublish:
+ *   post:
+ *     summary: Unpublish a published game (hide from public)
+ *     tags: [Games]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200: { description: Game unpublished }
+ *       404: { description: Game not found }
+ *       409: { description: Game is already unpublished }
+ */
+export const unpublishGame = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const game = await gameRepository.findOne({ where: { id } });
+
+    if (!game) {
+      return next(ApiError.notFound(`Game with id ${id} not found`));
+    }
+
+    if (game.status === GameStatus.DISABLED) {
+      return next(ApiError.conflict('Game is already unpublished'));
+    }
+
+    // Snapshot current like count into baseLikeCount so the displayed count
+    // freezes while unpublished. Resetting lastLikeIncrement to now means the
+    // day-based auto-increment (see gameUtils.calculateLikeCount) yields zero
+    // until the game is republished.
+    const userLikesCount = await gameLikeRepository.count({
+      where: { gameId: game.id },
+    });
+    game.baseLikeCount = calculateLikeCount(game, userLikesCount);
+    game.lastLikeIncrement = new Date();
+    game.publishedAt = null;
+    game.status = GameStatus.DISABLED;
+
+    await gameRepository.save(game);
+
+    await recordPublishHistory(
+      game.id,
+      GamePublishAction.UNPUBLISHED,
+      req.user?.userId ?? null,
+      req.user?.role ?? null
+    );
+
+    await cacheInvalidationService.invalidateGameUpdate(game.id, game.categoryId);
+
+    res.status(200).json({ success: true, data: game });
+  } catch (error) {
     next(error);
   }
 };

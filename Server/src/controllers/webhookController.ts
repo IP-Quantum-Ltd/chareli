@@ -18,7 +18,7 @@ import { Game, GameProcessingStatus, GameStatus } from '../entities/Games';
 import { File } from '../entities/Files';
 import { websocketService } from '../services/websocket.service';
 import { redisService } from '../services/redis.service';
-import logger from '../utils/logger';
+import { logUploadEvent, toErrorFields } from '../utils/uploadEvents';
 
 const gameRepository = AppDataSource.getRepository(Game);
 const fileRepository = AppDataSource.getRepository(File);
@@ -44,61 +44,78 @@ interface WebhookPayload {
  * Handle game processing webhook from Cloudflare Worker
  */
 export async function handleGameProcessed(req: Request, res: Response): Promise<void> {
-  try {
-    // DEBUG: Log incoming request
-    logger.info('[WEBHOOK] Incoming request', {
-      headers: Object.keys(req.headers),
-      hasBody: !!req.body,
-      method: req.method,
-      path: req.path,
-    });
+  const started = Date.now();
+  // Correlation back to the original CreateGame request if the CF Worker
+  // echoes it; otherwise fall back to gameId once we parse the body.
+  const uploadRef = (req.headers['x-upload-ref'] as string) || undefined;
+  const providedSecret = req.headers['x-webhook-secret'] as string;
+  const idempotencyKey = req.headers['x-idempotency-key'] as string;
+  const payload: WebhookPayload = req.body || ({} as WebhookPayload);
 
-    // STEP 1: Validate webhook secret
-    const providedSecret = req.headers['x-webhook-secret'] as string;
+  logUploadEvent('cfworker.webhook.received', {
+    uploadRef,
+    gameId: payload.gameId,
+    status: payload.status,
+    entryPoint: payload.entryPoint,
+    fileCount: payload.fileCount,
+    totalSize: payload.totalSize,
+    hasSecret: !!providedSecret,
+    hasIdempotencyKey: !!idempotencyKey,
+    ip: req.ip,
+    headerNames: Object.keys(req.headers),
+  });
+
+  try {
     const expectedSecret = process.env.CLOUDFLARE_WEBHOOK_SECRET;
 
-    logger.info('[WEBHOOK] Secret validation', {
-      hasProvidedSecret: !!providedSecret,
-      hasExpectedSecret: !!expectedSecret,
-      providedLength: providedSecret?.length,
-      expectedLength: expectedSecret?.length,
-    });
-
     if (!expectedSecret) {
-      logger.error('[WEBHOOK] CLOUDFLARE_WEBHOOK_SECRET not configured');
+      logUploadEvent(
+        'cfworker.webhook.rejected',
+        { reason: 'secret_not_configured', gameId: payload.gameId, uploadRef },
+        'error'
+      );
       res.status(500).json({ error: 'Webhook not configured' });
       return;
     }
 
     if (providedSecret !== expectedSecret) {
-      logger.warn('[WEBHOOK] Invalid webhook secret provided', {
-        providedLength: providedSecret?.length,
-        expectedLength: expectedSecret.length,
-      });
+      logUploadEvent(
+        'cfworker.webhook.rejected',
+        {
+          reason: 'bad_secret',
+          gameId: payload.gameId,
+          uploadRef,
+          providedLength: providedSecret?.length,
+          expectedLength: expectedSecret.length,
+        },
+        'warn'
+      );
       res.status(401).json({ error: 'Invalid webhook secret' });
       return;
     }
 
-    // STEP 2: Check idempotency key (prevent duplicate processing using Redis)
-    const idempotencyKey = req.headers['x-idempotency-key'] as string;
     if (!idempotencyKey) {
-      logger.warn('[WEBHOOK] Missing idempotency key');
+      logUploadEvent(
+        'cfworker.webhook.rejected',
+        { reason: 'missing_idempotency_key', gameId: payload.gameId, uploadRef },
+        'warn'
+      );
       res.status(400).json({ error: 'Missing idempotency key' });
       return;
     }
 
-    // Parse gameId early for idempotency logging
-    const payload: WebhookPayload = req.body;
     const { gameId } = payload;
-
     if (!gameId) {
-      logger.warn('[WEBHOOK] Missing gameId in payload');
+      logUploadEvent(
+        'cfworker.webhook.rejected',
+        { reason: 'missing_game_id', uploadRef },
+        'warn'
+      );
       res.status(400).json({ error: 'Missing gameId' });
       return;
     }
 
-    // Atomic idempotency check using Redis SET NX
-    // This works across multiple server instances (distributed system safe)
+    // Atomic idempotency check (distributed-safe across server instances)
     const redisKey = `webhook:idempotency:${idempotencyKey}`;
     const isNew = await redisService.setIfNotExists(
       redisKey,
@@ -107,115 +124,109 @@ export async function handleGameProcessed(req: Request, res: Response): Promise<
     );
 
     if (!isNew) {
-      // Webhook already processed
       const cached = await redisService.getIdempotencyKey<{ gameId: string; timestamp: string }>(redisKey);
-      logger.info('[WEBHOOK] Duplicate webhook detected (idempotency)', {
-        idempotencyKey,
+      logUploadEvent('cfworker.webhook.duplicate', {
         gameId,
+        uploadRef,
+        idempotencyKey,
         originalTimestamp: cached?.timestamp,
       });
-      res.status(200).json({ 
-        message: 'Already processed',
-        gameId,
-      });
+      res.status(200).json({ message: 'Already processed', gameId });
       return;
     }
 
-    // STEP 3: Parse remaining payload fields
     const { status, entryPoint, s3Key, fileCount, totalSize, processedAt, error, progress, currentFile, filesUploaded } = payload;
+    const refOrGameId = uploadRef || gameId;
 
-    logger.info('[WEBHOOK] Processing webhook', {
+    logUploadEvent('cfworker.webhook.validated', {
       gameId,
+      uploadRef: refOrGameId,
       status,
       entryPoint,
       fileCount,
       totalSize,
       progress,
       filesUploaded,
-      idempotencyKey,
     });
 
-    // STEP 4: Find game in database
+    // Find game — fall back to metadata search when worker uses folder UUID
     let game = await gameRepository.findOne({ where: { id: gameId } });
-    
-    // FALLBACK: If game not found by ID, search PENDING or PROCESSING games by temp path in metadata
-    // This handles cases where worker uses folder UUID instead of real game ID
     if (!game) {
-      logger.warn('[WEBHOOK] Game not found by ID, searching by metadata', { gameId });
-      
-      // Search pending OR processing games for one with matching temp path
+      logUploadEvent('cfworker.webhook.fallback_search', {
+        gameId,
+        uploadRef: refOrGameId,
+        step: 'metadata_lookup',
+      });
+
       const games = await gameRepository.find({
         where: [
           { processingStatus: GameProcessingStatus.PENDING },
-          { processingStatus: GameProcessingStatus.PROCESSING }
-        ]
+          { processingStatus: GameProcessingStatus.PROCESSING },
+        ],
       });
-      
-      // Find game with matching temp path in metadata
-      // The gameId from worker is actually the folder UUID (e.g., 66201f4c-b1e8-4176-9519-8c26e031c1bf)
+
       for (const g of games) {
-        if (g.metadata && (g.metadata as any)._tempGameFileKey) {
-          const tempKey = (g.metadata as any)._tempGameFileKey;
-          // Check if temp path contains the folder UUID
-          if (tempKey.includes(gameId)) {
-            game = g;
-            logger.info('[WEBHOOK] Found game by metadata search', {
-              actualGameId: game.id,
-              folderUUID: gameId,
-              tempPath: tempKey
-            });
-            break;
-          }
+        const tempKey = (g.metadata as any)?._tempGameFileKey;
+        if (tempKey && typeof tempKey === 'string' && tempKey.includes(gameId)) {
+          game = g;
+          logUploadEvent('cfworker.webhook.fallback_matched', {
+            gameId: g.id,
+            uploadRef: refOrGameId,
+            folderUUID: gameId,
+            tempPath: tempKey,
+          });
+          break;
         }
       }
     }
-    
+
     if (!game) {
-      logger.error('[WEBHOOK] Game not found', { gameId, s3Key });
+      logUploadEvent(
+        'cfworker.webhook.rejected',
+        { reason: 'game_not_found', gameId, uploadRef: refOrGameId, fileKey: s3Key },
+        'error'
+      );
       res.status(404).json({ error: 'Game not found' });
       return;
     }
 
-    // STEP 5: Handle completion, failure, or progress
     if (status === 'completed') {
-      await handleSuccessfulProcessing(game, { entryPoint, s3Key, fileCount, totalSize, processedAt });
+      await handleSuccessfulProcessing(game, { entryPoint, s3Key, fileCount, totalSize, processedAt }, refOrGameId);
     } else if (status === 'failed') {
-      await handleFailedProcessing(game, error || 'Unknown error');
+      await handleFailedProcessing(game, error || 'Unknown error', refOrGameId);
     } else if (status === 'progress') {
-      // Handle progress updates - emit WebSocket event only
-      await handleProgressUpdate(game, { progress, currentFile, filesUploaded, fileCount });
+      await handleProgressUpdate(game, { progress, currentFile, filesUploaded, fileCount }, refOrGameId);
     } else {
-      logger.warn('[WEBHOOK] Unknown status', { status, gameId });
+      logUploadEvent(
+        'cfworker.webhook.rejected',
+        { reason: 'invalid_status', gameId, uploadRef: refOrGameId, status },
+        'warn'
+      );
       res.status(400).json({ error: 'Invalid status' });
       return;
     }
 
-    // STEP 6: Webhook processed successfully
-    // Note: Idempotency already handled in STEP 2 via Redis SET NX
-    logger.info('[WEBHOOK] Webhook processed successfully', { gameId, status });
-    res.status(200).json({ 
-      message: 'Webhook processed',
+    logUploadEvent('cfworker.webhook.applied', {
       gameId,
+      uploadRef: refOrGameId,
       status,
+      durationMs: Date.now() - started,
     });
-
-  } catch (error: any) {
-    console.error('============ [WEBHOOK ERROR] ============');
-    console.error('Error Message:', error.message);
-    console.error('Error Stack:', error.stack);
-    console.error('Request Body:', JSON.stringify(req.body, null, 2));
-    console.error('=========================================');
-    
-    logger.error('[WEBHOOK] Error processing webhook', {
-      error: error.message,
-      stack: error.stack,
-      body: req.body,
-      headers: {
-        secret: !!req.headers['x-webhook-secret'],
-        idempotency: req.headers['x-idempotency-key'],
+    res.status(200).json({ message: 'Webhook processed', gameId, status });
+  } catch (error: unknown) {
+    logUploadEvent(
+      'cfworker.webhook.failed',
+      {
+        gameId: payload.gameId,
+        uploadRef,
+        durationMs: Date.now() - started,
+        ...toErrorFields(error),
+        stack: error instanceof Error ? error.stack : undefined,
       },
-    });
-    res.status(500).json({ error: 'Internal server error', details: error.message });
+      'error'
+    );
+    const details = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: 'Internal server error', details });
   }
 }
 
@@ -224,18 +235,18 @@ export async function handleGameProcessed(req: Request, res: Response): Promise<
  */
 async function handleSuccessfulProcessing(
   game: Game,
-  data: { 
-    entryPoint?: string; 
-    s3Key?: string; 
-    fileCount?: number; 
+  data: {
+    entryPoint?: string;
+    s3Key?: string;
+    fileCount?: number;
     totalSize?: number;
     processedAt: string;
-  }
+  },
+  uploadRef: string
 ): Promise<void> {
   const gameId = game.id;
 
   try {
-    // STEP 1: Create file record for the game
     if (!data.s3Key) {
       throw new Error('Missing s3Key in webhook payload');
     }
@@ -247,60 +258,93 @@ async function handleSuccessfulProcessing(
       s3Key: decodedS3Key,
       type: 'game_file',
     });
-
     await fileRepository.save(gameFileRecord);
-    logger.info('[WEBHOOK] Game file record created', {
+
+    logUploadEvent('cfworker.webhook.file_record_created', {
       gameId,
+      uploadRef,
       fileId: gameFileRecord.id,
-      s3Key: data.s3Key,
+      fileKey: decodedS3Key,
     });
 
-    // STEP 2: Update game - mark as completed and activate
-    // This matches the behavior in gameZipProcessor.ts
-    await gameRepository.update(gameId, {
+    // Mark as completed; auto-publish only if the upload flow opted in.
+    // Matches gameZipProcessor.ts.
+    const existingGame = await gameRepository.findOne({ where: { id: gameId } });
+    const publishOnReady =
+      (existingGame?.metadata as any)?._publishOnReady === true;
+
+    const completionUpdate: Partial<Game> = {
       gameFileId: gameFileRecord.id,
       processingStatus: GameProcessingStatus.COMPLETED,
       processingError: undefined,
-      status: GameStatus.ACTIVE, // Activate the game
-      jobId: undefined, // Clear job ID (no longer relevant)
-    });
+      jobId: undefined,
+    };
+    if (publishOnReady) {
+      completionUpdate.status = GameStatus.ACTIVE;
+      completionUpdate.publishedAt = new Date();
+      completionUpdate.lastLikeIncrement = new Date();
+    }
+    if (existingGame?.metadata && (existingGame.metadata as any)._publishOnReady !== undefined) {
+      const cleaned = { ...(existingGame.metadata as any) };
+      delete cleaned._publishOnReady;
+      completionUpdate.metadata = cleaned;
+    }
 
-    logger.info('[WEBHOOK] Game activated', {
-      gameId,
-      fileCount: data.fileCount,
-      totalSize: data.totalSize,
-    });
+    await gameRepository.update(gameId, completionUpdate);
 
-    // STEP 3: Emit WebSocket event - game is now completed and active
+    if (publishOnReady) {
+      try {
+        const { GamePublishHistory, GamePublishAction } = await import(
+          '../entities/GamePublishHistory'
+        );
+        const repo = AppDataSource.getRepository(GamePublishHistory);
+        await repo.save(
+          repo.create({
+            gameId,
+            action: GamePublishAction.PUBLISHED,
+            actorId: existingGame?.createdById ?? null,
+            actorRole: null,
+          })
+        );
+      } catch (historyErr) {
+        logUploadEvent(
+          'cfworker.webhook.publish_history_failed',
+          { gameId, uploadRef, ...toErrorFields(historyErr) },
+          'warn'
+        );
+      }
+    }
+
     websocketService.emitGameStatusUpdate(gameId, {
       processingStatus: GameProcessingStatus.COMPLETED,
-      status: GameStatus.ACTIVE,
+      status: publishOnReady ? GameStatus.ACTIVE : GameStatus.DISABLED,
     });
-
     websocketService.emitGameProcessingProgress(gameId, 100);
 
-    // STEP 4: Trigger CDN JSON regeneration and Cloudflare cache purge
-    // This ensures the newly activated game appears in games_active.json
     try {
       const { cacheInvalidationService } = await import('../services/cache-invalidation.service');
       await cacheInvalidationService.invalidateGameCreation(gameId);
-      logger.info('[WEBHOOK] CDN cache invalidated for newly activated game', { gameId });
+      logUploadEvent('cfworker.webhook.cdn_invalidated', { gameId, uploadRef });
     } catch (cdnError) {
-      logger.warn('[WEBHOOK] Failed to invalidate CDN cache', {
-        gameId,
-        error: cdnError,
-      });
+      logUploadEvent(
+        'cfworker.webhook.cdn_invalidation_failed',
+        { gameId, uploadRef, ...toErrorFields(cdnError) },
+        'warn'
+      );
       // Don't fail the webhook for CDN errors
     }
-
-    logger.info('[WEBHOOK] Successfully completed game processing', { gameId });
-
-  } catch (error: any) {
-    logger.error('[WEBHOOK] Error handling successful processing', {
-      gameId,
-      error: error.message,
-      stack: error.stack,
-    });
+  } catch (error: unknown) {
+    logUploadEvent(
+      'cfworker.webhook.apply_failed',
+      {
+        gameId,
+        uploadRef,
+        step: 'handleSuccessfulProcessing',
+        ...toErrorFields(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      },
+      'error'
+    );
     throw error;
   }
 }
@@ -315,76 +359,87 @@ async function handleProgressUpdate(
     currentFile?: string;
     filesUploaded?: number;
     fileCount?: number;
-  }
+  },
+  uploadRef: string
 ): Promise<void> {
   const gameId = game.id;
 
   try {
-    logger.info('[WEBHOOK] Progress update received', {
+    logUploadEvent('cfworker.webhook.progress', {
       gameId,
+      uploadRef,
       progress: data.progress,
       filesUploaded: data.filesUploaded,
       fileCount: data.fileCount,
+      currentFile: data.currentFile,
     });
 
-    // Emit WebSocket event for progress
     if (data.progress !== undefined) {
       websocketService.emitGameProcessingProgress(gameId, data.progress);
     }
 
-    // Optionally update game status to "processing" if still "pending"
     if (game.processingStatus === GameProcessingStatus.PENDING) {
       await gameRepository.update(gameId, {
         processingStatus: GameProcessingStatus.PROCESSING,
       });
-
-      // Emit status change
       websocketService.emitGameStatusUpdate(gameId, {
         processingStatus: GameProcessingStatus.PROCESSING,
       });
     }
-
-  } catch (error: any) {
-    logger.error('[WEBHOOK] Error handling progress update', {
-      gameId,
-      error: error.message,
-      stack: error.stack,
-    });
-    // Don't throw - progress updates are non-critical
+  } catch (error: unknown) {
+    logUploadEvent(
+      'cfworker.webhook.progress_failed',
+      {
+        gameId,
+        uploadRef,
+        ...toErrorFields(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      },
+      'error'
+    );
+    // Don't throw — progress updates are non-critical.
   }
 }
 
 /**
  * Handle failed game processing
  */
-async function handleFailedProcessing(game: Game, errorMessage: string): Promise<void> {
+async function handleFailedProcessing(
+  game: Game,
+  errorMessage: string,
+  uploadRef: string
+): Promise<void> {
   const gameId = game.id;
 
   try {
-    // Update game status to failed
     await gameRepository.update(gameId, {
       processingStatus: GameProcessingStatus.FAILED,
       processingError: errorMessage,
-      jobId: undefined, // Clear job ID
+      jobId: undefined,
     });
 
-    logger.error('[WEBHOOK] Game processing failed', {
-      gameId,
-      error: errorMessage,
-    });
+    logUploadEvent(
+      'cfworker.webhook.game_failed',
+      { gameId, uploadRef, errorMessage },
+      'error'
+    );
 
-    // Emit WebSocket event for failed status
     websocketService.emitGameStatusUpdate(gameId, {
       processingStatus: GameProcessingStatus.FAILED,
       processingError: errorMessage,
     });
-
-  } catch (error: any) {
-    logger.error('[WEBHOOK] Error handling failed processing', {
-      gameId,
-      error: error.message,
-      stack: error.stack,
-    });
+  } catch (error: unknown) {
+    logUploadEvent(
+      'cfworker.webhook.apply_failed',
+      {
+        gameId,
+        uploadRef,
+        step: 'handleFailedProcessing',
+        ...toErrorFields(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      },
+      'error'
+    );
     throw error;
   }
 }
@@ -392,7 +447,7 @@ async function handleFailedProcessing(game: Game, errorMessage: string): Promise
 /**
  * Health check endpoint for Cloudflare Worker
  */
-export async function handleWebhookHealth(req: Request, res: Response): Promise<void> {
+export async function handleWebhookHealth(_req: Request, res: Response): Promise<void> {
   res.status(200).json({ 
     status: 'ok',
     service: 'webhook-receiver',
