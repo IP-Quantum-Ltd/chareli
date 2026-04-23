@@ -31,6 +31,7 @@ if not all([BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD]):
 async def _wait_for_iframe_render(page, game_element, timeout_seconds: int = 30):
     deadline = time.monotonic() + timeout_seconds
 
+    frame = None
     try:
         await page.wait_for_timeout(5000)
         handle = await game_element.element_handle()
@@ -39,9 +40,7 @@ async def _wait_for_iframe_render(page, game_element, timeout_seconds: int = 30)
         frame = None
 
     if frame is None:
-        print("Could not inspect iframe content directly. Using time-based fallback.")
-        await page.wait_for_timeout(10000)
-        return
+        print("Could not inspect iframe content directly. Using visual readiness checks only.")
 
     percentage_only = re.compile(r"^\s*\d{1,3}%\s*$")
     loading_progress = re.compile(r"\b\d{1,3}%\b")
@@ -55,10 +54,12 @@ async def _wait_for_iframe_render(page, game_element, timeout_seconds: int = 30)
     ]
 
     while time.monotonic() < deadline:
-        try:
-            body_text = (await frame.locator("body").inner_text(timeout=1000)).strip()
-        except Exception:
-            body_text = ""
+        body_text = ""
+        if frame is not None:
+            try:
+                body_text = (await frame.locator("body").inner_text(timeout=1000)).strip()
+            except Exception:
+                body_text = ""
 
         lowered_body_text = body_text.lower()
 
@@ -87,29 +88,39 @@ async def _wait_for_iframe_render(page, game_element, timeout_seconds: int = 30)
             center_pixels = list(center_crop.getdata())
             center_total = max(len(center_pixels), 1)
             center_dark = sum(1 for r, g, b in center_pixels if max(r, g, b) < 40)
+            center_bright = sum(1 for r, g, b in center_pixels if max(r, g, b) > 180)
             center_gray = sum(1 for r, g, b in center_pixels if abs(r - g) < 12 and abs(g - b) < 12 and 40 <= max(r, g, b) <= 170)
             center_dark_ratio = center_dark / center_total
+            center_bright_ratio = center_bright / center_total
             center_gray_ratio = center_gray / center_total
         except Exception:
             black_ratio = 0.0
             bright_ratio = 0.0
             center_dark_ratio = 0.0
+            center_bright_ratio = 0.0
             center_gray_ratio = 0.0
 
         screenshot_text = ""
-        try:
-            screenshot_text = " ".join(
-                [
-                    t.strip().lower()
-                    for t in await frame.locator("body, div, span, p").all_inner_texts()
-                    if t and t.strip()
-                ]
-            )[:1000]
-        except Exception:
-            screenshot_text = lowered_body_text
+        screenshot_text = lowered_body_text
+        if frame is not None:
+            try:
+                screenshot_text = " ".join(
+                    [
+                        t.strip().lower()
+                        for t in await frame.locator("body, div, span, p").all_inner_texts()
+                        if t and t.strip()
+                    ]
+                )[:1000]
+            except Exception:
+                screenshot_text = lowered_body_text
 
         if black_ratio > 0.97 and bright_ratio < 0.02:
             print(f"Gameplay still looks like a loading screen (black_ratio={black_ratio:.2f}).")
+            await page.wait_for_timeout(2000)
+            continue
+
+        if center_dark_ratio > 0.94:
+            print("Gameplay still looks like a mostly-black loading screen.")
             await page.wait_for_timeout(2000)
             continue
 
@@ -126,8 +137,6 @@ async def _wait_for_iframe_render(page, game_element, timeout_seconds: int = 30)
         print("Gameplay iframe looks ready for capture.")
         await page.wait_for_timeout(1500)
         return
-
-        await page.wait_for_timeout(1000)
 
     print("Timed out waiting for loader to disappear. Capturing latest iframe state.")
 
@@ -365,10 +374,99 @@ async def _extract_external_page_metadata(page, source_url: str) -> dict:
             document.querySelector(`meta[name="${name}"]`)?.content ||
             document.querySelector(`meta[property="${name}"]`)?.content ||
             "";
+          const normalize = (value) => (value || "").replace(/\\s+/g, " ").trim();
+          const unique = (items) => Array.from(new Set(items.filter(Boolean)));
+          const textFrom = (selector) =>
+            Array.from(document.querySelectorAll(selector))
+              .map((el) => normalize(el.textContent))
+              .filter(Boolean);
+          const sectionText = (headingRegex) => {
+            const headings = Array.from(document.querySelectorAll("h1, h2, h3, h4"));
+            for (const heading of headings) {
+              const label = normalize(heading.textContent).toLowerCase();
+              if (!headingRegex.test(label)) continue;
+              const chunks = [];
+              let node = heading.nextElementSibling;
+              while (node && !/^H[1-4]$/.test(node.tagName)) {
+                const text = normalize(node.textContent);
+                if (text) chunks.push(text);
+                node = node.nextElementSibling;
+              }
+              if (chunks.length) return chunks.join("\\n\\n");
+            }
+            return "";
+          };
+          const faqItems = [];
+          const faqQuestions = Array.from(document.querySelectorAll("details, .faq-item, .faq, [class*='faq']"));
+          for (const item of faqQuestions) {
+            let question = "";
+            let answer = "";
+            const summary = item.querySelector("summary");
+            if (summary) {
+              question = normalize(summary.textContent);
+              const clone = item.cloneNode(true);
+              const cloneSummary = clone.querySelector("summary");
+              if (cloneSummary) cloneSummary.remove();
+              answer = normalize(clone.textContent);
+            } else {
+              const questionNode = item.querySelector("h2, h3, h4, strong, b, .question, [class*='question']");
+              const answerNode = item.querySelector("p, .answer, [class*='answer']");
+              question = normalize(questionNode?.textContent || "");
+              answer = normalize(answerNode?.textContent || item.textContent);
+            }
+            if (question && answer) {
+              faqItems.push({ question, answer });
+            }
+          }
+
+          const ldJsonBlocks = Array.from(document.querySelectorAll("script[type='application/ld+json']"))
+            .map((el) => {
+              try { return JSON.parse(el.textContent || "{}"); } catch { return null; }
+            })
+            .filter(Boolean);
+          for (const block of ldJsonBlocks) {
+            const nodes = Array.isArray(block) ? block : [block];
+            for (const node of nodes) {
+              if ((node['@type'] || '').toLowerCase().includes('faq') && Array.isArray(node.mainEntity)) {
+                for (const entity of node.mainEntity) {
+                  const question = normalize(entity.name);
+                  const answer = normalize(entity.acceptedAnswer?.text || entity.acceptedAnswer?.['@value'] || "");
+                  if (question && answer) faqItems.push({ question, answer });
+                }
+              }
+            }
+          }
+
+          const categorySelectors = [
+            "[rel='category tag']",
+            ".category",
+            ".categories a",
+            "[class*='category'] a",
+            ".breadcrumb a",
+            "[class*='breadcrumb'] a"
+          ];
+          const tagSelectors = [
+            ".tags a",
+            "[class*='tag'] a",
+            "a[rel='tag']"
+          ];
+          const ratingSelectors = [
+            "[itemprop='ratingValue']",
+            "[class*='rating']",
+            "[class*='score']",
+            "[class*='votes']",
+            "[class*='vote']"
+          ];
+          const developerSelectors = [
+            "[class*='developer']",
+            "[class*='publisher']",
+            "[data-testid*='developer']",
+            "[data-testid*='publisher']"
+          ];
           const headings = Array.from(document.querySelectorAll("h1, h2"))
-            .map((el) => el.textContent?.trim())
+            .map((el) => normalize(el.textContent))
             .filter(Boolean)
-            .slice(0, 12);
+            .slice(0, 20);
           return {
             final_url: location.href,
             source_url: "",
@@ -379,6 +477,22 @@ async def _extract_external_page_metadata(page, source_url: str) -> dict:
             og_image: getMeta("og:image"),
             canonical_url: document.querySelector("link[rel='canonical']")?.href || "",
             headings,
+            faq_items: unique(faqItems.map((item) => JSON.stringify(item))).map((item) => JSON.parse(item)).slice(0, 20),
+            about_game: sectionText(/about|about this game|game description|overview/i),
+            how_to_play: sectionText(/how to play|how do you play|gameplay/i),
+            instructions: sectionText(/instructions|controls|control|guide/i),
+            developer_publisher: unique(
+                developerSelectors.flatMap((selector) => textFrom(selector))
+            ).slice(0, 20),
+            ratings_and_votes: unique(
+              ratingSelectors.flatMap((selector) => textFrom(selector))
+            ).slice(0, 20),
+            tags: unique(
+              tagSelectors.flatMap((selector) => textFrom(selector))
+            ).slice(0, 20),
+            categories: unique(
+              categorySelectors.flatMap((selector) => textFrom(selector))
+            ).slice(0, 20),
           };
         }
         """
@@ -393,11 +507,9 @@ async def search_for_urls(search_query: str, output_dir: str, count: int = 5) ->
     engines = [
         ("google", f"https://www.google.com/search?q={quote_plus(search_query)}"),
         ("bing", f"https://www.bing.com/search?q={quote_plus(search_query)}"),
-        ("brave", f"https://search.brave.com/search?q={quote_plus(search_query)}"),
         ("duckduckgo", f"https://duckduckgo.com/?q={quote_plus(search_query)}"),
     ]
     collected: list[dict] = []
-    screenshots: list[dict] = []
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
@@ -412,14 +524,6 @@ async def search_for_urls(search_query: str, output_dir: str, count: int = 5) ->
                 try:
                     await page.goto(engine_url, wait_until="domcontentloaded", timeout=30000)
                     await page.wait_for_timeout(2500)
-                    screenshot_path = output_path / f"search_results_{engine_name}.png"
-                    await page.screenshot(path=str(screenshot_path), full_page=True)
-                    screenshots.append(
-                        {
-                            "engine": engine_name,
-                            "screenshot_path": str(screenshot_path),
-                        }
-                    )
 
                     links = await page.evaluate(
                         """
@@ -481,8 +585,6 @@ async def search_for_urls(search_query: str, output_dir: str, count: int = 5) ->
     return {
         "engine": "playwright-meta-search",
         "engines": [engine for engine, _ in engines],
-        "search_screenshots": screenshots,
-        "screenshot_path": screenshots[0]["screenshot_path"] if screenshots else "",
         "candidates": collected[: max(count, 10)],
     }
 

@@ -19,6 +19,39 @@ class VisualLibrarian(BaseService, BaseAIClient):
     Search (Image + Name) -> Browse -> Screenshot & Metadata -> Correlate -> Score
     """
 
+    def _write_combined_research_findings(
+        self,
+        proposal_id: str,
+        game_title: str,
+        search_query: str,
+        candidates: List[Dict[str, Any]],
+        failures: List[Dict[str, Any]],
+        best_match: Dict[str, Any] | None = None,
+    ) -> str:
+        findings_path = Path(__file__).resolve().parents[2] / f"research_findings_{proposal_id}.json"
+        report = {
+            "game_title": game_title,
+            "proposal_id": proposal_id,
+            "search_query": search_query,
+            "total_cost_usd": getattr(self, "last_cost", 0.0),
+            "best_match_url": (best_match or {}).get("url", ""),
+            "visual_confidence": (best_match or {}).get("confidence_score", ""),
+            "all_candidates": [
+                {
+                    "url": candidate.get("url", ""),
+                    "confidence_score": candidate.get("confidence_score", 0),
+                    "reasoning": candidate.get("reasoning", ""),
+                    "extracted_facts": candidate.get("extracted_facts", {}),
+                    "screenshot_path": candidate.get("screenshot_path", ""),
+                    "metadata_path": candidate.get("metadata_path", ""),
+                }
+                for candidate in candidates
+            ],
+            "failures": failures,
+        }
+        findings_path.write_text(json.dumps(report, indent=4), encoding="utf-8")
+        return str(findings_path)
+
     @traceable(run_type="chain", name="Visual Librarian Investigation")
     async def verify_and_research(
         self,
@@ -48,25 +81,17 @@ class VisualLibrarian(BaseService, BaseAIClient):
                 "search_query": search_query,
             }
 
-        selection = await self._select_search_results_with_vision(
-            game_title=game_title,
-            thumbnail_base64=internal_screenshots[0],
-            search_results_screenshot_paths=[
-                entry.get("screenshot_path", "")
-                for entry in (search_step.get("search_screenshots") or [])
-                if isinstance(entry, dict)
-            ],
-            candidates=raw_candidates,
-        )
-        selected_urls = selection.get("selected_urls") or []
-        search_results = [url for url in selected_urls if isinstance(url, str) and url]
+        search_results = [
+            candidate["url"]
+            for candidate in raw_candidates[:10]
+            if isinstance(candidate, dict) and isinstance(candidate.get("url"), str) and candidate.get("url")
+        ]
         if len(search_results) < 5:
             return {
                 "status": "failed",
-                "reason": f"Vision-assisted search selection returned only {len(search_results)} URLs; Stage 0 requires 5.",
+                "reason": f"Playwright search returned only {len(search_results)} usable URLs; Stage 0 requires 5.",
                 "search_query": search_query,
                 "raw_candidates": raw_candidates,
-                "search_selection": selection,
             }
 
         candidates: List[Dict[str, Any]] = []
@@ -141,10 +166,7 @@ class VisualLibrarian(BaseService, BaseAIClient):
                     "search_plan": search_plan,
                     "search_engine": search_step.get("engine", ""),
                     "search_engines": search_step.get("engines", []),
-                    "search_screenshot_path": search_step.get("screenshot_path", ""),
-                    "search_screenshots": search_step.get("search_screenshots", []),
                     "raw_candidates": raw_candidates,
-                    "search_selection": selection,
                     "search_results": search_results,
                     "candidate_count": len(candidates),
                     "failures": failures,
@@ -156,6 +178,13 @@ class VisualLibrarian(BaseService, BaseAIClient):
         )
 
         if len(candidates) != 5:
+            findings_path = self._write_combined_research_findings(
+                proposal_id=proposal_id,
+                game_title=game_title,
+                search_query=search_query,
+                candidates=candidates,
+                failures=failures,
+            )
             return {
                 "status": "failed",
                 "reason": (
@@ -166,6 +195,7 @@ class VisualLibrarian(BaseService, BaseAIClient):
                 "failures": failures,
                 "all_candidates": candidates,
                 "comparison_scores_path": str(comparison_scores_path),
+                "research_findings_path": findings_path,
             }
 
         best_match = max(candidates, key=lambda item: item["confidence_score"])
@@ -176,20 +206,27 @@ class VisualLibrarian(BaseService, BaseAIClient):
                 best_match["deep_research_results"] = deep_info
                 best_match["extracted_facts"].update(deep_info)
 
+        findings_path = self._write_combined_research_findings(
+            proposal_id=proposal_id,
+            game_title=game_title,
+            search_query=search_query,
+            candidates=candidates,
+            failures=failures,
+            best_match=best_match,
+        )
+
         return {
             "status": "success",
             "search_query": search_query,
             "search_plan": search_plan,
             "search_engine": search_step.get("engine", ""),
             "search_engines": search_step.get("engines", []),
-            "search_screenshot_path": search_step.get("screenshot_path", ""),
-            "search_screenshots": search_step.get("search_screenshots", []),
             "raw_candidates": raw_candidates,
-            "search_selection": selection,
             "best_match": best_match,
             "all_candidates": candidates,
             "failures": failures,
             "comparison_scores_path": str(comparison_scores_path),
+            "research_findings_path": findings_path,
         }
 
     def _compose_search_query(self, title: str, search_plan: Dict[str, Any]) -> str:
@@ -220,57 +257,6 @@ class VisualLibrarian(BaseService, BaseAIClient):
 
         normalized_parts.extend(["browser game", "play online"])
         return " ".join(normalized_parts)
-
-    async def _select_search_results_with_vision(
-        self,
-        game_title: str,
-        thumbnail_base64: str,
-        search_results_screenshot_paths: List[str],
-        candidates: List[Dict[str, Any]],
-    ) -> Dict[str, Any]:
-        screenshot_payloads: List[str] = []
-        for screenshot_path in search_results_screenshot_paths[:4]:
-            if screenshot_path and Path(screenshot_path).exists():
-                with open(screenshot_path, "rb") as handle:
-                    screenshot_payloads.append(base64.b64encode(handle.read()).decode("utf-8"))
-
-        prompt = f"""
-        You are choosing the best search results for Stage 0 verification.
-        Game title: {game_title}
-
-        Candidate search results:
-        {json.dumps(candidates, indent=2)}
-
-        Use the internal thumbnail image and the search engine result screenshots to pick the
-        best URLs most likely to lead to the exact same playable game.
-
-        Prioritize pages that are likely to contain an embedded playable browser game render.
-        Avoid extension stores, generic category pages, broken redirects, and pages that are
-        unlikely to load the game itself.
-
-        Return ONLY valid JSON:
-        {{
-            "selected_urls": ["url1", "url2", "url3", "url4", "url5", "url6", "url7", "url8", "url9", "url10"],
-            "reasoning": "short explanation"
-        }}
-        """
-
-        content = [{"type": "text", "text": prompt}]
-        content.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{thumbnail_base64}"}})
-        for screenshot_base64 in screenshot_payloads:
-            content.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{screenshot_base64}"}})
-
-        messages = [{"role": "user", "content": content}]
-
-        return await self.chat_completion(
-            messages=messages,
-            response_format={"type": "json_object"},
-            fallback_data={
-                "selected_urls": [candidate["url"] for candidate in candidates[:10]],
-                "reasoning": "Fallback to the first ten visible Playwright search results.",
-            },
-            metadata={"stage": "vision_search_selection"},
-        )
 
     async def _build_image_weighted_search_query(self, title: str, thumbnail_base64: str) -> Dict[str, Any]:
         prompt = f"""
