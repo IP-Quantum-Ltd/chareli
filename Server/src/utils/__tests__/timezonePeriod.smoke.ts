@@ -19,6 +19,7 @@ interface Scenario {
   tz: string;
   daysBack: number;
   expectCurrentStart: string;
+  expectPrevStart?: string;
 }
 
 const scenarios: Scenario[] = [
@@ -77,6 +78,10 @@ const scenarios: Scenario[] = [
     tz: 'Europe/Nicosia',
     daysBack: 1,
     expectCurrentStart: '2026-03-29T21:00:00.000Z', // 00:00 EEST
+    // prevStart = Mar 29 00:00 Nicosia wall clock. Mar 29 00:00 is BEFORE
+    // EU DST cutover (01:00 UTC that day), so it's EET/UTC+2 not EEST/UTC+3.
+    // Correct UTC: 2026-03-28T22:00:00.000Z, NOT 2026-03-28T21:00:00.000Z.
+    expectPrevStart: '2026-03-28T22:00:00.000Z',
   },
   // Year boundary — Dec 31 -> Jan 1 in a UTC-ahead zone.
   {
@@ -85,6 +90,41 @@ const scenarios: Scenario[] = [
     tz: 'Asia/Tokyo',
     daysBack: 1,
     expectCurrentStart: '2026-12-31T15:00:00.000Z', // Jan 1 2027 00:00 JST
+  },
+
+  // ── DST-crossing arithmetic ─────────────────────────────────────────────
+  // These scenarios were the reason an earlier revision of this helper was
+  // subtly wrong: walking N UTC days back from today's zoned-midnight-as-
+  // UTC-instant silently drifts by an hour when the window crosses a DST
+  // transition in the user's timezone.
+
+  // US fall-back — "last 7 days" on Nov 5 crosses Nov 1 02:00 local (EDT→EST).
+  // Oct 30 is still in EDT (UTC-4). Broken impl would return 05:00Z (= 01:00
+  // EDT on Oct 30). Correct is 04:00Z (= 00:00 EDT).
+  {
+    label: 'NY user, last 7 days on Nov 5 2026 (crosses fall-back)',
+    nowUtc: '2026-11-05T13:00:00Z',
+    tz: 'America/New_York',
+    daysBack: 7,
+    expectCurrentStart: '2026-10-30T04:00:00.000Z',
+  },
+  // US spring-forward — "last 7 days" on Mar 12 crosses Mar 8 02:00 local
+  // (EST→EDT). Mar 6 is still in EST (UTC-5). Broken impl drifts by 1h.
+  {
+    label: 'NY user, last 7 days on Mar 12 2026 (crosses spring-forward)',
+    nowUtc: '2026-03-12T13:00:00Z',
+    tz: 'America/New_York',
+    daysBack: 7,
+    expectCurrentStart: '2026-03-06T05:00:00.000Z',
+  },
+  // EU spring-forward — "last 7 days" on Mar 30 for Nicosia crosses Mar 29
+  // 01:00 UTC (EET→EEST). Mar 24 is still in EET (UTC+2). Broken impl drifts.
+  {
+    label: 'Nicosia user, last 7 days on Mar 30 2026 (crosses EU DST)',
+    nowUtc: '2026-03-30T12:00:00Z',
+    tz: 'Europe/Nicosia',
+    daysBack: 7,
+    expectCurrentStart: '2026-03-23T22:00:00.000Z',
   },
 ];
 
@@ -100,7 +140,9 @@ for (const s of scenarios) {
     s.daysBack,
     s.daysBack * 2,
   );
-  const ok = fmt(currentStart) === s.expectCurrentStart;
+  const currentOk = fmt(currentStart) === s.expectCurrentStart;
+  const prevOk = s.expectPrevStart ? fmt(prevStart) === s.expectPrevStart : true;
+  const ok = currentOk && prevOk;
   const marker = ok ? 'OK ' : 'FAIL';
   console.log(`${marker}  ${s.label}`);
   console.log(`      now UTC       = ${s.nowUtc}`);
@@ -108,6 +150,9 @@ for (const s of scenarios) {
   console.log(`      currentStart  = ${fmt(currentStart)}`);
   console.log(`      expected      = ${s.expectCurrentStart}`);
   console.log(`      prevStart     = ${fmt(prevStart)}`);
+  if (s.expectPrevStart) {
+    console.log(`      expected prev = ${s.expectPrevStart}`);
+  }
   console.log(`      prevEnd       = ${fmt(prevEnd)}`);
   if (!ok) failures++;
   console.log('');
