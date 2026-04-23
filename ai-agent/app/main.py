@@ -1,6 +1,9 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from fastapi import FastAPI
 
