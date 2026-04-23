@@ -22,7 +22,7 @@ class VisualLibrarian(BaseService, BaseAIClient):
 
     def __init__(self):
         super().__init__()
-        self.tavily = TavilyClient(api_key=os.getenv("TAVILY_API_KEY", ""))
+        self.tavily = TavilyClient(api_key=settings.TAVILY_API_KEY)
         self.mode = settings.LIBRARIAN_MODE
 
     @traceable(run_type="chain", name="Visual Librarian Investigation")
@@ -41,7 +41,8 @@ class VisualLibrarian(BaseService, BaseAIClient):
         reference_img = internal_screenshots[-1]
 
         # 1. Search Logic
-        search_query = f"{game_title} play arcade browser game online"
+        # Loosened query for better coverage on common games
+        search_query = f"{game_title} game play online"
         if self.mode == "batch":
             search_step = await search_for_urls(
                 search_query=search_query,
@@ -115,12 +116,17 @@ class VisualLibrarian(BaseService, BaseAIClient):
     async def _get_candidate_urls(self, query: str) -> List[Dict[str, str]]:
         loop = asyncio.get_event_loop()
         try:
+            self.logger.info(f"Searching for candidates via Tavily: {query}")
             results = await loop.run_in_executor(
                 None, 
                 lambda: self.tavily.search(query=query, search_depth="advanced", max_results=5)
             )
-            return results.get("results", [])
-        except: return []
+            raw_results = results.get("results", [])
+            self.logger.info(f"Tavily returned {len(raw_results)} results.")
+            return raw_results
+        except Exception as e: 
+            self.logger.error(f"Tavily search failed: {e}")
+            return []
 
     async def _calculate_correlation(self, title, internal_img, external_img, url):
         prompt = f"""

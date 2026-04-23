@@ -1,4 +1,4 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import field_validator
 
 class Settings(BaseSettings):
@@ -14,6 +14,7 @@ class Settings(BaseSettings):
 
     # OpenAI
     OPENAI_API_KEY: str
+    TAVILY_API_KEY: str = ""
     AI_PROVIDER: str = "openai"
     PRIMARY_LLM_MODEL: str = "gpt-4o"
     SECONDARY_LLM_MODEL: str = "gpt-4o-mini"
@@ -47,13 +48,13 @@ class Settings(BaseSettings):
     TEST_GAME_ID: str = "d1fbe524-b5e6-434c-91c4-bd3e7032fc72"
     TEST_GAME_TITLE: str = "Feed monster"
 
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
     # Webhook & Cron
     WEBHOOK_SECRET: str = ""
     CRON_INTERVAL_MINUTES: int = 15
 
-    class Config:
-        env_file = ".env"
-        extra = "ignore"
+        
 
 
 settings = Settings()
