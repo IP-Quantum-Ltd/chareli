@@ -12,8 +12,11 @@ import { storageService } from '../services/storage.service';
 import { cacheService } from '../services/cache.service';
 import { PerformanceTimer } from '../utils/performance';
 import logger from '../utils/logger';
-import { toZonedTime } from 'date-fns-tz';
 import { AdminExclusionService } from '../services/adminExclusion.service';
+import {
+  getPeriodBoundaries,
+  parseCustomDayBoundary,
+} from '../utils/timezonePeriod';
 
 const userRepository = AppDataSource.getRepository(User);
 const gameRepository = AppDataSource.getRepository(Game);
@@ -68,29 +71,9 @@ export const getDashboardAnalytics = async (
       return;
     }
 
-    // Get current time in the user's timezone for proper day boundaries
-    // This ensures "today" means "today in the user's timezone" (like Google Analytics)
     const nowUtc = new Date();
-    const nowInUserTz = toZonedTime(nowUtc, userTimezone);
-
-    // Helper to calculate period boundaries in user's timezone
-    const getTimezoneAwarePeriodBoundaries = (daysBack: number, prevDaysBack: number) => {
-      // Calculate start of today in user's timezone
-      const startOfTodayInUserTz = new Date(nowInUserTz);
-      startOfTodayInUserTz.setHours(0, 0, 0, 0);
-
-      // Current period: from X days ago at midnight (user's TZ) to now
-      const currentStart = new Date(startOfTodayInUserTz);
-      currentStart.setDate(currentStart.getDate() - daysBack + 1); // +1 because we include today
-
-      // Previous period: from 2X days ago to X days ago
-      const prevStart = new Date(startOfTodayInUserTz);
-      prevStart.setDate(prevStart.getDate() - prevDaysBack + 1);
-
-      const prevEnd = new Date(currentStart);
-
-      return { currentStart, prevStart, prevEnd };
-    };
+    const getTimezoneAwarePeriodBoundaries = (daysBack: number, prevDaysBack: number) =>
+      getPeriodBoundaries(nowUtc, userTimezone, daysBack, prevDaysBack);
 
     let now = nowUtc;
     let currentPeriodStart: Date;
@@ -115,11 +98,8 @@ export const getDashboardAnalytics = async (
       }
       case 'custom':
         if (startDate && endDate) {
-          currentPeriodStart = new Date(startDate as string);
-          currentPeriodStart.setHours(0, 0, 0, 0); // Start of day
-
-          const customEndDate = new Date(endDate as string);
-          customEndDate.setHours(23, 59, 59, 999); // End of day
+          currentPeriodStart = parseCustomDayBoundary(startDate as string, userTimezone, 'start');
+          const customEndDate = parseCustomDayBoundary(endDate as string, userTimezone, 'end');
 
           const daysDiff = Math.ceil(
             (customEndDate.getTime() - currentPeriodStart.getTime()) /
@@ -130,7 +110,7 @@ export const getDashboardAnalytics = async (
           );
           previousPeriodEnd = currentPeriodStart;
 
-          // For custom range, we need to use the actual end date for current period queries
+          // For custom range, the "end" boundary of the current window is the user-picked end.
           now = customEndDate;
         } else {
           // Fallback to last 24 hours if custom dates are invalid
@@ -2126,25 +2106,9 @@ export const getGamesPopularityMetrics = async (
     const { period, startDate, endDate, timezone } = req.query;
     const userTimezone = (timezone as string) || 'UTC';
 
-    // Get current time in the user's timezone for proper day boundaries
     const nowUtc = new Date();
-    const nowInUserTz = toZonedTime(nowUtc, userTimezone);
-
-    // Helper to calculate period boundaries in user's timezone
-    const getTimezoneAwarePeriodBoundaries = (daysBack: number, prevDaysBack: number) => {
-      const startOfTodayInUserTz = new Date(nowInUserTz);
-      startOfTodayInUserTz.setHours(0, 0, 0, 0);
-
-      const currentStart = new Date(startOfTodayInUserTz);
-      currentStart.setDate(currentStart.getDate() - daysBack + 1);
-
-      const prevStart = new Date(startOfTodayInUserTz);
-      prevStart.setDate(prevStart.getDate() - prevDaysBack + 1);
-
-      const prevEnd = new Date(currentStart);
-
-      return { currentStart, prevStart, prevEnd };
-    };
+    const getTimezoneAwarePeriodBoundaries = (daysBack: number, prevDaysBack: number) =>
+      getPeriodBoundaries(nowUtc, userTimezone, daysBack, prevDaysBack);
 
     let now = nowUtc;
     let currentPeriodStart: Date;
@@ -2169,10 +2133,8 @@ export const getGamesPopularityMetrics = async (
       }
       case 'custom':
         if (startDate && endDate) {
-          currentPeriodStart = new Date(startDate as string);
-          currentPeriodStart.setHours(0, 0, 0, 0);
-          const customEndDate = new Date(endDate as string);
-          customEndDate.setHours(23, 59, 59, 999);
+          currentPeriodStart = parseCustomDayBoundary(startDate as string, userTimezone, 'start');
+          const customEndDate = parseCustomDayBoundary(endDate as string, userTimezone, 'end');
           const daysDiff = Math.ceil(
             (customEndDate.getTime() - currentPeriodStart.getTime()) / (1000 * 60 * 60 * 24)
           );
