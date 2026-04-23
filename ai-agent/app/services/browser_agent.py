@@ -46,13 +46,13 @@ async def _wait_for_iframe_render(page, game_element, timeout_seconds: int = 45)
             image1 = Image.open(BytesIO(snap1_bytes)).convert("RGB").resize((160, 90))
             pixels1 = list(image1.getdata())
             
-            # Variance check (Solid Slabs)
+            # Variance check (Solid Slabs/Loading screens)
             avg_r, avg_g, avg_b = sum(p[0] for p in pixels1)/len(pixels1), sum(p[1] for p in pixels1)/len(pixels1), sum(p[2] for p in pixels1)/len(pixels1)
             variance = sum((p[0]-avg_r)**2 + (p[1]-avg_g)**2 + (p[2]-avg_b)**2 for p in pixels1) / len(pixels1)
             
-            if variance < 100:
-                print(f"Gameplay looks like a solid color void (Var: {variance:.2f}). Waiting...")
-                await page.wait_for_timeout(3000)
+            if variance < 300: # Increased threshold for stricter grounding
+                print(f"Gameplay looks too simplistic/void-like (Var: {variance:.2f}). Waiting...")
+                await page.wait_for_timeout(4000)
                 continue
 
             # Churn check (Detects moving percentage bars vs static logos)
@@ -139,15 +139,19 @@ async def capture_external_page(url: str, output_path: str):
         page = await context.new_page()
 
         try:
-            await page.goto(url, wait_until="domcontentloaded", timeout=45000)
-            await page.wait_for_timeout(3000)
+            # External sites are ad-heavy; wait longer for the base DOM
+            await page.goto(url, wait_until="domcontentloaded", timeout=60000)
+            await page.wait_for_timeout(8000) # Initial soak time
             await _dismiss_common_overlays(page)
             await _click_start_controls(page)
+            
+            # Additional pause after clicking 'Start' for external engines to spin up
+            await page.wait_for_timeout(5000)
 
             game_element = await _locate_external_game_surface(page)
             if game_element:
-                # Use the variance-aware render waiter
-                await _wait_for_iframe_render(page, game_element)
+                # Be extra patient with external surfaces
+                await _wait_for_iframe_render(page, game_element, timeout_seconds=60)
                 await game_element.screenshot(path=output_path)
                 return {"screenshot_path": output_path, "mode": "precision", "metadata": await _extract_external_page_metadata(page, url)}
             
