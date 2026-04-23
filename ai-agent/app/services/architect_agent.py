@@ -1,6 +1,7 @@
 import logging
 from typing import Dict, Any
 from app.services.base import BaseAIClient, BaseService
+from langsmith import traceable
 
 logger = logging.getLogger(__name__)
 
@@ -10,6 +11,7 @@ class ArchitectAgent(BaseService, BaseAIClient):
     Designs the high-level plan and structure for the SEO article.
     """
 
+    @traceable(run_type="chain", name="Content Architecture Planning")
     async def build_outline(self, game_title: str, research_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Creates a structured JSON outline for the game guide.

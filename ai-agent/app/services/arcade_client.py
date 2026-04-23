@@ -6,6 +6,7 @@ All calls use the non-expiry editor-role service account token.
 import httpx
 import logging
 from app.config import settings
+from typing import List, Dict
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +16,7 @@ _headers = {
 }
 
 
-async def get_pending_games() -> list[dict]:
+async def get_pending_games() -> List[Dict]:
     """
     Cron fallback: fetch all PENDING games.
     Endpoint: GET /api/games/pending  (editor-accessible)
@@ -29,7 +30,8 @@ async def get_pending_games() -> list[dict]:
         return resp.json().get("data", [])
 
 
-async def get_game(game_id: str) -> dict:
+async def get_game(game_id: str) -> Dict:
+    """Fetch live game metadata by ID."""
     async with httpx.AsyncClient(timeout=15) as client:
         resp = await client.get(
             f"{settings.ARCADE_API_BASE_URL}/api/games/{game_id}",
@@ -39,9 +41,9 @@ async def get_game(game_id: str) -> dict:
         return resp.json().get("data", {})
 
 
-async def submit_review(game_id: str, review: dict) -> None:
+async def submit_review(game_id: str, review: Dict) -> None:
     """
-    Submit the AI review as an editor using the existing game revision endpoint.
+    Submit the AI review as an editor using the live game revision endpoint.
     The review payload is embedded in proposedData so the admin sees it on review.
     """
     async with httpx.AsyncClient(timeout=15) as client:

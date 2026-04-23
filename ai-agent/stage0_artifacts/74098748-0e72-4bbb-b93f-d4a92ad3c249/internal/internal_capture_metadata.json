@@ -1,0 +1,15 @@
+{
+  "proposal_id": "74098748-0e72-4bbb-b93f-d4a92ad3c249",
+  "game_title": "Football Kicks",
+  "thumbnail": {
+    "source_url": "https://staging.cdn.arcadesbox.org/thumbnails/65309581-4de4-4f31-9ccb-fd922f65d6de-whatsapp-image-2025-11-03-at-02.50.34.webp",
+    "capture_type": "thumbnail",
+    "screenshot_path": "/workspace/stage0_artifacts/74098748-0e72-4bbb-b93f-d4a92ad3c249/internal/reference_thumbnail.png"
+  },
+  "gameplay_start": {
+    "source_url": "https://staging.arcadesbox.com/gameplay/74098748-0e72-4bbb-b93f-d4a92ad3c249",
+    "capture_type": "gameplay_start",
+    "surface_type": "iframe",
+    "screenshot_path": "/workspace/stage0_artifacts/74098748-0e72-4bbb-b93f-d4a92ad3c249/internal/reference_gameplay_start.png"
+  }
+}

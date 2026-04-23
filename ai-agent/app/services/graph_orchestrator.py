@@ -1,13 +1,16 @@
 import logging
-from typing import TypedDict, Dict, Any, List
+import os
+import base64
+from typing import TypedDict, Dict, Any, List, Optional
 from langgraph.graph import StateGraph, END
+from langsmith import traceable
+
 from app.services.browser_agent import capture_game_preview
 from app.services.visual_librarian import VisualLibrarian
 from app.services.analyst_agent import AnalystAgent
+from app.services.librarian_agent import LibrarianAgent
 from app.services.architect_agent import ArchitectAgent
 from app.services.scribe_agent import ScribeAgent
-import base64
-import os
 
 logger = logging.getLogger(__name__)
 
@@ -15,41 +18,51 @@ class AgentState(TypedDict):
     """The state object passed between nodes in LangGraph."""
     game_id: str
     game_title: str
-    internal_img_base64: str
-    internal_img_path: str
+    internal_capture_metadata: Dict[str, Any]
+    internal_imgs_base64: List[str]  # [thumbnail, gameplay_start]
+    internal_imgs_paths: List[str]
     investigation: Dict[str, Any]
     seo_blueprint: Dict[str, Any]
+    grounded_context: Dict[str, Any]
     outline: Dict[str, Any]
     article: str
     accumulated_cost: float
     status: str
-    error_message: str
+    error_message: Optional[str]
 
 # --- Node Implementations ---
 
 async def capture_node(state: AgentState) -> AgentState:
     logger.info(f"Node: Capture | Game ID: {state['game_id']}")
-    path = f"internal_{state['game_id']}.png"
-    fallback_path = f"screenshot_{state['game_id']}.png"
     
     try:
-        await capture_game_preview(state["game_id"], path)
-        state["internal_img_path"] = path
-        state["status"] = "captured"
-    except Exception as e:
-        logger.warning(f"Live capture failed, checking for fallback: {fallback_path}")
-        if os.path.exists(fallback_path):
-            state["internal_img_path"] = fallback_path
-            state["status"] = "captured"
-            logger.info(f"Using fallback screenshot: {fallback_path}")
+        # The new browser agent handles multi-point capture
+        capture_result = await capture_game_preview(
+            game_id=state["game_id"],
+            output_path=f"internal_{state['game_id']}.png"
+        )
+        
+        # If capture_result is a string (legacy/single path), wrap it
+        if isinstance(capture_result, str):
+            paths = [capture_result]
         else:
-            state["status"] = "failed"
-            state["error_message"] = f"Capture failed and no fallback found: {e}"
-            return state
+            # New branch returns a dict with 'paths'
+            paths = capture_result.get("paths", [capture_result]) if isinstance(capture_result, dict) else [capture_result]
 
-    # Encode for Vision
-    with open(state["internal_img_path"], "rb") as f:
-        state["internal_img_base64"] = base64.b64encode(f.read()).decode("utf-8")
+        state["internal_imgs_paths"] = paths
+        state["status"] = "captured"
+        
+        # Encode for multi-modal vision
+        state["internal_imgs_base64"] = []
+        for p in paths:
+            if os.path.exists(p):
+                with open(p, "rb") as f:
+                    state["internal_imgs_base64"].append(base64.b64encode(f.read()).decode("utf-8"))
+        
+    except Exception as e:
+        logger.error(f"Capture Integrity Failed: {e}")
+        state["status"] = "failed"
+        state["error_message"] = f"CRITICAL: Internal capture failed. Detail: {e}"
         
     return state
 
@@ -58,16 +71,21 @@ async def research_node(state: AgentState) -> AgentState:
     logger.info("Node: Visual Research (Stage 0)")
     
     librarian = VisualLibrarian()
-    result = await librarian.verify_and_research(state["game_title"], state["internal_img_base64"])
+    # Support multiple screenshots for correlation
+    result = await librarian.verify_and_research(
+        game_title=state["game_title"], 
+        internal_screenshots=state["internal_imgs_base64"]
+    )
     
     state["accumulated_cost"] += librarian.last_cost
+    state["investigation"] = result
     
     if result["status"] == "failed":
         state["status"] = "failed"
-        state["error_message"] = result["reason"]
+        state["error_message"] = f"Visual correlation failed: {result['reason']}"
     else:
-        state["investigation"] = result
         state["status"] = "researched"
+        
     return state
 
 async def analyze_node(state: AgentState) -> AgentState:
@@ -75,13 +93,35 @@ async def analyze_node(state: AgentState) -> AgentState:
     logger.info("Node: SEO Intelligence (Stage 1)")
     
     analyst = AnalystAgent()
+    # In tweaks branch, analyst takes the whole investigation
     blueprint = await analyst.analyze_seo_potential(
         state["game_title"], 
-        state["investigation"]["best_match"]["extracted_facts"]
+        state["investigation"].get("best_match", {}).get("extracted_facts", {})
     )
     state["accumulated_cost"] += analyst.last_cost
     state["seo_blueprint"] = blueprint
     state["status"] = "analyzed"
+    return state
+
+async def librarian_node(state: AgentState) -> AgentState:
+    """Stage 2: Grounding search results with LibrarianAgent."""
+    if state["status"] == "failed": return state
+    logger.info("Node: Librarian (Stage 2)")
+
+    try:
+        librarian = LibrarianAgent()
+        grounded_context = await librarian.build_grounded_context(
+            state["game_title"],
+            state["investigation"],
+            state["seo_blueprint"],
+        )
+        state["accumulated_cost"] += librarian.last_cost
+        state["grounded_context"] = grounded_context
+        state["status"] = "grounded"
+    except Exception as e:
+        logger.error(f"Librarian Stage Failed: {e}")
+        state["status"] = "failed"
+        state["error_message"] = f"Stage 2 grounding failed: {e}"
     return state
 
 async def architect_node(state: AgentState) -> AgentState:
@@ -89,9 +129,13 @@ async def architect_node(state: AgentState) -> AgentState:
     logger.info("Node: Architect (Stage 3)")
     
     architect = ArchitectAgent()
+    best_match = state["investigation"]["best_match"]
     outline = await architect.build_outline(state["game_title"], {
-        "visual_description": state["investigation"]["best_match"]["reasoning"],
-        "canonical_url": state["investigation"]["best_match"]["url"]
+        "visual_description": best_match["reasoning"],
+        "canonical_url": best_match["url"],
+        "verified_facts": best_match.get("extracted_facts") or {},
+        "seo_blueprint": state["seo_blueprint"],
+        "grounded_context": state["grounded_context"],
     })
     state["accumulated_cost"] += architect.last_cost
     state["outline"] = outline
@@ -103,10 +147,13 @@ async def scribe_node(state: AgentState) -> AgentState:
     logger.info("Node: Scribe (Stage 5)")
     
     scribe = ScribeAgent()
+    best_match = state["investigation"]["best_match"]
     article = await scribe.draft_from_facts(state["game_title"], {
-        "source_url": state["investigation"]["best_match"]["url"],
-        "facts": state["investigation"]["best_match"]["extracted_facts"],
-        "seo": state["seo_blueprint"]
+        "source_url": best_match["url"],
+        "facts": best_match.get("extracted_facts") or {},
+        "seo": state["seo_blueprint"],
+        "grounded_context": state["grounded_context"],
+        "content_plan": state["outline"],
     })
     state["accumulated_cost"] += scribe.last_cost
     state["article"] = article
@@ -120,37 +167,45 @@ workflow = StateGraph(AgentState)
 workflow.add_node("capture", capture_node)
 workflow.add_node("research", research_node)
 workflow.add_node("analyze", analyze_node)
+workflow.add_node("librarian", librarian_node)
 workflow.add_node("architect", architect_node)
 workflow.add_node("scribe", scribe_node)
 
 workflow.set_entry_point("capture")
 workflow.add_edge("capture", "research")
 workflow.add_edge("research", "analyze")
-workflow.add_edge("analyze", END)
+workflow.add_edge("analyze", "librarian")
+workflow.add_edge("librarian", "architect")
+workflow.add_edge("architect", "scribe")
+workflow.add_edge("scribe", END)
 
 # Compile
 app_graph = workflow.compile()
 
+@traceable(run_type="chain", name="ArcadeBox SEO Pipeline")
 async def run_pipeline_with_tracking(game_id: str, game_title: str) -> Dict[str, Any]:
     initial_state = {
         "game_id": game_id,
         "game_title": game_title,
-        "internal_img_base64": "",
-        "internal_img_path": "",
+        "internal_capture_metadata": {},
+        "internal_imgs_base64": [],
+        "internal_imgs_paths": [],
         "investigation": {},
         "seo_blueprint": {},
+        "grounded_context": {},
         "outline": {},
         "article": "",
         "accumulated_cost": 0.0,
         "status": "starting",
-        "error_message": ""
+        "error_message": None
     }
     
     final_state = await app_graph.ainvoke(initial_state)
     logger.info(f"Pipeline finished with status: {final_state['status']} | Total Cost: ${final_state['accumulated_cost']:.4f}")
     
-    # Clean up image ONLY if it was a temporary internal capture
-    if final_state["internal_img_path"] and final_state["internal_img_path"].startswith("internal_") and os.path.exists(final_state["internal_img_path"]):
-        os.remove(final_state["internal_img_path"])
-        
+    # Clean up internal capture frames
+    for path in final_state.get("internal_imgs_paths", []):
+        if os.path.exists(path) and path.startswith("internal_"):
+            os.remove(path)
+            
     return final_state
