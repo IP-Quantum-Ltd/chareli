@@ -247,6 +247,33 @@ async def capture_thumbnail_preview(thumbnail_url: str, output_path: str = "thum
             await browser.close()
 
 
+async def capture_stage0_internal_assets(game_id: str, artifact_dir: str) -> dict:
+    game_row = await get_public_game_with_thumbnail_by_id(game_id)
+    if not game_row:
+        raise RuntimeError(f"Could not fetch game {game_id} from public.games")
+
+    title = game_row.get("title") or game_id
+    output_root = Path(artifact_dir)
+    output_root.mkdir(parents=True, exist_ok=True)
+
+    thumbnail_path = output_root / "internal_thumbnail.png"
+    gameplay_path = output_root / "internal_gameplay.png"
+
+    thumbnail_url = _resolve_thumbnail_url(game_row)
+    if not thumbnail_url:
+        raise RuntimeError(f"No thumbnail URL found for game {game_id}")
+
+    await capture_thumbnail_preview(thumbnail_url, str(thumbnail_path))
+    await capture_game_preview(game_id, str(gameplay_path))
+
+    return {
+        "game_id": game_id,
+        "game_title": title,
+        "thumbnail_url": thumbnail_url,
+        "paths": [str(thumbnail_path), str(gameplay_path)],
+    }
+
+
 async def capture_external_page(url: str, output_path: str):
     """
     Stage 0 (Visual Librarian): Captures a screenshot of an external search result

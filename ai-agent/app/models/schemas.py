@@ -81,3 +81,27 @@ class AiReviewResult(BaseModel):
     grounded_context: Optional[GroundedContextResult] = None
     content_plan: Optional[ContentPlan] = None
     final_article: Optional[str] = None
+
+
+class Stage0RunRequest(BaseModel):
+    game_id: str
+
+
+class Stage0ArtifactPaths(BaseModel):
+    internal_thumbnail_path: str = ""
+    internal_gameplay_path: str = ""
+    comparison_scores_path: str = ""
+    research_findings_path: str = ""
+    stage0_manifest_path: str = ""
+
+
+class Stage0RunResponse(BaseModel):
+    game_id: str
+    game_title: str
+    status: str
+    reason: Optional[str] = None
+    search_query: Optional[str] = None
+    candidate_count: int = 0
+    best_match_url: str = ""
+    confidence_score: int = 0
+    artifact_paths: Stage0ArtifactPaths

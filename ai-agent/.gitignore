@@ -1,6 +1,8 @@
 .env
 __pycache__/
 *.pyc
+venv/
+*.log
 
 # Local test/debug outputs
 tmp_debug_search/

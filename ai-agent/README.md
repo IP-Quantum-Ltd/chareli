@@ -115,6 +115,39 @@ Fill in:
 uvicorn app.main:app --reload --port 8000
 ```
 
+Windows PowerShell:
+
+```powershell
+cd C:\Users\nyama\Arcade\chareli\ai-agent
+$env:PYTHONPATH="C:\Users\nyama\Arcade\chareli\ai-agent"
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8020
+```
+
+If `python` is not on your PATH, use your local virtual environment instead:
+
+```powershell
+cd C:\Users\nyama\Arcade\chareli\ai-agent
+$env:PYTHONPATH="C:\Users\nyama\Arcade\chareli\ai-agent"
+.\venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8020
+```
+
+Important for Stage 0:
+- Keep the terminal running while you use the API.
+- Make sure the ArcadeBox client/frontend is also running.
+- Set `CLIENT_URL` in `.env` to the actual frontend URL, for example:
+
+```env
+CLIENT_URL=http://localhost:5174
+```
+
+Swagger / OpenAPI docs:
+
+```text
+http://127.0.0.1:8020/docs
+http://127.0.0.1:8020/redoc
+http://127.0.0.1:8020/openapi.json
+```
+
 ### 4. Run with Docker
 
 ```bash
@@ -130,6 +163,11 @@ docker compose up --build
 |---|---|---|
 | `GET` | `/health` | Health check |
 | `POST` | `/webhook/proposal-created` | Enqueues a proposal for asynchronous AI processing |
+| `POST` | `/stage0/run` | Runs Stage 0 end-to-end for a `public.games.id` |
+| `GET` | `/stage0/{game_id}/result` | Returns the saved Stage 0 manifest |
+| `GET` | `/stage0/{game_id}/comparison-scores` | Returns `comparison_scores.json` |
+| `GET` | `/stage0/{game_id}/research-findings` | Returns `research_findings_<game_id>.json` |
+| `GET` | `/stage0/{game_id}/candidates` | Returns candidate and failure entries from Stage 0 |
 
 ---
 

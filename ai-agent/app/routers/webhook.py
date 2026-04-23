@@ -1,6 +1,7 @@
 import logging
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Header
+from pydantic import BaseModel
 from app.config import settings
 from app.models.schemas import ProposalCreatedPayload
 from app.services import task_queue as queue
@@ -10,7 +11,22 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.post("/webhook/proposal-created", status_code=202)
+class ProposalCreatedResponse(BaseModel):
+    accepted: bool
+    proposalId: str
+
+
+@router.post(
+    "/webhook/proposal-created",
+    status_code=202,
+    tags=["Webhook"],
+    summary="Queue a new proposal review job",
+    description=(
+        "Receives a proposal-created webhook from the main ArcadeBox app, validates the "
+        "optional shared secret, and enqueues the proposal for asynchronous AI processing."
+    ),
+    response_model=ProposalCreatedResponse,
+)
 async def proposal_created(
     payload: ProposalCreatedPayload,
     x_webhook_secret: Optional[str] = Header(default=None),

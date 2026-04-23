@@ -110,11 +110,13 @@ class VisualLibrarian(BaseService, BaseAIClient):
             return {"status": "failed", "reason": "Stage 0 requires two internal reference screenshots."}
 
         search_plan = await self._build_image_weighted_search_query(game_title, internal_screenshots[0])
-        search_query = self._compose_search_query(game_title, search_plan)
+        exact_identity = await self._infer_exact_game_identity(game_title, internal_screenshots)
+        search_query = self._compose_search_query(game_title, search_plan, exact_identity)
         search_step = await self._search_with_openai_web_search(
             title=game_title,
-            thumbnail_base64=internal_screenshots[0],
+            internal_images=internal_screenshots,
             search_query=search_query,
+            exact_identity=exact_identity,
             count=10,
         )
         raw_candidates = search_step.get("candidates") or []
@@ -240,6 +242,7 @@ class VisualLibrarian(BaseService, BaseAIClient):
                     "game_title": game_title,
                     "search_query": search_query,
                     "search_plan": search_plan,
+                    "exact_identity": exact_identity,
                     "search_engine": search_step.get("engine", ""),
                     "search_model": search_step.get("model", ""),
                     "raw_candidates": raw_candidates,
@@ -298,6 +301,7 @@ class VisualLibrarian(BaseService, BaseAIClient):
             "status": "success",
             "search_query": search_query,
             "search_plan": search_plan,
+            "exact_identity": exact_identity,
             "search_engine": search_step.get("engine", ""),
             "search_model": search_step.get("model", ""),
             "raw_candidates": raw_candidates,
@@ -308,13 +312,29 @@ class VisualLibrarian(BaseService, BaseAIClient):
             "research_findings_path": findings_path,
         }
 
-    def _compose_search_query(self, title: str, search_plan: Dict[str, Any]) -> str:
+    def _compose_search_query(self, title: str, search_plan: Dict[str, Any], exact_identity: Dict[str, Any]) -> str:
         visual_cues = search_plan.get("visual_cues") or []
         search_terms = search_plan.get("search_terms") or []
+        exact_title = str(exact_identity.get("exact_game_name") or "").strip()
+        aliases = [item for item in (exact_identity.get("aliases") or []) if isinstance(item, str)]
 
         normalized_parts: List[str] = [f"\"{title}\""]
         seen = {title.strip().lower()}
         strongest_visual_hint = ""
+
+        if exact_title:
+            lowered_exact = exact_title.lower()
+            if lowered_exact not in seen:
+                normalized_parts.append(f"\"{exact_title}\"")
+                seen.add(lowered_exact)
+
+        for alias in aliases:
+            cleaned_alias = " ".join(alias.strip().split())
+            lowered_alias = cleaned_alias.lower()
+            if cleaned_alias and lowered_alias not in seen:
+                normalized_parts.append(f"\"{cleaned_alias}\"" if " " in cleaned_alias else cleaned_alias)
+                seen.add(lowered_alias)
+                break
 
         for part in [*search_terms, *visual_cues]:
             if not isinstance(part, str):
@@ -337,28 +357,90 @@ class VisualLibrarian(BaseService, BaseAIClient):
         normalized_parts.extend(["browser game", "play online"])
         return " ".join(normalized_parts)
 
+    async def _infer_exact_game_identity(self, title: str, internal_imgs: List[str]) -> Dict[str, Any]:
+        prompt = f"""
+        You are identifying the exact browser game shown in two internal reference images.
+
+        Given:
+        - Database title: {title}
+        - Image 1: official thumbnail
+        - Image 2: gameplay/start screen
+
+        Goal:
+        - infer the most likely exact game name shown in the images
+        - list title aliases or close title variants that still refer to the same exact game
+        - list distinguishing features that separate this exact game from generic lookalikes
+        - list misleading generic titles we should avoid matching if they refer to different games
+
+        Return ONLY valid JSON:
+        {{
+          "exact_game_name": "string",
+          "aliases": ["alias 1", "alias 2"],
+          "distinguishing_features": ["feature 1", "feature 2"],
+          "avoid_titles": ["generic wrong title 1", "generic wrong title 2"],
+          "reasoning": "short explanation"
+        }}
+        """
+
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{internal_imgs[0]}"}} ,
+                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{internal_imgs[1]}"}} ,
+                ],
+            }
+        ]
+
+        return await self.chat_completion(
+            messages=messages,
+            response_format={"type": "json_object"},
+            fallback_data={
+                "exact_game_name": title,
+                "aliases": [],
+                "distinguishing_features": [],
+                "avoid_titles": [],
+                "reasoning": "Exact identity inference unavailable.",
+            },
+            metadata={"stage": "exact_game_identity_inference"},
+        )
+
     async def _search_with_openai_web_search(
         self,
         title: str,
-        thumbnail_base64: str,
+        internal_images: List[str],
         search_query: str,
+        exact_identity: Dict[str, Any],
         count: int = 10,
     ) -> Dict[str, Any]:
         client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
         search_model = os.getenv("OPENAI_WEB_SEARCH_MODEL", "gpt-5.4-mini")
+        exact_title = str(exact_identity.get("exact_game_name") or "").strip() or title
+        aliases = [item for item in (exact_identity.get("aliases") or []) if isinstance(item, str)]
+        distinguishing_features = [
+            item for item in (exact_identity.get("distinguishing_features") or []) if isinstance(item, str)
+        ]
+        avoid_titles = [item for item in (exact_identity.get("avoid_titles") or []) if isinstance(item, str)]
         prompt = f"""
-        You are finding the best playable browser-game pages for Stage 0 verification.
+        You are finding the exact playable browser-game pages for Stage 0 verification.
 
-        Use the provided thumbnail image plus the game title to search the web.
+        Use both provided internal images plus the title information to search the web.
 
-        Game title: {title}
+        Database title: {title}
+        Most likely exact game name: {exact_title}
+        Allowed same-game aliases: {aliases}
+        Distinguishing features: {distinguishing_features}
+        Avoid mismatching to these generic or wrong titles: {avoid_titles}
         Search query hint: {search_query}
 
         Requirements:
         - Prefer direct playable game pages, not category pages, homepages, news, wiki, or app-store pages.
-        - Prefer well-known browser-game hosts when relevant.
+        - Prefer exact game matches, not merely similar games in the same genre.
+        - Use the gameplay/start-screen image to verify the exact UI/theme/title treatment when possible.
+        - Reject app stores, download pages, broad category pages, and near-match clones unless they appear to be the same exact game.
         - Return up to {count} distinct candidate URLs.
-        - Keep only results that look likely to match the same game shown in the thumbnail.
+        - Keep only results that look like the same exact game shown in the images.
 
         Return ONLY valid JSON in this shape:
         {{
@@ -366,7 +448,7 @@ class VisualLibrarian(BaseService, BaseAIClient):
             {{
               "url": "https://example.com/game-page",
               "title": "Page title",
-              "reason": "short reason this result looks like the same game"
+              "reason": "short reason this result looks like the exact same game"
             }}
           ]
         }}
@@ -387,7 +469,11 @@ class VisualLibrarian(BaseService, BaseAIClient):
                             {"type": "input_text", "text": prompt},
                             {
                                 "type": "input_image",
-                                "image_url": f"data:image/png;base64,{thumbnail_base64}",
+                                "image_url": f"data:image/png;base64,{internal_images[0]}",
+                            },
+                            {
+                                "type": "input_image",
+                                "image_url": f"data:image/png;base64,{internal_images[1]}",
                             },
                         ],
                     }
@@ -471,12 +557,33 @@ class VisualLibrarian(BaseService, BaseAIClient):
     ) -> List[Dict[str, str]]:
         normalized: List[Dict[str, str]] = []
         seen = set()
+        blocked_fragments = [
+            "play.google.com",
+            "apps.apple.com",
+            "/store/apps/",
+            "microsoft.com",
+            "steamcommunity.com",
+            "store.steampowered.com",
+            "youtube.com",
+            "facebook.com",
+            "instagram.com",
+            "tiktok.com",
+            "reddit.com",
+            "pinterest.com",
+            "/tag/",
+            "/category/",
+        ]
 
         for candidate in model_candidates:
             if not isinstance(candidate, dict):
                 continue
             url = str(candidate.get("url", "")).strip()
-            if not url.startswith("http") or url in seen:
+            lowered_url = url.lower()
+            if (
+                not url.startswith("http")
+                or url in seen
+                or any(fragment in lowered_url for fragment in blocked_fragments)
+            ):
                 continue
             seen.add(url)
             normalized.append(
@@ -491,7 +598,12 @@ class VisualLibrarian(BaseService, BaseAIClient):
 
         for source in sources:
             url = str(source.get("url", "")).strip()
-            if not url.startswith("http") or url in seen:
+            lowered_url = url.lower()
+            if (
+                not url.startswith("http")
+                or url in seen
+                or any(fragment in lowered_url for fragment in blocked_fragments)
+            ):
                 continue
             seen.add(url)
             normalized.append(

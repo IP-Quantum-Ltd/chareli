@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from app.config import settings
 from app.db.mongo import close_mongodb
 from app.db.postgres import close_postgres_pool
-from app.routers import health, webhook
+from app.routers import health, webhook, stage0
 from app.services import task_queue as queue, agent
 from app.services.arcade_client import get_pending_proposals
 
@@ -53,7 +53,39 @@ async def lifespan(app: FastAPI):
     await close_postgres_pool()
 
 
-app = FastAPI(title="ArcadeBox AI Game Review Agent", lifespan=lifespan)
+app = FastAPI(
+    title="ArcadeBox AI Game Review Agent",
+    description=(
+        "Visual-first AI review service for ArcadeBox game submissions. "
+        "It exposes health and webhook endpoints, then processes proposals asynchronously "
+        "through Stage 0 visual verification, SEO intelligence, and downstream grounding."
+    ),
+    version="1.0.0",
+    lifespan=lifespan,
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
+    swagger_ui_parameters={
+        "displayRequestDuration": True,
+        "docExpansion": "list",
+        "defaultModelsExpandDepth": 1,
+    },
+    openapi_tags=[
+        {
+            "name": "Health",
+            "description": "Service readiness and liveness endpoints.",
+        },
+        {
+            "name": "Webhook",
+            "description": "Inbound ArcadeBox webhook endpoints for queueing proposal review jobs.",
+        },
+        {
+            "name": "Stage 0",
+            "description": "On-demand Stage 0 visual verification and artifact retrieval endpoints.",
+        },
+    ],
+)
 
 app.include_router(health.router)
 app.include_router(webhook.router)
+app.include_router(stage0.router)
