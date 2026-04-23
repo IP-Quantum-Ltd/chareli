@@ -65,11 +65,31 @@ class AnalystAgent(BaseService, BaseAIClient):
 
         key_sections = metadata.get("key_sections") or {}
         simplified_sections = {
-            "about": self._simplify_section(key_sections.get("about")),
-            "how_to_play": self._simplify_section(key_sections.get("how_to_play")),
-            "controls": self._simplify_section(key_sections.get("controls")),
+            "about": self._simplify_section(key_sections.get("about")) or {
+                "heading": "About Game",
+                "level": "section",
+                "text": self._trim_text(metadata.get("about_game", ""), 1200),
+                "list_items": [],
+            },
+            "how_to_play": self._simplify_section(key_sections.get("how_to_play")) or {
+                "heading": "How to Play",
+                "level": "section",
+                "text": self._trim_text(metadata.get("how_to_play", ""), 1200),
+                "list_items": [],
+            },
+            "controls": self._simplify_section(key_sections.get("controls")) or {
+                "heading": "Instructions",
+                "level": "section",
+                "text": self._trim_text(metadata.get("instructions", ""), 1200),
+                "list_items": [],
+            },
             "faq": self._simplify_section(key_sections.get("faq")),
-            "developer": self._simplify_section(key_sections.get("developer")),
+            "developer": self._simplify_section(key_sections.get("developer")) or {
+                "heading": "Developer / Publisher",
+                "level": "section",
+                "text": self._trim_text(" | ".join(metadata.get("developer_publisher") or []), 1200),
+                "list_items": self._limit_strings(metadata.get("developer_publisher"), 10, 160),
+            },
             "features": self._simplify_section(key_sections.get("features")),
         }
 
@@ -111,9 +131,8 @@ class AnalystAgent(BaseService, BaseAIClient):
                 "og_description": self._trim_text(metadata.get("og_description", ""), 400),
                 "categories": self._limit_strings(metadata.get("categories"), 12, 120),
                 "tags": self._limit_strings(metadata.get("tags"), 15, 120),
-                "breadcrumb": self._limit_strings(metadata.get("breadcrumb"), 12, 120),
-                "developer_mentions": self._limit_strings(metadata.get("developer_mentions"), 10, 120),
-                "ratings": metadata.get("ratings") or {},
+                "developer_mentions": self._limit_strings(metadata.get("developer_publisher"), 10, 120),
+                "ratings": self._limit_strings(metadata.get("ratings_and_votes"), 10, 120),
                 "headings": normalized_headings,
                 "faq_items": [
                     {
@@ -124,23 +143,26 @@ class AnalystAgent(BaseService, BaseAIClient):
                     if isinstance(item, dict)
                 ],
                 "key_sections": simplified_sections,
-                "content_blocks": self._limit_strings(metadata.get("content_blocks"), 30, 320),
-                "main_text_excerpt": self._trim_text(metadata.get("main_text_excerpt", ""), 6000),
-                "structured_data": [
-                    {
-                        "type": item.get("type", ""),
-                        "name": item.get("name", ""),
-                        "headline": item.get("headline", ""),
-                        "description": self._trim_text(item.get("description", ""), 320),
-                        "genre": self._limit_strings(item.get("genre"), 8, 120),
-                        "category": self._limit_strings(item.get("category"), 8, 120),
-                        "author": self._limit_strings(item.get("author"), 6, 120),
-                        "creator": self._limit_strings(item.get("creator"), 6, 120),
-                        "publisher": self._limit_strings(item.get("publisher"), 6, 120),
-                    }
-                    for item in (metadata.get("structured_data") or [])[:10]
-                    if isinstance(item, dict)
-                ],
+                "content_blocks": self._limit_strings(
+                    [
+                        metadata.get("about_game", ""),
+                        metadata.get("how_to_play", ""),
+                        metadata.get("instructions", ""),
+                    ],
+                    10,
+                    320,
+                ),
+                "main_text_excerpt": self._trim_text(
+                    " ".join(
+                        part for part in [
+                            metadata.get("about_game", ""),
+                            metadata.get("how_to_play", ""),
+                            metadata.get("instructions", ""),
+                        ] if part
+                    ),
+                    6000,
+                ),
+                "structured_data": [],
             },
             "serp_signals": serp_signals,
         }

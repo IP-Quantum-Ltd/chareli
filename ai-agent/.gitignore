@@ -1,0 +1,15 @@
+.env
+__pycache__/
+*.pyc
+
+# Local test/debug outputs
+tmp_debug_search/
+vision_draft_output.md
+draft_*.md
+test_internal_*.png
+test_thumbnail_*.png
+screenshot_*.png
+
+# Generated Stage 0 / Stage 1 artifacts
+stage0_artifacts/
+research_findings_*.json

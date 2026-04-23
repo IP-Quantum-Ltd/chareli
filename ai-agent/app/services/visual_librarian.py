@@ -1,13 +1,18 @@
 import base64
 import json
 import logging
+import os
+import mimetypes
 from pathlib import Path
 from typing import Any, Dict, List
+import re
 
-from langsmith import traceable
+from langsmith import get_current_run_tree, traceable
+from openai import AsyncOpenAI
 
+from app.config import settings
 from app.services.base import BaseAIClient, BaseService
-from app.services.browser_agent import capture_external_page, search_for_urls
+from app.services.browser_agent import capture_external_page
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +49,9 @@ class VisualLibrarian(BaseService, BaseAIClient):
                     "extracted_facts": candidate.get("extracted_facts", {}),
                     "screenshot_path": candidate.get("screenshot_path", ""),
                     "metadata_path": candidate.get("metadata_path", ""),
+                    "seo_intelligence": candidate.get("seo_intelligence", {}),
+                    "scoring": candidate.get("scoring", {}),
+                    "comparison_triplet": candidate.get("comparison_triplet", {}),
                 }
                 for candidate in candidates
             ],
@@ -51,6 +59,35 @@ class VisualLibrarian(BaseService, BaseAIClient):
         }
         findings_path.write_text(json.dumps(report, indent=4), encoding="utf-8")
         return str(findings_path)
+
+    def _attach_artifacts_to_trace(self, artifact_paths: Dict[str, str]) -> None:
+        run_tree = get_current_run_tree()
+        if run_tree is None:
+            return
+
+        attachments = dict(getattr(run_tree, "attachments", {}) or {})
+        metadata = dict(getattr(run_tree, "metadata", {}) or {})
+        traced_artifacts = dict(metadata.get("stage0_artifacts", {}) or {})
+
+        for name, path_str in artifact_paths.items():
+            if not path_str:
+                continue
+            path = Path(path_str)
+            if not path.exists() or not path.is_file():
+                continue
+            mime_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+            try:
+                attachments[name] = (mime_type, path.read_bytes())
+                traced_artifacts[name] = str(path)
+            except Exception as exc:
+                logger.warning("Failed to attach artifact %s (%s): %s", name, path, exc)
+
+        run_tree.attachments = attachments
+        run_tree.metadata.update({"stage0_artifacts": traced_artifacts})
+        try:
+            run_tree.patch()
+        except Exception as exc:
+            logger.warning("Failed to patch LangSmith run with attachments: %s", exc)
 
     @traceable(run_type="chain", name="Visual Librarian Investigation")
     async def verify_and_research(
@@ -62,22 +99,29 @@ class VisualLibrarian(BaseService, BaseAIClient):
         proposal_dir = Path(__file__).resolve().parents[2] / "stage0_artifacts" / proposal_id
         external_dir = proposal_dir / "external"
         external_dir.mkdir(parents=True, exist_ok=True)
+        internal_artifact_candidates = [
+            proposal_dir / "internal" / "reference_thumbnail.png",
+            proposal_dir / "internal" / "reference_gameplay_start.png",
+            proposal_dir / "internal_thumbnail.png",
+            proposal_dir / "internal_gameplay.png",
+        ]
 
         if len(internal_screenshots) < 2:
             return {"status": "failed", "reason": "Stage 0 requires two internal reference screenshots."}
 
         search_plan = await self._build_image_weighted_search_query(game_title, internal_screenshots[0])
         search_query = self._compose_search_query(game_title, search_plan)
-        search_step = await search_for_urls(
+        search_step = await self._search_with_openai_web_search(
+            title=game_title,
+            thumbnail_base64=internal_screenshots[0],
             search_query=search_query,
-            output_dir=str(proposal_dir / "search"),
-            count=5,
+            count=10,
         )
         raw_candidates = search_step.get("candidates") or []
         if not raw_candidates:
             return {
                 "status": "failed",
-                "reason": "Image + name Playwright search returned 0 visible candidates.",
+                "reason": "Image + name OpenAI web search returned 0 usable candidates.",
                 "search_query": search_query,
             }
 
@@ -89,7 +133,7 @@ class VisualLibrarian(BaseService, BaseAIClient):
         if len(search_results) < 5:
             return {
                 "status": "failed",
-                "reason": f"Playwright search returned only {len(search_results)} usable URLs; Stage 0 requires 5.",
+                "reason": f"OpenAI web search returned only {len(search_results)} usable URLs; Stage 0 requires 5.",
                 "search_query": search_query,
                 "raw_candidates": raw_candidates,
             }
@@ -116,7 +160,12 @@ class VisualLibrarian(BaseService, BaseAIClient):
                 url=url,
                 metadata=capture_result["metadata"],
             )
-            scoring = self._score_candidate(correlation)
+            seo_intelligence = self._build_candidate_seo_intelligence(
+                game_title=game_title,
+                search_query=search_query,
+                metadata=capture_result["metadata"],
+            )
+            scoring = self._score_candidate(correlation, seo_intelligence)
 
             candidate = {
                 "rank": index,
@@ -126,10 +175,17 @@ class VisualLibrarian(BaseService, BaseAIClient):
                 "metadata_path": capture_result["metadata_path"],
                 "metadata": capture_result["metadata"],
                 "correlation": correlation,
+                "seo_intelligence": seo_intelligence,
                 "scoring": scoring,
                 "confidence_score": scoring["confidence_score"],
                 "reasoning": correlation.get("reasoning", "Unknown"),
                 "extracted_facts": correlation.get("facts", {}),
+                "comparison_triplet": {
+                    "reference_thumbnail": "internal_screenshots[0]",
+                    "internal_gameplay": "internal_screenshots[1]",
+                    "external_render_path": capture_result["screenshot_path"],
+                    "external_metadata_path": capture_result["metadata_path"],
+                },
             }
             candidates.append(candidate)
             if len(candidates) == 5:
@@ -148,13 +204,33 @@ class VisualLibrarian(BaseService, BaseAIClient):
                     "metadata_path": candidate["metadata_path"],
                     "confidence_score": candidate["confidence_score"],
                     "correlation": candidate["correlation"],
+                    "seo_intelligence": candidate["seo_intelligence"],
                     "scoring": candidate["scoring"],
+                    "comparison_triplet": candidate["comparison_triplet"],
                 }
                 for candidate in candidates
             ],
             "failures": failures,
         }
         comparison_scores_path.write_text(json.dumps(score_report, indent=2), encoding="utf-8")
+        self._attach_artifacts_to_trace(
+            {
+                "comparison_scores_json": str(comparison_scores_path),
+                **{
+                    f"internal_artifact_{index+1}_{path.name.replace('.', '_')}": str(path)
+                    for index, path in enumerate(internal_artifact_candidates)
+                    if path.exists()
+                },
+                **{
+                    f"candidate_{candidate['rank']:02d}_render_png": candidate["screenshot_path"]
+                    for candidate in candidates
+                },
+                **{
+                    f"candidate_{candidate['rank']:02d}_render_json": candidate["metadata_path"]
+                    for candidate in candidates
+                },
+            }
+        )
 
         manifest_path = proposal_dir / "stage0_manifest.json"
         manifest_path.write_text(
@@ -165,8 +241,9 @@ class VisualLibrarian(BaseService, BaseAIClient):
                     "search_query": search_query,
                     "search_plan": search_plan,
                     "search_engine": search_step.get("engine", ""),
-                    "search_engines": search_step.get("engines", []),
+                    "search_model": search_step.get("model", ""),
                     "raw_candidates": raw_candidates,
+                    "web_search_sources": search_step.get("sources", []),
                     "search_results": search_results,
                     "candidate_count": len(candidates),
                     "failures": failures,
@@ -176,6 +253,7 @@ class VisualLibrarian(BaseService, BaseAIClient):
             ),
             encoding="utf-8",
         )
+        self._attach_artifacts_to_trace({"stage0_manifest_json": str(manifest_path)})
 
         if len(candidates) != 5:
             findings_path = self._write_combined_research_findings(
@@ -212,15 +290,16 @@ class VisualLibrarian(BaseService, BaseAIClient):
             search_query=search_query,
             candidates=candidates,
             failures=failures,
-            best_match=best_match,
+                best_match=best_match,
         )
+        self._attach_artifacts_to_trace({"research_findings_json": findings_path})
 
         return {
             "status": "success",
             "search_query": search_query,
             "search_plan": search_plan,
             "search_engine": search_step.get("engine", ""),
-            "search_engines": search_step.get("engines", []),
+            "search_model": search_step.get("model", ""),
             "raw_candidates": raw_candidates,
             "best_match": best_match,
             "all_candidates": candidates,
@@ -257,6 +336,290 @@ class VisualLibrarian(BaseService, BaseAIClient):
 
         normalized_parts.extend(["browser game", "play online"])
         return " ".join(normalized_parts)
+
+    async def _search_with_openai_web_search(
+        self,
+        title: str,
+        thumbnail_base64: str,
+        search_query: str,
+        count: int = 10,
+    ) -> Dict[str, Any]:
+        client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        search_model = os.getenv("OPENAI_WEB_SEARCH_MODEL", "gpt-5.4-mini")
+        prompt = f"""
+        You are finding the best playable browser-game pages for Stage 0 verification.
+
+        Use the provided thumbnail image plus the game title to search the web.
+
+        Game title: {title}
+        Search query hint: {search_query}
+
+        Requirements:
+        - Prefer direct playable game pages, not category pages, homepages, news, wiki, or app-store pages.
+        - Prefer well-known browser-game hosts when relevant.
+        - Return up to {count} distinct candidate URLs.
+        - Keep only results that look likely to match the same game shown in the thumbnail.
+
+        Return ONLY valid JSON in this shape:
+        {{
+          "candidates": [
+            {{
+              "url": "https://example.com/game-page",
+              "title": "Page title",
+              "reason": "short reason this result looks like the same game"
+            }}
+          ]
+        }}
+        """
+
+        fallback_data = {"candidates": []}
+        try:
+            response = await client.responses.create(
+                model=search_model,
+                reasoning={"effort": "low"},
+                tools=[{"type": "web_search"}],
+                tool_choice="auto",
+                include=["web_search_call.action.sources"],
+                input=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "input_text", "text": prompt},
+                            {
+                                "type": "input_image",
+                                "image_url": f"data:image/png;base64,{thumbnail_base64}",
+                            },
+                        ],
+                    }
+                ],
+            )
+            raw_output_text = getattr(response, "output_text", "") or ""
+            parsed = self._parse_json_text(raw_output_text, fallback_data)
+            sources = self._extract_web_search_sources(response)
+            candidates = self._normalize_web_candidates(parsed.get("candidates") or [], sources, count=count)
+            return {
+                "engine": "openai_responses_web_search",
+                "model": search_model,
+                "query": search_query,
+                "candidates": candidates,
+                "sources": sources,
+                "raw_output_text": raw_output_text,
+            }
+        except Exception as exc:
+            logger.error("OpenAI web search failed for '%s': %s", title, exc)
+            return {
+                "engine": "openai_responses_web_search",
+                "model": search_model,
+                "query": search_query,
+                "candidates": [],
+                "sources": [],
+                "error": str(exc),
+            }
+
+    def _parse_json_text(self, raw_text: str, fallback_data: Dict[str, Any]) -> Dict[str, Any]:
+        cleaned = (raw_text or "").strip()
+        if cleaned.startswith("```"):
+            lines = cleaned.splitlines()
+            if lines and lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].startswith("```"):
+                lines = lines[:-1]
+            cleaned = "\n".join(lines).strip()
+        try:
+            parsed = json.loads(cleaned)
+            return parsed if isinstance(parsed, dict) else fallback_data
+        except Exception:
+            return fallback_data
+
+    def _extract_web_search_sources(self, response: Any) -> List[Dict[str, str]]:
+        try:
+            payload = response.model_dump()
+        except Exception:
+            return []
+
+        discovered: List[Dict[str, str]] = []
+
+        def walk(node: Any) -> None:
+            if isinstance(node, dict):
+                url = node.get("url")
+                title = node.get("title") or node.get("site_name") or node.get("name") or ""
+                if isinstance(url, str) and url.startswith("http"):
+                    discovered.append({"url": url, "title": str(title)})
+                for value in node.values():
+                    walk(value)
+            elif isinstance(node, list):
+                for item in node:
+                    walk(item)
+
+        walk(payload)
+
+        deduped: List[Dict[str, str]] = []
+        seen = set()
+        for item in discovered:
+            url = item["url"].strip()
+            if not url or url in seen:
+                continue
+            seen.add(url)
+            deduped.append({"url": url, "title": item.get("title", "").strip()})
+        return deduped
+
+    def _normalize_web_candidates(
+        self,
+        model_candidates: List[Dict[str, Any]],
+        sources: List[Dict[str, str]],
+        count: int = 10,
+    ) -> List[Dict[str, str]]:
+        normalized: List[Dict[str, str]] = []
+        seen = set()
+
+        for candidate in model_candidates:
+            if not isinstance(candidate, dict):
+                continue
+            url = str(candidate.get("url", "")).strip()
+            if not url.startswith("http") or url in seen:
+                continue
+            seen.add(url)
+            normalized.append(
+                {
+                    "url": url,
+                    "title": str(candidate.get("title", "")).strip(),
+                    "reason": str(candidate.get("reason", "")).strip(),
+                }
+            )
+            if len(normalized) >= count:
+                return normalized
+
+        for source in sources:
+            url = str(source.get("url", "")).strip()
+            if not url.startswith("http") or url in seen:
+                continue
+            seen.add(url)
+            normalized.append(
+                {
+                    "url": url,
+                    "title": str(source.get("title", "")).strip(),
+                    "reason": "Recovered from OpenAI web search source list.",
+                }
+            )
+            if len(normalized) >= count:
+                break
+
+        return normalized
+
+    def _build_candidate_seo_intelligence(
+        self,
+        game_title: str,
+        search_query: str,
+        metadata: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        def normalized_text(value: Any) -> str:
+            return " ".join(str(value or "").split()).strip()
+
+        title_tokens = [token.lower() for token in re.findall(r"[a-z0-9]+", game_title) if token.strip()]
+        query_tokens = [token.lower() for token in re.findall(r"[a-z0-9]+", search_query) if token.strip()]
+
+        title_text = normalized_text(metadata.get("title", ""))
+        description_text = normalized_text(metadata.get("meta_description", ""))
+        headings = [normalized_text(item) for item in (metadata.get("headings") or []) if normalized_text(item)]
+        about_game = normalized_text(metadata.get("about_game", ""))
+        how_to_play = normalized_text(metadata.get("how_to_play", ""))
+        instructions = normalized_text(metadata.get("instructions", ""))
+        developer_publisher = [normalized_text(item) for item in (metadata.get("developer_publisher") or []) if normalized_text(item)]
+        ratings_and_votes = [normalized_text(item) for item in (metadata.get("ratings_and_votes") or []) if normalized_text(item)]
+        tags = [normalized_text(item) for item in (metadata.get("tags") or []) if normalized_text(item)]
+        categories = [normalized_text(item) for item in (metadata.get("categories") or []) if normalized_text(item)]
+        faq_items = [item for item in (metadata.get("faq_items") or []) if isinstance(item, dict)]
+
+        corpus = " ".join(
+            [
+                title_text.lower(),
+                description_text.lower(),
+                " ".join(heading.lower() for heading in headings),
+                about_game.lower(),
+                how_to_play.lower(),
+                instructions.lower(),
+                " ".join(item.lower() for item in tags),
+                " ".join(item.lower() for item in categories),
+            ]
+        )
+
+        matched_title_tokens = [token for token in title_tokens if token in corpus]
+        matched_query_tokens = [token for token in query_tokens if token in corpus]
+        query_alignment_score = round(100 * (len(set(matched_query_tokens)) / max(len(set(query_tokens)), 1)))
+
+        coverage_checks = {
+            "meta_description": bool(description_text),
+            "about_game": bool(about_game),
+            "how_to_play": bool(how_to_play),
+            "instructions": bool(instructions),
+            "faq_items": bool(faq_items),
+            "developer_publisher": bool(developer_publisher),
+            "ratings_and_votes": bool(ratings_and_votes),
+            "tags": bool(tags),
+            "categories": bool(categories),
+        }
+        metadata_quality_score = round(
+            100 * (sum(1 for present in coverage_checks.values() if present) / len(coverage_checks))
+        )
+
+        content_points = 0
+        if len(about_game) >= 180:
+            content_points += 25
+        if len(how_to_play) >= 120:
+            content_points += 25
+        if len(instructions) >= 120:
+            content_points += 20
+        if len(faq_items) >= 2:
+            content_points += 15
+        if len(tags) + len(categories) >= 3:
+            content_points += 15
+        content_depth_score = min(content_points, 100)
+
+        faq_topics = [
+            {
+                "question": normalized_text(item.get("question", "")),
+                "answer_preview": normalized_text(item.get("answer", ""))[:220],
+            }
+            for item in faq_items[:8]
+            if normalized_text(item.get("question", ""))
+        ]
+
+        content_gaps: List[str] = []
+        if not about_game:
+            content_gaps.append("missing_about_game")
+        if not how_to_play:
+            content_gaps.append("missing_how_to_play")
+        if not instructions:
+            content_gaps.append("missing_instructions")
+        if not developer_publisher:
+            content_gaps.append("missing_developer_publisher")
+        if not ratings_and_votes:
+            content_gaps.append("missing_ratings_and_votes")
+        if not tags and not categories:
+            content_gaps.append("missing_tags_categories")
+        if not faq_items:
+            content_gaps.append("missing_faq")
+
+        seo_score = round(
+            (query_alignment_score * 0.4)
+            + (metadata_quality_score * 0.35)
+            + (content_depth_score * 0.25)
+        )
+
+        return {
+            "matched_title_tokens": matched_title_tokens,
+            "matched_query_tokens": matched_query_tokens,
+            "query_alignment_score": query_alignment_score,
+            "metadata_quality_score": metadata_quality_score,
+            "content_depth_score": content_depth_score,
+            "seo_score": seo_score,
+            "faq_topics": faq_topics,
+            "developer_publisher": developer_publisher[:10],
+            "ratings_and_votes": ratings_and_votes[:10],
+            "tags": tags[:15],
+            "categories": categories[:15],
+            "content_gaps": content_gaps,
+        }
 
     async def _build_image_weighted_search_query(self, title: str, thumbnail_base64: str) -> Dict[str, Any]:
         prompt = f"""
@@ -353,29 +716,69 @@ class VisualLibrarian(BaseService, BaseAIClient):
             metadata={"stage": "triple_image_correlation", "source_url": url},
         )
 
-    def _score_candidate(self, correlation: Dict[str, Any]) -> Dict[str, Any]:
-        weights = {
-            "visual_similarity_score": 0.45,
-            "mechanic_match_score": 0.20,
-            "text_relevance_score": 0.20,
-            "brand_alignment_score": 0.15,
-        }
-        weighted_total = 0.0
-        breakdown: Dict[str, Any] = {}
+    def _score_candidate(self, correlation: Dict[str, Any], seo_intelligence: Dict[str, Any]) -> Dict[str, Any]:
+        visual_similarity = int(correlation.get("visual_similarity_score", 0) or 0)
+        mechanic_match = int(correlation.get("mechanic_match_score", 0) or 0)
+        text_relevance = int(correlation.get("text_relevance_score", 0) or 0)
+        brand_alignment = int(correlation.get("brand_alignment_score", 0) or 0)
 
-        for key, weight in weights.items():
-            raw_score = int(correlation.get(key, 0) or 0)
-            weighted_total += raw_score * weight
-            breakdown[key] = {
-                "raw_score": raw_score,
-                "weight": weight,
-                "weighted_score": round(raw_score * weight, 2),
-            }
+        query_alignment = int(seo_intelligence.get("query_alignment_score", 0) or 0)
+        metadata_quality = int(seo_intelligence.get("metadata_quality_score", 0) or 0)
+        content_depth = int(seo_intelligence.get("content_depth_score", 0) or 0)
+
+        image_correlation_score = round(
+            (visual_similarity * 0.6)
+            + (mechanic_match * 0.25)
+            + (brand_alignment * 0.15)
+        )
+        context_relevance_score = round(
+            (text_relevance * 0.55)
+            + (query_alignment * 0.30)
+            + (metadata_quality * 0.15)
+        )
+
+        confidence_score = round(
+            (image_correlation_score * 0.60)
+            + (context_relevance_score * 0.30)
+            + (content_depth * 0.10)
+        )
+
+        confidence_reasoning = (
+            f"Image correlation scored {image_correlation_score}/100 because the external render "
+            f"shares visual similarity ({visual_similarity}), mechanic alignment ({mechanic_match}), "
+            f"and brand/style alignment ({brand_alignment}) with the two internal references. "
+            f"Context relevance scored {context_relevance_score}/100 because the page text matched "
+            f"the search intent ({text_relevance}), query tokens ({query_alignment}), and metadata quality "
+            f"({metadata_quality}). Content depth contributed {content_depth}/100 based on how much usable "
+            f"about/how-to/instructions/FAQ content the page exposed. The final confidence score is "
+            f"{confidence_score}/100 from these combined signals."
+        )
 
         return {
-            "weights": weights,
-            "breakdown": breakdown,
-            "confidence_score": round(weighted_total),
+            "triple_image_correlation": {
+                "reference_thumbnail_vs_external": visual_similarity,
+                "internal_gameplay_vs_external": mechanic_match,
+                "brand_style_alignment": brand_alignment,
+                "reasoning": correlation.get("reasoning", ""),
+            },
+            "context_relevance": {
+                "text_relevance_score": text_relevance,
+                "query_alignment_score": query_alignment,
+                "metadata_quality_score": metadata_quality,
+                "content_depth_score": content_depth,
+            },
+            "aggregate_confidence": {
+                "image_correlation_score": image_correlation_score,
+                "context_relevance_score": context_relevance_score,
+                "confidence_score": confidence_score,
+                "confidence_reasoning": confidence_reasoning,
+            },
+            "weights": {
+                "image_correlation_score": 0.60,
+                "context_relevance_score": 0.30,
+                "content_depth_score": 0.10,
+            },
+            "confidence_score": confidence_score,
         }
 
     async def _extract_deep_content(self, url: str) -> Dict[str, Any]:

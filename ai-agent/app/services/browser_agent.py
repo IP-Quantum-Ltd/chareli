@@ -5,7 +5,6 @@ import time
 import json
 from io import BytesIO
 from pathlib import Path
-from urllib.parse import quote_plus
 from playwright.async_api import async_playwright
 from dotenv import load_dotenv
 from PIL import Image
@@ -275,6 +274,10 @@ async def capture_external_page(url: str, output_path: str):
                 print(f"Capture failed for {url}: no visible playable iframe/canvas found")
                 return None
 
+            await game_element.scroll_into_view_if_needed(timeout=5000)
+            await page.wait_for_timeout(1200)
+            await _dismiss_common_overlays(page)
+
             if (await game_element.evaluate("el => el.tagName.toLowerCase()")) == "iframe":
                 await _wait_for_iframe_render(page, game_element)
             else:
@@ -344,26 +347,132 @@ async def _click_start_controls(page):
 
 async def _locate_external_game_surface(page):
     selectors = [
-        "iframe",
-        "canvas",
         "[id*='game'] iframe",
         "[class*='game'] iframe",
+        "[data-testid*='game'] iframe",
+        "[id*='player'] iframe",
+        "[class*='player'] iframe",
+        "main iframe",
+        "iframe",
         "[id*='game'] canvas",
         "[class*='game'] canvas",
+        "[data-testid*='game'] canvas",
+        "[id*='player'] canvas",
+        "[class*='player'] canvas",
+        "main canvas",
+        "canvas",
     ]
+
+    best_candidate = None
+    best_score = float("-inf")
+
     for selector in selectors:
         try:
             locator = page.locator(selector)
             count = await locator.count()
             for index in range(count):
                 candidate = locator.nth(index)
-                if await candidate.is_visible():
-                    box = await candidate.bounding_box()
-                    if box and box["width"] >= 200 and box["height"] >= 150:
-                        return candidate
+                if not await candidate.is_visible():
+                    continue
+
+                box = await candidate.bounding_box()
+                if not box or box["width"] < 320 or box["height"] < 220:
+                    continue
+
+                score = await _score_external_game_surface(candidate, box)
+                if score > best_score:
+                    best_score = score
+                    best_candidate = candidate
         except Exception:
             continue
+
+    if best_candidate is not None and best_score >= 0:
+        return best_candidate
     return None
+
+
+async def _score_external_game_surface(candidate, box) -> float:
+    try:
+        attrs = await candidate.evaluate(
+            """
+            (el) => {
+              const collect = (node) => ({
+                id: node?.id || "",
+                className: typeof node?.className === "string" ? node.className : "",
+                title: node?.getAttribute?.("title") || "",
+                name: node?.getAttribute?.("name") || "",
+                src: node?.getAttribute?.("src") || "",
+                ariaLabel: node?.getAttribute?.("aria-label") || "",
+                dataTestId: node?.getAttribute?.("data-testid") || "",
+              });
+              const parent = el.parentElement;
+              const grandParent = parent?.parentElement;
+              return {
+                self: collect(el),
+                parent: collect(parent),
+                grandParent: collect(grandParent),
+                tagName: (el.tagName || "").toLowerCase(),
+              };
+            }
+            """
+        )
+    except Exception:
+        attrs = {"self": {}, "parent": {}, "grandParent": {}, "tagName": ""}
+
+    flattened = " ".join(
+        [
+            str(value).lower()
+            for scope in ("self", "parent", "grandParent")
+            for value in (attrs.get(scope) or {}).values()
+            if value
+        ]
+    )
+
+    ad_markers = [
+        "doubleclick",
+        "googlesyndication",
+        "adservice",
+        "adnxs",
+        "taboola",
+        "outbrain",
+        "prebid",
+        "banner",
+        "sponsor",
+        "advert",
+        "google_ads",
+        "adsystem",
+        "adsense",
+        "vast",
+    ]
+    game_markers = [
+        "game",
+        "player",
+        "unity",
+        "html5",
+        "webgl",
+        "ruffle",
+        "embed",
+        "play",
+        "iframe",
+        "canvas",
+    ]
+
+    score = 0.0
+    area = box["width"] * box["height"]
+    score += min(area / 50000, 40)
+    score += min(box["width"] / 40, 20)
+    score += min(box["height"] / 30, 20)
+
+    if any(marker in flattened for marker in ad_markers):
+        score -= 120
+    if any(marker in flattened for marker in game_markers):
+        score += 25
+    if attrs.get("tagName") == "canvas":
+        score += 15
+    if "game" in flattened and "ad" not in flattened:
+        score += 10
+
+    return score
 
 
 async def _extract_external_page_metadata(page, source_url: str) -> dict:
@@ -499,94 +608,6 @@ async def _extract_external_page_metadata(page, source_url: str) -> dict:
     )
     data["source_url"] = source_url
     return data
-
-
-async def search_for_urls(search_query: str, output_dir: str, count: int = 5) -> dict:
-    output_path = Path(output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
-    engines = [
-        ("google", f"https://www.google.com/search?q={quote_plus(search_query)}"),
-        ("bing", f"https://www.bing.com/search?q={quote_plus(search_query)}"),
-        ("duckduckgo", f"https://duckduckgo.com/?q={quote_plus(search_query)}"),
-    ]
-    collected: list[dict] = []
-
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(
-            viewport={"width": 1440, "height": 1200},
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        )
-        page = await context.new_page()
-
-        try:
-            for engine_name, engine_url in engines:
-                try:
-                    await page.goto(engine_url, wait_until="domcontentloaded", timeout=30000)
-                    await page.wait_for_timeout(2500)
-
-                    links = await page.evaluate(
-                        """
-                        () => {
-                          const anchors = Array.from(document.querySelectorAll('a[href]'));
-                          return anchors.map((anchor) => ({
-                            title: (anchor.textContent || '').trim(),
-                            url: anchor.href || '',
-                          }));
-                        }
-                        """
-                    )
-
-                    for item in links:
-                        url = (item.get("url") or "").strip()
-                        title = " ".join((item.get("title") or "").split())
-                        if not url or not title:
-                            continue
-                        lowered = url.lower()
-                        if lowered.startswith("javascript:") or lowered.startswith("mailto:"):
-                            continue
-                        if any(
-                            blocked in lowered
-                            for blocked in [
-                                "/search?",
-                                "/sorry/",
-                                "google.com/preferences",
-                                "google.com/policies/",
-                                "support.google.com/",
-                                "bing.com/search?",
-                                "search.brave.com/search?",
-                                "search.brave.com/ask?",
-                                "search.brave.com/images?",
-                                "search.brave.com/news?",
-                                "search.brave.com/videos?",
-                                "search.brave.com/goggles?",
-                                "search.brave.com/help/",
-                                "duckduckgo.com/",
-                                "brave.com/search?",
-                                "accounts.google.com",
-                            ]
-                        ):
-                            continue
-                        if any(existing["url"] == url for existing in collected):
-                            continue
-                        collected.append(
-                            {
-                                "title": title[:200],
-                                "url": url,
-                                "engine": engine_name,
-                            }
-                        )
-                except Exception as engine_error:
-                    print(f"Search engine {engine_name} failed: {engine_error}")
-                    continue
-        finally:
-            await browser.close()
-
-    return {
-        "engine": "playwright-meta-search",
-        "engines": [engine for engine, _ in engines],
-        "candidates": collected[: max(count, 10)],
-    }
 
 
 async def _run_cli() -> None:
