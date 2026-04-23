@@ -36,7 +36,7 @@ class Settings(BaseSettings):
 
     # Librarian Configuration
     # 'precision' (Classic Scoring), 'batch' (Colleague), 'hybrid' (Both)
-    LIBRARIAN_MODE: str = "precision"
+    LIBRARIAN_MODE: str = "batch"
     TEST_GAME_ID: str = "d1fbe524-b5e6-434c-91c4-bd3e7032fc72"
     TEST_GAME_TITLE: str = "Feed monster"
 

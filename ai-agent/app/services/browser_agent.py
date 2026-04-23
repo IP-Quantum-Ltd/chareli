@@ -49,24 +49,37 @@ async def _wait_for_iframe_render(page, game_element, timeout_seconds: int = 30)
                 await page.wait_for_timeout(2000)
                 continue
 
-            # Advanced Pixel Check for "Solid Voids" (Grey/Black/White slabs)
-            screenshot_bytes = await game_element.screenshot()
-            image = Image.open(BytesIO(screenshot_bytes)).convert("RGB").resize((160, 90))
-            pixels = list(image.getdata())
+            # Snapshot 1: Current state
+            snap1_bytes = await game_element.screenshot()
+            image1 = Image.open(BytesIO(snap1_bytes)).convert("RGB").resize((160, 90))
+            pixels1 = list(image1.getdata())
             
-            # Calculate standard deviation to detect 'solidness'
-            r_vals = [p[0] for p in pixels]
-            g_vals = [p[1] for p in pixels]
-            b_vals = [p[2] for p in pixels]
+            # Variance check (Solid Slabs)
+            avg_r, avg_g, avg_b = sum(p[0] for p in pixels1)/len(pixels1), sum(p[1] for p in pixels1)/len(pixels1), sum(p[2] for p in pixels1)/len(pixels1)
+            variance = sum((p[0]-avg_r)**2 + (p[1]-avg_g)**2 + (p[2]-avg_b)**2 for p in pixels1) / len(pixels1)
             
-            avg_r, avg_g, avg_b = sum(r_vals)/len(pixels), sum(g_vals)/len(pixels), sum(b_vals)/len(pixels)
-            variance = sum((p[0]-avg_r)**2 + (p[1]-avg_g)**2 + (p[2]-avg_b)**2 for p in pixels) / len(pixels)
-            
-            # Low variance (< 100) means the image is a generic solid block (grey/black/etc.)
             if variance < 100:
-                print(f"Gameplay looks like a solid color void (Variance: {variance:.2f}). Waiting...")
+                print(f"Gameplay looks like a solid color void (Var: {variance:.2f}). Waiting...")
                 await page.wait_for_timeout(3000)
                 continue
+
+            # Churn check (Static Logos/Splash)
+            await page.wait_for_timeout(2500)
+            snap2_bytes = await game_element.screenshot()
+            image2 = Image.open(BytesIO(snap2_bytes)).convert("RGB").resize((160, 90))
+            pixels2 = list(image2.getdata())
+            
+            # Calculate mean absolute difference between snapshots
+            churn = sum(abs(p1[0]-p2[0]) + abs(p1[1]-p2[1]) + abs(p1[2]-p2[2]) for p1, p2 in zip(pixels1, pixels2)) / len(pixels1)
+            
+            if churn < 1.0: # If less than 1% of pixels changed, it's a static splash
+                print(f"Gameplay looks static (Churn: {churn:.2f}). Waiting for activity...")
+                await page.wait_for_timeout(2000)
+                continue
+
+            print(f"Active gameplay surface detected (Var: {variance:.2f}, Churn: {churn:.2f}).")
+            await page.wait_for_timeout(1000)
+            return
 
             print("Gameplay iframe looks ready for final capture.")
             await page.wait_for_timeout(2000)
