@@ -37,18 +37,18 @@ async def _wait_for_iframe_render(page, game_element, timeout_seconds: int = 30)
         await page.wait_for_timeout(10000)
         return
 
-    splash_markers = ["made with unity", "unity", "loading", "download", "getting your game ready"]
-
+    splash_markers = ["made with unity", "unity", "loading", "download", "getting your game ready", "%", "progress"]
+ 
     while time.monotonic() < deadline:
         try:
             body_text = (await frame.locator("body").inner_text(timeout=1000)).strip().lower()
             
             # Check for generic loading text
             if any(m in body_text for m in splash_markers):
-                print(f"Gameplay still loading inside iframe...")
-                await page.wait_for_timeout(2000)
+                print(f"Gameplay still loading inside iframe ('{body_text[:50]}...').")
+                await page.wait_for_timeout(3000)
                 continue
-
+ 
             # Snapshot 1: Current state
             snap1_bytes = await game_element.screenshot()
             image1 = Image.open(BytesIO(snap1_bytes)).convert("RGB").resize((160, 90))
@@ -63,22 +63,22 @@ async def _wait_for_iframe_render(page, game_element, timeout_seconds: int = 30)
                 await page.wait_for_timeout(3000)
                 continue
 
-            # Churn check (Static Logos/Splash)
+            # Churn check (Detects moving percentage bars vs static logos)
             await page.wait_for_timeout(2500)
             snap2_bytes = await game_element.screenshot()
             image2 = Image.open(BytesIO(snap2_bytes)).convert("RGB").resize((160, 90))
             pixels2 = list(image2.getdata())
             
-            # Calculate mean absolute difference between snapshots
             churn = sum(abs(p1[0]-p2[0]) + abs(p1[1]-p2[1]) + abs(p1[2]-p2[2]) for p1, p2 in zip(pixels1, pixels2)) / len(pixels1)
             
-            if churn < 1.0: # If less than 1% of pixels changed, it's a static splash
+            if churn < 1.0: 
                 print(f"Gameplay looks static (Churn: {churn:.2f}). Waiting for activity...")
                 await page.wait_for_timeout(2000)
                 continue
 
-            print(f"Active gameplay surface detected (Var: {variance:.2f}, Churn: {churn:.2f}).")
-            await page.wait_for_timeout(1000)
+            # NEW: Settle window to ensure we aren't just capturing the 'climax' of a progress bar
+            print(f"Activity detected (Churn: {churn:.2f}). Giving the engine 4s to settle...")
+            await page.wait_for_timeout(4000)
             return
 
             print("Gameplay iframe looks ready for final capture.")
