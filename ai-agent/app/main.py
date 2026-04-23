@@ -11,7 +11,7 @@ from app.services import task_queue as queue, agent
 from app.services.arcade_client import get_pending_proposals
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s — %(message)s")
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("seo_content_agent")
 
 
 async def cron_scan():
@@ -19,7 +19,7 @@ async def cron_scan():
     Fallback scan: fetches all PENDING proposals and enqueues any not already queued.
     Runs every CRON_INTERVAL_MINUTES minutes as a safety net for missed webhooks.
     """
-    logger.info("[cron] Scanning for pending proposals...")
+    logger.info("[cron] Scanning for pending content generation tasks...")
     try:
         proposals = await get_pending_proposals()
         count = 0
@@ -34,9 +34,6 @@ async def cron_scan():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Start queue worker
-    worker_task = asyncio.create_task(queue.run_worker(agent.run_pipeline))
-
     # Start cron scheduler
     scheduler = AsyncIOScheduler()
     scheduler.add_job(cron_scan, "interval", minutes=settings.CRON_INTERVAL_MINUTES, id="cron_scan")
@@ -46,10 +43,10 @@ async def lifespan(app: FastAPI):
     yield
 
     scheduler.shutdown(wait=False)
-    worker_task.cancel()
+    await queue.close_queue()
 
 
-app = FastAPI(title="ArcadeBox AI Game Review Agent", lifespan=lifespan)
+app = FastAPI(title="High-Ranking SEO Content Agent", lifespan=lifespan)
 
 app.include_router(health.router)
 app.include_router(webhook.router)
