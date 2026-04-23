@@ -37,14 +37,14 @@ async def _wait_for_iframe_render(page, game_element, timeout_seconds: int = 30)
         await page.wait_for_timeout(10000)
         return
 
-    splash_markers = ["made with unity", "unity", "loading", "download"]
+    splash_markers = ["made with unity", "unity", "loading", "download", "getting your game ready"]
 
     while time.monotonic() < deadline:
         try:
             body_text = (await frame.locator("body").inner_text(timeout=1000)).strip().lower()
             
             # Check for generic loading text
-            if "loading" in body_text or any(m in body_text for m in splash_markers):
+            if any(m in body_text for m in splash_markers):
                 print(f"Gameplay still loading inside iframe...")
                 await page.wait_for_timeout(2000)
                 continue
@@ -60,7 +60,7 @@ async def _wait_for_iframe_render(page, game_element, timeout_seconds: int = 30)
                 continue
 
             print("Gameplay iframe looks ready for final capture.")
-            await page.wait_for_timeout(1500)
+            await page.wait_for_timeout(2000)
             return
         except Exception: 
             await page.wait_for_timeout(1000)
@@ -70,9 +70,8 @@ async def capture_game_preview(game_id: str, output_path: str = "screenshot.png"
     """
     Agent 1: Navigates directly to the public gameplay screen and captures 
     a dual-frame sequence for the Visual Librarian.
-    Returns: {"paths": [initial_path, final_path]}
     """
-    print(f"Starting Multi-Frame Public Agent 1 for Game ID: {game_id}")
+    print(f"Starting Clean Multi-Frame Agent 1 for Game ID: {game_id}")
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context(viewport={"width": 1280, "height": 800})
@@ -84,10 +83,16 @@ async def capture_game_preview(game_id: str, output_path: str = "screenshot.png"
             print(f"Navigating to game preview: {preview_url}")
             await page.goto(preview_url, wait_until="domcontentloaded")
 
-            # 2. Capture Initial Frame (Thumbnail / Menu)
+            # Dismiss banners immediately
+            await _dismiss_common_overlays(page)
+
+            # 2. Wait for Mount + Short Delay for meaningful first frame
             print("Waiting for game engine to mount...")
             await page.wait_for_selector("iframe", state="visible", timeout=20000)
             game_element = page.locator("iframe").first
+            
+            # Patience for splash screen
+            await page.wait_for_timeout(6000) 
             
             initial_path = f"initial_{game_id}.png"
             await game_element.screenshot(path=initial_path)
@@ -96,9 +101,8 @@ async def capture_game_preview(game_id: str, output_path: str = "screenshot.png"
             # 3. Wait for stability and capture Final Frame (Gameplay)
             await _wait_for_iframe_render(page, game_element)
             
-            # Dismiss overlays before final snap
-            try: await _dismiss_common_overlays(page)
-            except: pass
+            # Re-dismiss any late-appearing overlays
+            await _dismiss_common_overlays(page)
 
             final_path = f"final_{game_id}.png"
             await game_element.screenshot(path=final_path)
@@ -140,17 +144,26 @@ async def capture_external_page(url: str, output_path: str):
             await page.screenshot(path=output_path, full_page=True)
             return {"screenshot_path": output_path, "mode": "full_page", "metadata": await _extract_external_page_metadata(page, url)}
         except Exception as e:
-            # print(f"Capture failed for {url}: {e}")
             return None
         finally:
             await browser.close()
 
 async def _dismiss_common_overlays(page):
-    selectors = ["button:has-text('Accept')", "button:has-text('OK')", "#cookie-accept", ".close-button"]
+    """Aggressively clears cookie banners and marketing overlays."""
+    selectors = [
+        "button:has-text('Accept')", 
+        "button:has-text('OK')", 
+        "#cookie-accept", 
+        ".close-button",
+        "button:has-text('Decline')",
+        "[aria-label='Close']"
+    ]
     for s in selectors:
         try:
             btn = page.locator(s).first
-            if await btn.is_visible(): await btn.click(timeout=1000)
+            if await btn.is_visible(): 
+                await btn.click(timeout=1500)
+                await page.wait_for_timeout(500) # Small pause for animation
         except: continue
 
 async def _click_start_controls(page):
@@ -182,26 +195,66 @@ async def _extract_external_page_metadata(page, source_url: str) -> dict:
         return {"title": "Unknown", "source_url": source_url}
 
 async def search_for_urls(search_query: str, output_dir: str, count: int = 5) -> dict:
-    """Multi-engine meta-search (Google, Bing, Brave)."""
+    """Multi-engine meta-search (Google, Brave, Bing) with Bot Evasion."""
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
+    
     engines = [
         ("google", f"https://www.google.com/search?q={quote_plus(search_query)}"),
-        ("bing", f"https://www.bing.com/search?q={quote_plus(search_query)}"),
-        ("brave", f"https://search.brave.com/search?q={quote_plus(search_query)}")
+        ("brave", f"https://search.brave.com/search?q={quote_plus(search_query)}"),
+        ("bing", f"https://www.bing.com/search?q={quote_plus(search_query)}")
     ]
+    
     collected = []
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
-        page = await browser.new_page()
+        context = await browser.new_context(
+            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            viewport={"width": 1280, "height": 800}
+        )
+        page = await context.new_page()
+        
         for name, url in engines:
             try:
+                print(f"Meta-Search: Indexing {name} for '{search_query}'...")
                 await page.goto(url, wait_until="domcontentloaded", timeout=20000)
                 await page.wait_for_timeout(2000)
-                links = await page.evaluate("() => Array.from(document.querySelectorAll('a[href]')).map(a => ({title: a.innerText, url: a.href}))")
+                
+                search_snap = output_path / f"search_{name}.png"
+                await page.screenshot(path=str(search_snap))
+
+                links = []
+                if name == "google":
+                    links = await page.evaluate("() => Array.from(document.querySelectorAll('div.g a')).map(a => ({title: a.innerText, url: a.href}))")
+                elif name == "bing":
+                    links = await page.evaluate("() => Array.from(document.querySelectorAll('li.b_algo h2 a')).map(a => ({title: a.innerText, url: a.href}))")
+                else:
+                    links = await page.evaluate("() => Array.from(document.querySelectorAll('a[href]')).map(a => ({title: a.innerText, url: a.href}))")
+
                 for l in links:
-                    if l['url'].startswith("http") and not any(b in l['url'] for b in ["google.com", "bing.com", "brave.com"]):
-                        collected.append({"title": l['title'], "url": l['url'], "engine": name})
-            except: continue
+                    target_url = l.get('url', '')
+                    if target_url.startswith("http") and not any(b in target_url for b in ["google.com", "bing.com", "brave.com", "microsoft.com"]):
+                        collected.append({
+                            "title": l.get('title', 'Unknown'), 
+                            "url": target_url, 
+                            "engine": name, 
+                            "screenshot_path": str(search_snap)
+                        })
+            except Exception as e:
+                # print(f"Engine {name} failed: {e}")
+                continue
+                
         await browser.close()
-    return {"candidates": collected[:count*2], "engine": "playwright-meta-search"}
+        
+    seen = set()
+    unique_candidates = []
+    for c in collected:
+        if c['url'] not in seen:
+            unique_candidates.append(c)
+            seen.add(c['url'])
+            
+    return {
+        "candidates": unique_candidates[:count*3], 
+        "engine": "playwright-meta-search",
+        "search_screenshots": [{"screenshot_path": str(output_path / f"search_{n}.png")} for n, _ in engines]
+    }
