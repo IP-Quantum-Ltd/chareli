@@ -1,6 +1,10 @@
 import logging
 import os
 import base64
+from dotenv import load_dotenv
+
+# Ensure environment is loaded before any tracing/graph imports
+load_dotenv()
 from typing import TypedDict, Dict, Any, List, Optional
 from langgraph.graph import StateGraph, END
 from langsmith import traceable
