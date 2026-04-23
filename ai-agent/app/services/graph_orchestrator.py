@@ -73,6 +73,7 @@ async def research_node(state: AgentState) -> AgentState:
     librarian = VisualLibrarian()
     # Support multiple screenshots for correlation
     result = await librarian.verify_and_research(
+        game_id=state["game_id"],
         game_title=state["game_title"], 
         internal_screenshots=state["internal_imgs_base64"]
     )

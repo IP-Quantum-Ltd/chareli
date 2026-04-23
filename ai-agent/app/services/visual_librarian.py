@@ -22,11 +22,11 @@ class VisualLibrarian(BaseService, BaseAIClient):
     @traceable(run_type="chain", name="Visual Librarian Investigation")
     async def verify_and_research(
         self,
-        proposal_id: str,
+        game_id: str,
         game_title: str,
         internal_screenshots: List[str],
     ) -> Dict[str, Any]:
-        proposal_dir = Path(__file__).resolve().parents[2] / "stage0_artifacts" / proposal_id
+        proposal_dir = Path(__file__).resolve().parents[2] / "stage0_artifacts" / game_id
         external_dir = proposal_dir / "external"
         external_dir.mkdir(parents=True, exist_ok=True)
 
