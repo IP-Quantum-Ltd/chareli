@@ -1,26 +1,22 @@
 {
   "proposal_id": "74098748-0e72-4bbb-b93f-d4a92ad3c249",
   "game_title": "Football Kicks",
-  "search_query": "\"Football Kicks\" \"American Football Kicks\" browser game play online",
-  "candidate_count": 3,
+  "search_query": "\"Football Kicks\" \"American football kicks\" browser game play online",
+  "candidate_count": 4,
   "candidates": [
     {
       "rank": 2,
-      "url": "https://www.safekidgames.com/american-football-kicks/",
+      "url": "https://www.silvergames.com/en/american-football-kicks",
       "screenshot_path": "/workspace/stage0_artifacts/74098748-0e72-4bbb-b93f-d4a92ad3c249/external/candidate_02_render.png",
       "metadata_path": "/workspace/stage0_artifacts/74098748-0e72-4bbb-b93f-d4a92ad3c249/external/candidate_02_render.json",
-      "confidence_score": 90,
+      "confidence_score": 0,
       "correlation": {
-        "visual_similarity_score": 90,
-        "mechanic_match_score": 85,
-        "text_relevance_score": 95,
-        "brand_alignment_score": 90,
-        "reasoning": "All three images depict elements consistent with the game 'American Football Kicks', such as the focus on kicking a football. The first image shows the game's title and a football theme, matching the metadata description. The second and third images show a similar gameplay start screen with a football theme. Therefore, there is a strong visual and thematic correlation among the images and the game description.",
-        "facts": {
-          "controls": "Use spacebar or mouse to choose kick point on slides.",
-          "rules": "Kick the football perfectly into the goal by aligning with green markers for the highest score.",
-          "original_developer": "Safe Kid Games"
-        }
+        "visual_similarity_score": 0,
+        "mechanic_match_score": 0,
+        "text_relevance_score": 0,
+        "brand_alignment_score": 0,
+        "reasoning": "Correlation check failed.",
+        "facts": {}
       },
       "scoring": {
         "weights": {
@@ -31,45 +27,45 @@
         },
         "breakdown": {
           "visual_similarity_score": {
-            "raw_score": 90,
+            "raw_score": 0,
             "weight": 0.45,
-            "weighted_score": 40.5
+            "weighted_score": 0.0
           },
           "mechanic_match_score": {
-            "raw_score": 85,
+            "raw_score": 0,
             "weight": 0.2,
-            "weighted_score": 17.0
+            "weighted_score": 0.0
           },
           "text_relevance_score": {
-            "raw_score": 95,
+            "raw_score": 0,
             "weight": 0.2,
-            "weighted_score": 19.0
+            "weighted_score": 0.0
           },
           "brand_alignment_score": {
-            "raw_score": 90,
+            "raw_score": 0,
             "weight": 0.15,
-            "weighted_score": 13.5
+            "weighted_score": 0.0
           }
         },
-        "confidence_score": 90
+        "confidence_score": 0
       }
     },
     {
-      "rank": 4,
-      "url": "https://www.cokogames.com/american-football-kicks/",
-      "screenshot_path": "/workspace/stage0_artifacts/74098748-0e72-4bbb-b93f-d4a92ad3c249/external/candidate_04_render.png",
-      "metadata_path": "/workspace/stage0_artifacts/74098748-0e72-4bbb-b93f-d4a92ad3c249/external/candidate_04_render.json",
+      "rank": 6,
+      "url": "https://www.outlawsgameroom.com/game/american-football-kicks",
+      "screenshot_path": "/workspace/stage0_artifacts/74098748-0e72-4bbb-b93f-d4a92ad3c249/external/candidate_06_render.png",
+      "metadata_path": "/workspace/stage0_artifacts/74098748-0e72-4bbb-b93f-d4a92ad3c249/external/candidate_06_render.json",
       "confidence_score": 89,
       "correlation": {
         "visual_similarity_score": 85,
         "mechanic_match_score": 90,
         "text_relevance_score": 95,
         "brand_alignment_score": 90,
-        "reasoning": "Images and metadata suggest a high correlation. Image A shows the title 'American Football Kicks' with an American football theme, Image B shows a gameplay start screen with a football player, aligning well with the game theme. The external image shows the game info page for 'American Football Kicks', confirming it as the same game described on cokogames.com. The metadata supports the theme and mechanics of kicking a field goal, consistent across all sources.",
+        "reasoning": "The images all depict a football theme consistent with 'American Football Kicks'. Image A shows the game's title prominently with a football scene, which matches the description from the metadata. Image B and the external image both show a football gameplay scene, which aligns with the game's mechanics. The metadata description and titles further confirm the game's identity, indicating consistency across all elements.",
         "facts": {
-          "controls": "Decide the launching point and direction by clicking.",
-          "rules": "Score a field goal by shooting the ball into the goal area defined by the crossbar and vertical posts.",
-          "original_developer": "Not specified in the provided data."
+          "controls": "Typically involves clicking to kick the ball.",
+          "rules": "Score points by successfully kicking the football through the goalposts.",
+          "original_developer": "Not specified in metadata."
         }
       },
       "scoring": {
@@ -105,21 +101,71 @@
       }
     },
     {
+      "rank": 7,
+      "url": "https://returnman3game.com/games/american-football-kicks",
+      "screenshot_path": "/workspace/stage0_artifacts/74098748-0e72-4bbb-b93f-d4a92ad3c249/external/candidate_07_render.png",
+      "metadata_path": "/workspace/stage0_artifacts/74098748-0e72-4bbb-b93f-d4a92ad3c249/external/candidate_07_render.json",
+      "confidence_score": 90,
+      "correlation": {
+        "visual_similarity_score": 85,
+        "mechanic_match_score": 90,
+        "text_relevance_score": 95,
+        "brand_alignment_score": 95,
+        "reasoning": "The three images show consistent branding and visual themes related to American football. The first image is a promotional banner with the game's title 'American Football Kicks,' depicting a football and a player, aligning with the theme of kicking in football. The second image shows a loading screen with gameplay elements visible, featuring a football and player, which matches the gameplay description. The third image is a start screen with the same logo and similar visual elements, reinforcing the game's theme and title. The metadata from the external source describes the game as an American football kicking game, further aligning with the visual and thematic elements in the images.",
+        "facts": {
+          "controls": "Intuitive controls for kicking in a football game.",
+          "rules": "Score points by successfully kicking the football under pressure.",
+          "original_developer": "Not specified in the provided data."
+        }
+      },
+      "scoring": {
+        "weights": {
+          "visual_similarity_score": 0.45,
+          "mechanic_match_score": 0.2,
+          "text_relevance_score": 0.2,
+          "brand_alignment_score": 0.15
+        },
+        "breakdown": {
+          "visual_similarity_score": {
+            "raw_score": 85,
+            "weight": 0.45,
+            "weighted_score": 38.25
+          },
+          "mechanic_match_score": {
+            "raw_score": 90,
+            "weight": 0.2,
+            "weighted_score": 18.0
+          },
+          "text_relevance_score": {
+            "raw_score": 95,
+            "weight": 0.2,
+            "weighted_score": 19.0
+          },
+          "brand_alignment_score": {
+            "raw_score": 95,
+            "weight": 0.15,
+            "weighted_score": 14.25
+          }
+        },
+        "confidence_score": 90
+      }
+    },
+    {
       "rank": 10,
-      "url": "https://www.outlawsgameroom.com/game/american-football-kicks",
+      "url": "https://www.hoodamath.com/games/americanfootballkicks.html",
       "screenshot_path": "/workspace/stage0_artifacts/74098748-0e72-4bbb-b93f-d4a92ad3c249/external/candidate_10_render.png",
       "metadata_path": "/workspace/stage0_artifacts/74098748-0e72-4bbb-b93f-d4a92ad3c249/external/candidate_10_render.json",
-      "confidence_score": 85,
+      "confidence_score": 82,
       "correlation": {
         "visual_similarity_score": 80,
         "mechanic_match_score": 85,
         "text_relevance_score": 90,
-        "brand_alignment_score": 95,
-        "reasoning": "The images and metadata suggest a consistent theme and subject. Image A shows branding for 'American Football Kicks,' which aligns with the game's title. Images B and C both depict a similar start screen featuring a football player in a stadium, consistent with the theme of football kicks. The color scheme and elements in Images B and C are similar, indicating gameplay related to Image A's branding. The metadata confirms the game's focus on American football and scoring, which is visually represented in the images.",
+        "brand_alignment_score": 75,
+        "reasoning": "The three images share a common theme of American football, with the first image being a promotional thumbnail, the second a loading screen, and the third an in-game screenshot. The visual elements like the football and goalposts are consistent across the images. The mechanics described in the metadata align with the gameplay visuals, focusing on kicking a football through goalposts. The text metadata supports this by describing the game as 'American Football Kicks' with emphasis on kicking mechanics. Brand alignment is moderately supported as the visual style and gameplay description match 'American Football Kicks'.",
         "facts": {
-          "controls": "Mouse or touchscreen to aim and kick the football.",
-          "rules": "Score points by aiming kicks accurately through the goalposts.",
-          "original_developer": "Not specified"
+          "controls": "Spacebar to control kick direction and power.",
+          "rules": "Kick the football through the goalpost to score.",
+          "original_developer": "Not specified in the provided metadata."
         }
       },
       "scoring": {
@@ -146,12 +192,12 @@
             "weighted_score": 18.0
           },
           "brand_alignment_score": {
-            "raw_score": 95,
+            "raw_score": 75,
             "weight": 0.15,
-            "weighted_score": 14.25
+            "weighted_score": 11.25
           }
         },
-        "confidence_score": 85
+        "confidence_score": 82
       }
     }
   ],
@@ -167,28 +213,23 @@
       "reason": "No playable render could be captured."
     },
     {
+      "rank": 4,
+      "url": "https://www.cokogames.com/american-football-kicks/",
+      "reason": "No playable render could be captured."
+    },
+    {
       "rank": 5,
-      "url": "https://www.gameforge.com/en-US/littlegames/american-football-kicks/",
-      "reason": "No playable render could be captured."
-    },
-    {
-      "rank": 6,
-      "url": "https://www.yad.com/American-Football-Kicks",
-      "reason": "No playable render could be captured."
-    },
-    {
-      "rank": 7,
-      "url": "https://www.footballgames.org/american-football-kicks/",
+      "url": "https://www.gamepix.com/play/american-football-kicks",
       "reason": "No playable render could be captured."
     },
     {
       "rank": 8,
-      "url": "https://www.funnygames.org/game/american_football_kicks.html",
+      "url": "https://www.yad.com/American-Football-Kicks",
       "reason": "No playable render could be captured."
     },
     {
       "rank": 9,
-      "url": "https://www.gamepix.com/play/american-football-kicks",
+      "url": "https://www.primarygames.com/arcade/sports/americanfootballkicks/",
       "reason": "No playable render could be captured."
     }
   ]

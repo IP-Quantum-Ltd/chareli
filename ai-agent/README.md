@@ -31,8 +31,6 @@ New GameProposal created
                Submit structured AI review back to main app
 ```
 
----
-
 ## Stage 2 Explained
 
 Stage 2 is the librarian layer. Its job is to turn the verified Stage 0 match and the Stage 1 SEO blueprint into a grounded context packet for writing.
@@ -122,6 +120,7 @@ uvicorn app.main:app --reload --port 8000
 ```bash
 docker compose up --build
 ```
+
 
 ---
 

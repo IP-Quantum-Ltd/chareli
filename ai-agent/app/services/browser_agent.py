@@ -1,20 +1,26 @@
+import os
 import asyncio
-import json
 import re
 import time
+import json
+from io import BytesIO
 from pathlib import Path
-from typing import Any, Dict, List, Optional
-from urllib.parse import quote_plus, urljoin
+from urllib.parse import quote_plus
+from playwright.async_api import async_playwright
+from dotenv import load_dotenv
+from PIL import Image
+from app.db.postgres import (
+    get_public_game_with_thumbnail_by_id,
+    get_public_game_with_thumbnail_by_offset,
+    close_postgres_pool,
+)
 
-from playwright.async_api import BrowserContext, Locator, Page, async_playwright
+load_dotenv()
 
-from app.config import settings
-
-# Pull credentials strictly from the settings
-BASE_URL = settings.CLIENT_URL.rstrip("/")
-ADMIN_EMAIL = settings.SUPERADMIN_EMAIL
-ADMIN_PASSWORD = settings.SUPERADMIN_PASSWORD
-STAGE0_ARTIFACT_ROOT = Path(__file__).resolve().parents[2] / "stage0_artifacts"
+# Pull credentials strictly from the .env file
+BASE_URL = os.getenv("CLIENT_URL")
+ADMIN_EMAIL = os.getenv("SUPERADMIN_EMAIL")
+ADMIN_PASSWORD = os.getenv("SUPERADMIN_PASSWORD")
 
 if not all([BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD]):
     raise ValueError(
@@ -22,805 +28,491 @@ if not all([BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD]):
     )
 
 
-def _slugify(value: str) -> str:
-    slug = re.sub(r"[^a-zA-Z0-9]+", "-", value.strip().lower()).strip("-")
-    return slug or "artifact"
+async def _wait_for_iframe_render(page, game_element, timeout_seconds: int = 30):
+    deadline = time.monotonic() + timeout_seconds
+
+    try:
+        await page.wait_for_timeout(5000)
+        handle = await game_element.element_handle()
+        frame = await handle.content_frame() if handle else None
+    except Exception:
+        frame = None
+
+    if frame is None:
+        print("Could not inspect iframe content directly. Using time-based fallback.")
+        await page.wait_for_timeout(10000)
+        return
+
+    percentage_only = re.compile(r"^\s*\d{1,3}%\s*$")
+    loading_progress = re.compile(r"\b\d{1,3}%\b")
+    splash_markers = [
+        "made with unity",
+        "unity",
+        "rotate your screen",
+        "loading",
+        "download",
+        "install",
+    ]
+
+    while time.monotonic() < deadline:
+        try:
+            body_text = (await frame.locator("body").inner_text(timeout=1000)).strip()
+        except Exception:
+            body_text = ""
+
+        lowered_body_text = body_text.lower()
+
+        if percentage_only.match(body_text):
+            print(f"Gameplay still loading inside iframe: {body_text}")
+            await page.wait_for_timeout(1000)
+            continue
+
+        if loading_progress.search(body_text) and any(
+            token in lowered_body_text for token in ["mb", "loading", "install", "download"]
+        ):
+            print(f"Gameplay still loading inside iframe: {body_text}")
+            await page.wait_for_timeout(1500)
+            continue
+
+        try:
+            screenshot_bytes = await game_element.screenshot()
+            image = Image.open(BytesIO(screenshot_bytes)).convert("RGB").resize((160, 90))
+            pixels = list(image.getdata())
+            total_pixels = max(len(pixels), 1)
+            black_pixels = sum(1 for r, g, b in pixels if max(r, g, b) < 24)
+            bright_pixels = sum(1 for r, g, b in pixels if max(r, g, b) > 180)
+            black_ratio = black_pixels / total_pixels
+            bright_ratio = bright_pixels / total_pixels
+            center_crop = image.crop((40, 20, 120, 70))
+            center_pixels = list(center_crop.getdata())
+            center_total = max(len(center_pixels), 1)
+            center_dark = sum(1 for r, g, b in center_pixels if max(r, g, b) < 40)
+            center_gray = sum(1 for r, g, b in center_pixels if abs(r - g) < 12 and abs(g - b) < 12 and 40 <= max(r, g, b) <= 170)
+            center_dark_ratio = center_dark / center_total
+            center_gray_ratio = center_gray / center_total
+        except Exception:
+            black_ratio = 0.0
+            bright_ratio = 0.0
+            center_dark_ratio = 0.0
+            center_gray_ratio = 0.0
+
+        screenshot_text = ""
+        try:
+            screenshot_text = " ".join(
+                [
+                    t.strip().lower()
+                    for t in await frame.locator("body, div, span, p").all_inner_texts()
+                    if t and t.strip()
+                ]
+            )[:1000]
+        except Exception:
+            screenshot_text = lowered_body_text
+
+        if black_ratio > 0.97 and bright_ratio < 0.02:
+            print(f"Gameplay still looks like a loading screen (black_ratio={black_ratio:.2f}).")
+            await page.wait_for_timeout(2000)
+            continue
+
+        if any(marker in screenshot_text for marker in splash_markers):
+            print("Gameplay still showing splash/loading text.")
+            await page.wait_for_timeout(2000)
+            continue
+
+        if center_dark_ratio > 0.85 and center_gray_ratio > 0.08:
+            print("Gameplay still looks like a splash screen.")
+            await page.wait_for_timeout(2000)
+            continue
+
+        print("Gameplay iframe looks ready for capture.")
+        await page.wait_for_timeout(1500)
+        return
+
+        await page.wait_for_timeout(1000)
+
+    print("Timed out waiting for loader to disappear. Capturing latest iframe state.")
 
 
-def _proposal_artifact_dir(proposal_id: str) -> Path:
-    proposal_dir = STAGE0_ARTIFACT_ROOT / proposal_id
-    proposal_dir.mkdir(parents=True, exist_ok=True)
-    return proposal_dir
+async def capture_game_preview(proposal_id: str, output_path: str = "screenshot.png"):
+    """
+    Agent 1 (Day 1): Navigates to Arcade platform, logs in, and captures a screenshot of the game proposal.
+    """
+    print(f"Starting Agent 1 for Proposal ID: {proposal_id}")
+    async with async_playwright() as p:
+        # Launch browser in background (headless=True)
+        browser = await p.chromium.launch(headless=True)
+        context = await browser.new_context(
+            viewport={"width": 1280, "height": 800}  # Standard desktop viewport
+        )
+        page = await context.new_page()
+
+        try:
+            print(f"Navigating to login: {BASE_URL}/admin/login...")
+            await page.goto(f"{BASE_URL}/admin/login")
+
+            #  Authenticate
+            await page.fill('input[type="email"]', ADMIN_EMAIL)
+            await page.fill('input[type="password"]', ADMIN_PASSWORD)
+            await page.click('button[type="submit"]')
+
+            print("Waiting for authentication to complete...")
+            await page.wait_for_url("**/admin", timeout=15000)
+            print("Successfully authenticated.")
+
+            # Navigate to the actual playable game screen
+            preview_url = f"{BASE_URL}/gameplay/{proposal_id}"
+            print(f"Navigating to game preview: {preview_url}")
+            await page.goto(preview_url)
+
+            # Wait for the game engine to mount the canvas/iframe
+            print("Waiting for game engine to mount...")
+            await page.wait_for_selector("iframe", state="visible", timeout=15000)
+
+            game_element = page.locator("iframe").first
+            await _wait_for_iframe_render(page, game_element)
+
+            # Dismiss any cookie banners or "Accept" overlays that block the view
+            try:
+                accept_button = page.get_by_role("button", name="Accept")
+                if await accept_button.is_visible():
+                    print("Dismissing cookie banner...")
+                    await accept_button.click()
+                    await page.wait_for_timeout(1000)
+            except Exception:
+                pass
+
+            # Capture ONLY the game iframe to reduce visual noise for the AI
+            print("Capturing precision screenshot of the game iframe...")
+            await game_element.screenshot(path=output_path)
+            print(f"Precision game screenshot successfully saved to {output_path}")
+
+            return output_path
+
+        except Exception as e:
+            print(f"Error during browser automation: {e}")
+            raise e
+        finally:
+            await browser.close()
 
 
-def _looks_like_image(value: str) -> bool:
-    lowered = value.lower()
-    return lowered.startswith(("http://", "https://", "/")) and (
-        any(ext in lowered for ext in (".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".avif"))
-        or "image" in lowered
-        or "thumbnail" in lowered
-        or "icon" in lowered
-    )
-
-
-def _coerce_url(candidate: str) -> str:
-    if candidate.startswith(("http://", "https://")):
-        return candidate
-    return urljoin(f"{BASE_URL}/", candidate.lstrip("/"))
-
-
-def _find_thumbnail_url(payload: Any) -> Optional[str]:
-    preferred_keys = {
-        "thumbnail",
-        "thumbnailurl",
-        "thumbnail_url",
-        "icon",
-        "iconurl",
-        "icon_url",
-        "coverimage",
-        "cover_image",
-        "poster",
-        "posterurl",
-        "poster_url",
-        "featuredimage",
-        "featured_image",
-        "image",
-        "imageurl",
-        "image_url",
-        "heroimage",
-        "hero_image",
-    }
-
-    def walk(node: Any, parent_key: str = "") -> Optional[str]:
-        if isinstance(node, str):
-            if parent_key in preferred_keys and _looks_like_image(node):
-                return _coerce_url(node)
-            return None
-
-        if isinstance(node, dict):
-            for key, value in node.items():
-                normalized = re.sub(r"[^a-z0-9]", "", key.lower())
-                if isinstance(value, str) and normalized in preferred_keys and _looks_like_image(value):
-                    return _coerce_url(value)
-                if isinstance(value, dict):
-                    nested_url = value.get("url") or value.get("src") or value.get("path")
-                    if normalized in preferred_keys and isinstance(nested_url, str) and _looks_like_image(nested_url):
-                        return _coerce_url(nested_url)
-                found = walk(value, normalized)
-                if found:
-                    return found
-
-        if isinstance(node, list):
-            for item in node:
-                found = walk(item, parent_key)
-                if found:
-                    return found
-
+def _resolve_thumbnail_url(game_row: dict | None) -> str | None:
+    if not game_row:
         return None
 
-    return walk(payload)
+    variants = game_row.get("variants") or {}
+    if isinstance(variants, dict):
+        for key in ("large", "medium", "thumbnail"):
+            if variants.get(key):
+                return variants[key]
+
+    s3_key = game_row.get("s3Key")
+    if s3_key:
+        return f"https://cdn.arcadesbox.org/{s3_key}"
+
+    return None
 
 
-async def _dismiss_overlays(page: Page) -> None:
+async def capture_thumbnail_preview(thumbnail_url: str, output_path: str = "thumbnail.png"):
+    print(f"Capturing thumbnail from: {thumbnail_url}")
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        context = await browser.new_context(
+            viewport={"width": 1280, "height": 800}
+        )
+        page = await context.new_page()
+
+        try:
+            await page.set_content(
+                f"""
+                <html>
+                  <body style="margin:0;display:flex;align-items:center;justify-content:center;background:#111;">
+                    <img src="{thumbnail_url}" style="max-width:100%;max-height:100vh;object-fit:contain;" />
+                  </body>
+                </html>
+                """,
+                wait_until="load",
+            )
+            await page.wait_for_selector("img", state="visible", timeout=15000)
+            await page.locator("img").screenshot(path=output_path)
+            print(f"Thumbnail screenshot successfully saved to {output_path}")
+            return output_path
+        finally:
+            await browser.close()
+
+
+async def capture_external_page(url: str, output_path: str):
+    """
+    Stage 0 (Visual Librarian): Captures a screenshot of an external search result
+    for visual correlation with our internal game assets.
+    """
+    print(f"Investigating external source: {url}")
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        context = await browser.new_context(
+            viewport={"width": 1280, "height": 800},
+            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        )
+        page = await context.new_page()
+
+        try:
+            # Switch to domcontentloaded to avoid getting stuck on heavy ads/trackers
+            await page.goto(url, wait_until="domcontentloaded", timeout=45000)
+            await page.wait_for_timeout(3000)
+
+            await _dismiss_common_overlays(page)
+            await _click_start_controls(page)
+
+            game_element = await _locate_external_game_surface(page)
+            if game_element is None:
+                print(f"Capture failed for {url}: no visible playable iframe/canvas found")
+                return None
+
+            if (await game_element.evaluate("el => el.tagName.toLowerCase()")) == "iframe":
+                await _wait_for_iframe_render(page, game_element)
+            else:
+                await page.wait_for_timeout(5000)
+
+            await game_element.screenshot(path=output_path)
+            metadata_path = str(Path(output_path).with_suffix(".json"))
+            metadata = await _extract_external_page_metadata(page, url)
+            Path(metadata_path).write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+
+            print(f"External gameplay capture saved to {output_path}")
+            return {
+                "screenshot_path": output_path,
+                "metadata_path": metadata_path,
+                "metadata": metadata,
+            }
+
+        except Exception as e:
+            print(f"Capture failed for {url}: {e}")
+            return None
+        finally:
+            await browser.close()
+
+
+async def _dismiss_common_overlays(page):
     selectors = [
         "button:has-text('Accept')",
         "button:has-text('I Agree')",
-        "button:has-text('Agree')",
         "button:has-text('OK')",
         "button:has-text('Got it')",
-        "button:has-text('Continue')",
-        "button:has-text('Play')",
-        "[id*='cookie'] button",
-        "[class*='cookie'] button",
-        "[aria-label*='accept' i]",
+        "[aria-label='Close']",
+        "[aria-label='Dismiss']",
+        ".close",
+        ".close-button",
+        ".modal-close",
+        "#cookie-accept",
     ]
     for selector in selectors:
         try:
             locator = page.locator(selector).first
             if await locator.is_visible():
-                await locator.click(timeout=1500)
-                await page.wait_for_timeout(800)
+                await locator.click(timeout=1000)
+                await page.wait_for_timeout(400)
         except Exception:
             continue
 
 
-async def _dismiss_ads_and_popups(page: Page) -> None:
-    close_selectors = [
-        "button[aria-label*='close' i]",
-        "button[title*='close' i]",
-        "[role='button'][aria-label*='close' i]",
-        ".modal-close",
-        ".popup-close",
-        ".close-btn",
-        ".close-button",
-        ".ad_close",
-        ".ad-close",
-        ".ads-close",
-        ".dismiss",
-        ".btn-close",
-        "[class*='close']",
-        "[id*='close']",
-    ]
-
-    for selector in close_selectors:
-        try:
-            locator = page.locator(selector)
-            count = await locator.count()
-        except Exception:
-            continue
-
-        for index in range(min(count, 8)):
-            candidate = locator.nth(index)
-            try:
-                if not await candidate.is_visible():
-                    continue
-                box = await candidate.bounding_box()
-                if box and box["width"] > 140 and box["height"] > 80:
-                    continue
-                await candidate.click(timeout=1200)
-                await page.wait_for_timeout(300)
-            except Exception:
-                continue
-
-    try:
-        await page.evaluate(
-            """
-            () => {
-              const keywords = ["ad", "ads", "advert", "banner", "popup", "modal", "overlay", "interstitial"];
-              const nodes = Array.from(document.querySelectorAll("body *"));
-              for (const node of nodes) {
-                const id = (node.id || "").toLowerCase();
-                const className = typeof node.className === "string" ? node.className.toLowerCase() : "";
-                const role = (node.getAttribute("role") || "").toLowerCase();
-                const matchesKeyword = keywords.some((keyword) => id.includes(keyword) || className.includes(keyword));
-                const rect = node.getBoundingClientRect();
-                const style = window.getComputedStyle(node);
-                const isLargeFixedOverlay =
-                  (style.position === "fixed" || style.position === "sticky") &&
-                  rect.width >= window.innerWidth * 0.2 &&
-                  rect.height >= window.innerHeight * 0.15 &&
-                  parseInt(style.zIndex || "0", 10) >= 10;
-                const likelyDialog = role === "dialog" || role === "alertdialog";
-                if (matchesKeyword || isLargeFixedOverlay || likelyDialog) {
-                  node.remove();
-                }
-              }
-            }
-            """
-        )
-    except Exception:
-        pass
-
-
-async def _close_secondary_pages(context: BrowserContext, primary_page: Page) -> None:
-    for candidate in context.pages:
-        if candidate == primary_page:
-            continue
-        try:
-            await candidate.close()
-        except Exception:
-            continue
-
-
-async def _click_start_controls(page: Page) -> None:
+async def _click_start_controls(page):
     selectors = [
         "button:has-text('Play')",
         "button:has-text('Start')",
+        "button:has-text('Play Now')",
         "button:has-text('Continue')",
-        "[aria-label*='play' i]",
-        "[class*='play']",
+        ".play-button",
+        ".start-button",
     ]
     for selector in selectors:
         try:
             locator = page.locator(selector).first
             if await locator.is_visible():
-                await locator.click(timeout=1500)
-                await page.wait_for_timeout(1500)
+                await locator.click(timeout=1000)
+                await page.wait_for_timeout(1200)
                 return
         except Exception:
             continue
 
 
-async def _largest_visible_locator(page: Page, selectors: List[str]) -> Optional[Locator]:
-    best_locator: Optional[Locator] = None
-    best_area = 0.0
-
-    for selector in selectors:
-        locator = page.locator(selector)
-        try:
-            count = await locator.count()
-        except Exception:
-            continue
-
-        for index in range(min(count, 10)):
-            candidate = locator.nth(index)
-            try:
-                if not await candidate.is_visible():
-                    continue
-                await candidate.scroll_into_view_if_needed(timeout=1500)
-                box = await candidate.bounding_box()
-                if not box:
-                    continue
-                area = box["width"] * box["height"]
-                if box["width"] < 240 or box["height"] < 180 or area <= best_area:
-                    continue
-                best_area = area
-                best_locator = candidate
-            except Exception:
-                continue
-
-    return best_locator
-
-
-async def _locate_game_surface(page: Page) -> tuple[Optional[Locator], str]:
+async def _locate_external_game_surface(page):
     selectors = [
-        "[data-testid*='game'] iframe",
-        "[data-testid*='game'] canvas",
-        "[class*='game'] iframe",
-        "[class*='game'] canvas",
-        "[id*='game'] iframe",
-        "[id*='game'] canvas",
-        "main iframe",
-        "main canvas",
         "iframe",
         "canvas",
-        "embed",
-        "object",
+        "[id*='game'] iframe",
+        "[class*='game'] iframe",
+        "[id*='game'] canvas",
+        "[class*='game'] canvas",
     ]
-    locator = await _largest_visible_locator(page, selectors)
-    if not locator:
-        return None, "missing"
+    for selector in selectors:
+        try:
+            locator = page.locator(selector)
+            count = await locator.count()
+            for index in range(count):
+                candidate = locator.nth(index)
+                if await candidate.is_visible():
+                    box = await candidate.bounding_box()
+                    if box and box["width"] >= 200 and box["height"] >= 150:
+                        return candidate
+        except Exception:
+            continue
+    return None
 
-    try:
-        return locator, await locator.evaluate("node => node.tagName.toLowerCase()")
-    except Exception:
-        return locator, "unknown"
 
-
-async def _extract_page_metadata(page: Page, requested_url: str) -> Dict[str, Any]:
-    metadata = await page.evaluate(
+async def _extract_external_page_metadata(page, source_url: str) -> dict:
+    data = await page.evaluate(
         """
-        (requestedUrl) => {
-          const normalizeWhitespace = (value) => (value || "").replace(/\\s+/g, " ").trim();
-          const truncate = (value, limit = 4000) => {
-            const normalized = normalizeWhitespace(value);
-            if (normalized.length <= limit) {
-              return normalized;
-            }
-            return normalized.slice(0, limit) + "...";
-          };
-          const unique = (values) => Array.from(new Set((values || []).map(normalizeWhitespace).filter(Boolean)));
-          const getAttribute = (selectors, attr = "content") => {
-            for (const selector of Array.isArray(selectors) ? selectors : [selectors]) {
-              const node = document.querySelector(selector);
-              const value = node?.getAttribute(attr);
-              if (value) {
-                return normalizeWhitespace(value);
-              }
-            }
-            return "";
-          };
-          const getText = (node) => truncate(node?.innerText || node?.textContent || "", 6000);
-          const getTextList = (selector, minLength = 0, limit = 50) =>
-            unique(
-              Array.from(document.querySelectorAll(selector))
-                .map((node) => normalizeWhitespace(node.innerText || node.textContent || ""))
-                .filter((text) => text.length >= minLength)
-            ).slice(0, limit);
-          const extractNames = (value) => {
-            if (!value) return [];
-            if (Array.isArray(value)) return unique(value.flatMap(extractNames));
-            if (typeof value === "string") return [normalizeWhitespace(value)];
-            if (typeof value === "object") {
-              return unique([
-                value.name,
-                value.legalName,
-                value.alternateName,
-                value.brand?.name,
-              ].flatMap(extractNames));
-            }
-            return [];
-          };
-          const flattenSchemaItems = (input) => {
-            if (!input) return [];
-            if (Array.isArray(input)) return input.flatMap(flattenSchemaItems);
-            if (typeof input !== "object") return [];
-            if (Array.isArray(input["@graph"])) return input["@graph"].flatMap(flattenSchemaItems);
-            return [input];
-          };
-          const safeJsonParse = (value) => {
-            try {
-              return JSON.parse(value);
-            } catch (_error) {
-              return null;
-            }
-          };
-          const ldJsonItems = Array.from(document.querySelectorAll('script[type="application/ld+json"]'))
-            .map((node) => safeJsonParse(node.textContent || ""))
+        () => {
+          const getMeta = (name) =>
+            document.querySelector(`meta[name="${name}"]`)?.content ||
+            document.querySelector(`meta[property="${name}"]`)?.content ||
+            "";
+          const headings = Array.from(document.querySelectorAll("h1, h2"))
+            .map((el) => el.textContent?.trim())
             .filter(Boolean)
-            .flatMap(flattenSchemaItems);
-          const relevantStructuredData = ldJsonItems
-            .filter((item) => typeof item === "object")
-            .map((item) => {
-              const typeValue = Array.isArray(item["@type"]) ? item["@type"].join(", ") : item["@type"] || "";
-              return {
-                type: normalizeWhitespace(typeValue),
-                name: normalizeWhitespace(item.name || ""),
-                headline: normalizeWhitespace(item.headline || ""),
-                description: truncate(item.description || "", 3000),
-                genre: Array.isArray(item.genre) ? unique(item.genre) : unique([item.genre]),
-                category: Array.isArray(item.applicationCategory)
-                  ? unique(item.applicationCategory)
-                  : unique([item.applicationCategory || item.category]),
-                operating_system: normalizeWhitespace(item.operatingSystem || ""),
-                url: normalizeWhitespace(item.url || ""),
-                image: Array.isArray(item.image) ? normalizeWhitespace(item.image[0] || "") : normalizeWhitespace(item.image || ""),
-                author: extractNames(item.author),
-                creator: extractNames(item.creator),
-                publisher: extractNames(item.publisher),
-                aggregate_rating: item.aggregateRating
-                  ? {
-                      rating_value: normalizeWhitespace(String(item.aggregateRating.ratingValue || "")),
-                      rating_count: normalizeWhitespace(String(item.aggregateRating.ratingCount || "")),
-                      review_count: normalizeWhitespace(String(item.aggregateRating.reviewCount || "")),
-                    }
-                  : null,
-              };
-            })
-            .slice(0, 20);
-          const faqFromSchema = ldJsonItems
-            .filter((item) => {
-              const typeValue = Array.isArray(item["@type"]) ? item["@type"].join(" ") : item["@type"] || "";
-              return /faqpage/i.test(typeValue);
-            })
-            .flatMap((item) => Array.isArray(item.mainEntity) ? item.mainEntity : [])
-            .map((entry) => ({
-              question: normalizeWhitespace(entry?.name || ""),
-              answer: truncate(
-                typeof entry?.acceptedAnswer === "string"
-                  ? entry.acceptedAnswer
-                  : entry?.acceptedAnswer?.text || entry?.acceptedAnswer?.name || "",
-                3000
-              ),
-            }))
-            .filter((entry) => entry.question && entry.answer);
-          const faqFromDom = Array.from(document.querySelectorAll("details"))
-            .map((node) => {
-              const question = normalizeWhitespace(node.querySelector("summary")?.innerText || "");
-              const cloned = node.cloneNode(true);
-              const summary = cloned.querySelector("summary");
-              if (summary) summary.remove();
-              const answer = truncate(cloned.innerText || cloned.textContent || "", 3000);
-              return { question, answer };
-            })
-            .filter((entry) => entry.question && entry.answer);
-          const breadcrumb = getTextList(
-            'nav[aria-label*="breadcrumb" i] a, nav[aria-label*="breadcrumb" i] li, .breadcrumb a, .breadcrumb li, [class*="breadcrumb"] a, [class*="breadcrumb"] li',
-            1,
-            20
-          );
-          const categories = unique([
-            ...breadcrumb,
-            ...getTextList('a[rel="category"], a[href*="/category/"], [class*="category"] a', 2, 20),
-            ...getTextList('meta[property="article:section"]', 1, 10),
-          ]);
-          const tags = unique([
-            ...getTextList('a[rel="tag"], a[href*="/tag/"], [class*="tag"] a, .tags a', 2, 30),
-            ...getAttribute('meta[name="keywords"]').split(","),
-          ]);
-          const headings = Array.from(document.querySelectorAll("h1, h2, h3, h4"))
-            .map((node) => ({
-              level: node.tagName.toLowerCase(),
-              text: normalizeWhitespace(node.innerText || node.textContent || ""),
-            }))
-            .filter((entry) => entry.text)
-            .slice(0, 60);
-          const sectionBlocks = unique(
-            Array.from(document.querySelectorAll("h1, h2, h3, h4"))
-              .map((headingNode) => {
-                const heading = normalizeWhitespace(headingNode.innerText || headingNode.textContent || "");
-                if (!heading) return null;
-                const container = headingNode.closest("section, article, main, div") || headingNode.parentElement || headingNode;
-                const listItems = unique(
-                  Array.from(container.querySelectorAll("li"))
-                    .map((item) => normalizeWhitespace(item.innerText || item.textContent || ""))
-                    .filter((text) => text.length >= 3)
-                ).slice(0, 20);
-                const links = unique(
-                  Array.from(container.querySelectorAll("a[href]"))
-                    .map((link) => normalizeWhitespace(link.innerText || link.textContent || ""))
-                    .filter((text) => text.length >= 3)
-                ).slice(0, 20);
-                return JSON.stringify({
-                  heading,
-                  level: headingNode.tagName.toLowerCase(),
-                  text: truncate(container.innerText || container.textContent || "", 3500),
-                  list_items: listItems,
-                  links,
-                });
-              })
-              .filter(Boolean)
-          ).map((raw) => JSON.parse(raw)).slice(0, 30);
-          const findSectionText = (...patterns) => {
-            for (const section of sectionBlocks) {
-              const label = normalizeWhitespace(section.heading || "").toLowerCase();
-              if (patterns.some((pattern) => label.includes(pattern))) {
-                return section;
-              }
-            }
-            return null;
-          };
-          const mainContainer = document.querySelector("main, article, [role='main']") || document.body;
-          const contentBlocks = unique(
-            Array.from(mainContainer.querySelectorAll("p, li"))
-              .map((node) => normalizeWhitespace(node.innerText || node.textContent || ""))
-              .filter((text) => text.length >= 25)
-          ).slice(0, 120);
-          const mainText = truncate(mainContainer.innerText || mainContainer.textContent || "", 20000);
-          const developerMentions = unique([
-            ...relevantStructuredData.flatMap((item) => [...(item.author || []), ...(item.creator || []), ...(item.publisher || [])]),
-            ...Array.from(
-              (mainText || "").matchAll(
-                /(developed by|developer|published by|publisher|creator|created by|studio)\\s*:?\\s*([A-Z0-9][A-Za-z0-9&.,'()\\-\\s]{2,80})/gi
-              )
-            ).map((match) => normalizeWhitespace(match[2] || "")),
-          ]).slice(0, 20);
-          const ratings = {
-            rating_value: getAttribute(
-              ['meta[itemprop="ratingValue"]', '[itemprop="ratingValue"]', 'meta[property="og:rating"]'],
-              "content"
-            ) || normalizeWhitespace(document.querySelector('[itemprop="ratingValue"]')?.textContent || ""),
-            rating_count: getAttribute(
-              ['meta[itemprop="ratingCount"]', '[itemprop="ratingCount"]'],
-              "content"
-            ) || normalizeWhitespace(document.querySelector('[itemprop="ratingCount"]')?.textContent || ""),
-            review_count: getAttribute(
-              ['meta[itemprop="reviewCount"]', '[itemprop="reviewCount"]'],
-              "content"
-            ) || normalizeWhitespace(document.querySelector('[itemprop="reviewCount"]')?.textContent || ""),
-            votes_text: getTextList('[class*="rating"], [class*="vote"], [id*="rating"], [id*="vote"]', 3, 10),
-          };
-          const keySections = {
-            about: findSectionText("about", "description", "overview"),
-            how_to_play: findSectionText("how to play", "game instructions", "instructions"),
-            controls: findSectionText("controls", "keyboard", "mouse", "touch"),
-            faq: findSectionText("faq", "frequently asked questions"),
-            developer: findSectionText("developer", "developed by", "publisher", "creator", "studio"),
-            features: findSectionText("features", "gameplay", "modes"),
-          };
+            .slice(0, 12);
           return {
-            requested_url: requestedUrl,
-            final_url: window.location.href,
+            final_url: location.href,
+            source_url: "",
             title: document.title || "",
-            meta_description: getAttribute(['meta[name="description"]']),
-            meta_keywords: getAttribute(['meta[name="keywords"]']),
-            og_title: getAttribute(['meta[property="og:title"]']),
-            og_description: getAttribute(['meta[property="og:description"]']),
-            og_image: getAttribute(['meta[property="og:image"]']),
-            og_type: getAttribute(['meta[property="og:type"]']),
-            og_site_name: getAttribute(['meta[property="og:site_name"]']),
-            twitter_title: getAttribute(['meta[name="twitter:title"]']),
-            twitter_description: getAttribute(['meta[name="twitter:description"]']),
-            twitter_image: getAttribute(['meta[name="twitter:image"]']),
-            canonical_url: getAttribute(['link[rel="canonical"]'], "href"),
+            meta_description: getMeta("description"),
+            og_title: getMeta("og:title"),
+            og_description: getMeta("og:description"),
+            og_image: getMeta("og:image"),
+            canonical_url: document.querySelector("link[rel='canonical']")?.href || "",
             headings,
-            breadcrumb,
-            categories,
-            tags,
-            ratings,
-            structured_data: relevantStructuredData,
-            faq_items: unique(
-              [...faqFromSchema, ...faqFromDom].map((entry) => JSON.stringify(entry))
-            ).map((raw) => JSON.parse(raw)).slice(0, 30),
-            section_blocks: sectionBlocks,
-            key_sections: keySections,
-            developer_mentions: developerMentions,
-            content_blocks: contentBlocks,
-            main_text_excerpt: mainText,
-            visible_text_length: normalizeWhitespace(mainContainer.innerText || mainContainer.textContent || "").length,
           };
         }
-        """,
-        requested_url,
+        """
     )
-    return metadata
+    data["source_url"] = source_url
+    return data
 
 
-async def _capture_thumbnail_image(page: Page, thumbnail_url: str, output_path: Path) -> Dict[str, Any]:
-    await page.set_viewport_size({"width": 1280, "height": 800})
-    await page.set_content(
-        f"""
-        <html>
-          <body style="margin:0;display:flex;align-items:center;justify-content:center;background:#10131a;height:100vh;">
-            <img id="game-thumbnail" src="{thumbnail_url}" style="max-width:90vw;max-height:90vh;object-fit:contain;" />
-          </body>
-        </html>
-        """,
-        wait_until="networkidle",
-    )
-    image = page.locator("#game-thumbnail")
-    await image.wait_for(state="visible", timeout=15000)
-    await page.wait_for_function(
-        "() => document.getElementById('game-thumbnail')?.complete === true",
-        timeout=15000,
-    )
-    await image.screenshot(path=str(output_path))
+async def search_for_urls(search_query: str, output_dir: str, count: int = 5) -> dict:
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+    engines = [
+        ("google", f"https://www.google.com/search?q={quote_plus(search_query)}"),
+        ("bing", f"https://www.bing.com/search?q={quote_plus(search_query)}"),
+        ("brave", f"https://search.brave.com/search?q={quote_plus(search_query)}"),
+        ("duckduckgo", f"https://duckduckgo.com/?q={quote_plus(search_query)}"),
+    ]
+    collected: list[dict] = []
+    screenshots: list[dict] = []
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        context = await browser.new_context(
+            viewport={"width": 1440, "height": 1200},
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        )
+        page = await context.new_page()
+
+        try:
+            for engine_name, engine_url in engines:
+                try:
+                    await page.goto(engine_url, wait_until="domcontentloaded", timeout=30000)
+                    await page.wait_for_timeout(2500)
+                    screenshot_path = output_path / f"search_results_{engine_name}.png"
+                    await page.screenshot(path=str(screenshot_path), full_page=True)
+                    screenshots.append(
+                        {
+                            "engine": engine_name,
+                            "screenshot_path": str(screenshot_path),
+                        }
+                    )
+
+                    links = await page.evaluate(
+                        """
+                        () => {
+                          const anchors = Array.from(document.querySelectorAll('a[href]'));
+                          return anchors.map((anchor) => ({
+                            title: (anchor.textContent || '').trim(),
+                            url: anchor.href || '',
+                          }));
+                        }
+                        """
+                    )
+
+                    for item in links:
+                        url = (item.get("url") or "").strip()
+                        title = " ".join((item.get("title") or "").split())
+                        if not url or not title:
+                            continue
+                        lowered = url.lower()
+                        if lowered.startswith("javascript:") or lowered.startswith("mailto:"):
+                            continue
+                        if any(
+                            blocked in lowered
+                            for blocked in [
+                                "/search?",
+                                "/sorry/",
+                                "google.com/preferences",
+                                "google.com/policies/",
+                                "support.google.com/",
+                                "bing.com/search?",
+                                "search.brave.com/search?",
+                                "search.brave.com/ask?",
+                                "search.brave.com/images?",
+                                "search.brave.com/news?",
+                                "search.brave.com/videos?",
+                                "search.brave.com/goggles?",
+                                "search.brave.com/help/",
+                                "duckduckgo.com/",
+                                "brave.com/search?",
+                                "accounts.google.com",
+                            ]
+                        ):
+                            continue
+                        if any(existing["url"] == url for existing in collected):
+                            continue
+                        collected.append(
+                            {
+                                "title": title[:200],
+                                "url": url,
+                                "engine": engine_name,
+                            }
+                        )
+                except Exception as engine_error:
+                    print(f"Search engine {engine_name} failed: {engine_error}")
+                    continue
+        finally:
+            await browser.close()
+
     return {
-        "source_url": thumbnail_url,
-        "capture_type": "thumbnail",
-        "screenshot_path": str(output_path),
+        "engine": "playwright-meta-search",
+        "engines": [engine for engine, _ in engines],
+        "search_screenshots": screenshots,
+        "screenshot_path": screenshots[0]["screenshot_path"] if screenshots else "",
+        "candidates": collected[: max(count, 10)],
     }
 
 
-async def capture_game_preview(
-    proposal_id: str,
-    proposal_snapshot: Optional[Dict[str, Any]] = None,
-    game_title: str = "",
-) -> Dict[str, Any]:
-    """
-    Stage 0 internal capture:
-    1. Capture the proposal thumbnail/icon.
-    2. Five seconds later, capture the ArcadeBox gameplay render/start state.
-    """
-    artifact_dir = _proposal_artifact_dir(proposal_id) / "internal"
-    artifact_dir.mkdir(parents=True, exist_ok=True)
-    thumbnail_path = artifact_dir / "reference_thumbnail.png"
-    gameplay_path = artifact_dir / "reference_gameplay_start.png"
-    metadata_path = artifact_dir / "internal_capture_metadata.json"
+async def _run_cli() -> None:
+    import sys
 
-    thumbnail_url = _find_thumbnail_url(proposal_snapshot or {})
-    if not thumbnail_url:
-        raise ValueError("Stage 0 requires a resolvable internal thumbnail/icon reference.")
-    preview_url = f"{BASE_URL}/gameplay/{proposal_id}"
+    if len(sys.argv) > 1:
+        target_id = sys.argv[1]
+        game_row = await get_public_game_with_thumbnail_by_id(target_id)
+        if not game_row:
+            raise RuntimeError(f"Could not fetch game {target_id} from public.games")
+    else:
+        game_row = await get_public_game_with_thumbnail_by_offset(1)
+        if not game_row:
+            raise RuntimeError("Could not fetch a game id from public.games")
+        target_id = str(game_row["id"])
+        print(f"Fetched game from public.games: {game_row.get('title', 'Unknown')} ({target_id})")
 
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(viewport={"width": 1280, "height": 800})
-        page = await context.new_page()
+    thumbnail_url = _resolve_thumbnail_url(game_row)
+    if thumbnail_url:
+        await capture_thumbnail_preview(thumbnail_url, f"test_thumbnail_{target_id}.png")
+    else:
+        print(f"No thumbnail URL found for {target_id}")
 
-        try:
-            thumbnail_meta = await _capture_thumbnail_image(page, thumbnail_url, thumbnail_path)
-
-            thumbnail_captured_at = time.monotonic()
-
-            await page.goto(preview_url, wait_until="domcontentloaded", timeout=45000)
-            await page.wait_for_timeout(5000)
-            await _dismiss_overlays(page)
-            await _click_start_controls(page)
-            game_surface, surface_type = await _locate_game_surface(page)
-            if not game_surface:
-                raise ValueError("Failed to locate internal gameplay render.")
-
-            elapsed_since_thumbnail = time.monotonic() - thumbnail_captured_at
-            remaining_delay = max(0.0, 5.0 - elapsed_since_thumbnail)
-            if remaining_delay:
-                await page.wait_for_timeout(int(remaining_delay * 1000))
-            await game_surface.screenshot(path=str(gameplay_path))
-
-            gameplay_meta = {
-                "source_url": preview_url,
-                "capture_type": "gameplay_start",
-                "surface_type": surface_type,
-                "screenshot_path": str(gameplay_path),
-            }
-
-            combined_metadata = {
-                "proposal_id": proposal_id,
-                "game_title": game_title,
-                "thumbnail": thumbnail_meta,
-                "gameplay_start": gameplay_meta,
-            }
-            metadata_path.write_text(json.dumps(combined_metadata, indent=2), encoding="utf-8")
-
-            return {
-                "artifact_dir": str(artifact_dir),
-                "paths": [str(thumbnail_path), str(gameplay_path)],
-                "metadata": combined_metadata,
-            }
-
-        except Exception as exc:
-            error_screenshot = artifact_dir / "internal_capture_error.png"
-            await page.screenshot(path=str(error_screenshot))
-            raise ValueError(
-                f"Internal Stage 0 capture failed: {exc}. Debug screenshot: {error_screenshot}"
-            ) from exc
-        finally:
-            await browser.close()
-
-
-async def capture_external_page(url: str, output_path: str) -> Optional[Dict[str, Any]]:
-    """
-    Stage 0 external capture:
-    Browse to a search result, wait for the playable game surface, then capture
-    both the rendered game area and the page metadata used for ranking.
-    """
-    screenshot_path = Path(output_path)
-    screenshot_path.parent.mkdir(parents=True, exist_ok=True)
-    metadata_path = screenshot_path.with_suffix(".json")
-
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(
-            viewport={"width": 1440, "height": 900},
-            user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-            ),
-        )
-        page = await context.new_page()
-
-        try:
-            await page.goto(url, wait_until="domcontentloaded", timeout=60000)
-            await page.wait_for_timeout(4000)
-            await _dismiss_overlays(page)
-            await _dismiss_ads_and_popups(page)
-            await _click_start_controls(page)
-
-            # Allow enough time for the embedded playable surface to render.
-            await page.wait_for_timeout(12000)
-            await _close_secondary_pages(context, page)
-            await page.bring_to_front()
-            await _dismiss_overlays(page)
-            await _dismiss_ads_and_popups(page)
-            game_surface, surface_type = await _locate_game_surface(page)
-            if not game_surface:
-                return None
-
-            await game_surface.screenshot(path=str(screenshot_path))
-            metadata = await _extract_page_metadata(page, url)
-            metadata.update(
-                {
-                    "surface_type": surface_type,
-                    "screenshot_path": str(screenshot_path),
-                }
-            )
-            metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
-
-            return {
-                "url": url,
-                "screenshot_path": str(screenshot_path),
-                "metadata_path": str(metadata_path),
-                "metadata": metadata,
-            }
-
-        except Exception:
-            return None
-        finally:
-            await browser.close()
-
-
-async def search_for_urls(search_query: str, output_dir: str, count: int = 5) -> Dict[str, Any]:
-    """
-    Stage 0 search layer:
-    Executes a browser-based web search with Playwright and captures the search
-    results page for downstream vision-assisted selection.
-    """
-    artifact_dir = Path(output_dir)
-    artifact_dir.mkdir(parents=True, exist_ok=True)
-    search_targets = [
-        {
-            "name": "google",
-            "url": f"https://www.google.com/search?q={quote_plus(search_query)}",
-            "selectors": ["div.yuRUbf a", "a h3", "main a[href]"],
-            "href_filters": ("google.com",),
-        },
-        {
-            "name": "brave",
-            "url": f"https://search.brave.com/search?q={quote_plus(search_query)}",
-            "selectors": ["a[data-test-id='result-title-a']", "main a[href]"],
-            "href_filters": ("search.brave.com", "brave.com"),
-        },
-        {
-            "name": "bing",
-            "url": f"https://www.bing.com/search?q={quote_plus(search_query)}",
-            "selectors": ["li.b_algo h2 a", "main a[href]"],
-            "href_filters": ("bing.com", "microsoft.com"),
-        },
-        {
-            "name": "duckduckgo",
-            "url": f"https://duckduckgo.com/?q={quote_plus(search_query)}&ia=web",
-            "selectors": [".result__a", "[data-testid='result-title-a']", "article a[href]"],
-            "href_filters": ("duckduckgo.com",),
-        },
-    ]
-
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(
-            user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-            )
-        )
-        page = await context.new_page()
-
-        try:
-            aggregated_candidates: List[Dict[str, Any]] = []
-            seen_urls = set()
-            search_screenshots: List[Dict[str, str]] = []
-
-            for target in search_targets:
-                await page.goto(target["url"], wait_until="domcontentloaded", timeout=30000)
-                await page.wait_for_timeout(5000)
-                screenshot_path = artifact_dir / f"search_results_{target['name']}.png"
-                await page.screenshot(path=str(screenshot_path), full_page=True)
-                search_screenshots.append(
-                    {
-                        "engine": target["name"],
-                        "screenshot_path": str(screenshot_path),
-                    }
-                )
-
-                candidates: List[Dict[str, Any]] = []
-                for selector in target["selectors"]:
-                    try:
-                        candidates = await page.eval_on_selector_all(
-                            selector,
-                            """
-                            nodes => nodes.map(n => ({
-                                url: n.href || n.getAttribute('href') || '',
-                                title: (n.textContent || '').trim()
-                            })).filter(item => item.url)
-                            """,
-                        )
-                        if candidates:
-                            break
-                    except Exception:
-                        continue
-
-                for candidate in candidates:
-                    link = candidate.get("url", "")
-                    lowered = link.lower()
-                    if any(blocked in lowered for blocked in target["href_filters"]):
-                        continue
-                    if lowered.startswith(("javascript:", "mailto:")):
-                        continue
-                    if link in seen_urls:
-                        continue
-                    seen_urls.add(link)
-                    aggregated_candidates.append(
-                        {
-                            "url": link,
-                            "title": candidate.get("title", ""),
-                            "engine": target["name"],
-                        }
-                    )
-                    if len(aggregated_candidates) >= max(count * 4, 20):
-                        break
-
-            primary_screenshot_path = search_screenshots[0]["screenshot_path"] if search_screenshots else ""
-            return {
-                "engine": "playwright-meta-search",
-                "engines": [entry["engine"] for entry in search_screenshots],
-                "search_query": search_query,
-                "screenshot_path": primary_screenshot_path,
-                "search_screenshots": search_screenshots,
-                "candidates": aggregated_candidates[: max(count * 4, 20)],
-            }
-        except Exception:
-            return {
-                "engine": "",
-                "engines": [],
-                "search_query": search_query,
-                "screenshot_path": "",
-                "search_screenshots": [],
-                "candidates": [],
-            }
-        finally:
-            await browser.close()
+    try:
+        await capture_game_preview(target_id, f"test_internal_{target_id}.png")
+    finally:
+        await close_postgres_pool()
 
 
 if __name__ == "__main__":
-    import sys
-
-    loop = asyncio.get_event_loop()
-    if len(sys.argv) > 1:
-        test_id = sys.argv[1]
-        loop.run_until_complete(capture_game_preview(test_id))
-    else:
-        loop.run_until_complete(
-            capture_external_page(
-                "https://www.crazygames.com/game/football-kicks",
-                str(_proposal_artifact_dir("manual-test") / "external" / "candidate_01_render.png"),
-            )
-        )
+    asyncio.run(_run_cli())

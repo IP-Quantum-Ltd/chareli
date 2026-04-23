@@ -1,16 +1,16 @@
 {
   "proposal_id": "74098748-0e72-4bbb-b93f-d4a92ad3c249",
   "game_title": "Football Kicks",
-  "search_query": "\"Football Kicks\" \"American Football Kicks\" browser game play online",
+  "search_query": "\"Football Kicks\" \"American football kicks\" browser game play online",
   "search_plan": {
     "visual_cues": [
-      "American football",
-      "stadium lights",
-      "kicking a football"
+      "American football text",
+      "football on grass field",
+      "stadium lights"
     ],
     "search_terms": [
-      "American Football Kicks",
-      "football kicking game",
+      "American football kicks",
+      "football game",
       "stadium sports game"
     ]
   },
@@ -87,11 +87,6 @@
       "engine": "brave"
     },
     {
-      "url": "https://www.cokogames.com/american-football-kicks/",
-      "title": "COKO Games cokogames.com \u203a american-football-kicks   AMERICAN FOOTBALL KICKS \u2013 COKOGAMES",
-      "engine": "brave"
-    },
-    {
       "url": "https://american-football-kicks-game.en.softonic.com/chrome/extension",
       "title": "Softonic american-football-kicks-game.en.softonic.com   \u203a home  \u203a browsers  \u203a google chrome  \u203a american football kicks game   American Football Kicks Game for Google Chrome - Extension Download",
       "engine": "brave"
@@ -99,6 +94,11 @@
     {
       "url": "https://gameforge.com/en-US/littlegames/american-football-kicks/",
       "title": "Gameforge gameforge.com   \u203a free games  \u203a sports games  \u203a american football kicks   American Football Kicks: Play American Football Kicks",
+      "engine": "brave"
+    },
+    {
+      "url": "https://www.cokogames.com/american-football-kicks/",
+      "title": "COKO Games cokogames.com \u203a american-football-kicks   AMERICAN FOOTBALL KICKS \u2013 COKOGAMES",
       "engine": "brave"
     },
     {
@@ -112,21 +112,6 @@
       "engine": "brave"
     },
     {
-      "url": "https://www.miniplay.com/game/american-football-kicks",
-      "title": "Miniplay.com miniplay.com \u203a game  \u203a american-football-kicks   AMERICAN FOOTBALL KICKS free online game on Miniplay.com",
-      "engine": "brave"
-    },
-    {
-      "url": "https://famobi.com/american-football-kicks/?locale=en",
-      "title": "Famobi famobi.com \u203a american-football-kicks   Play American Football Kicks - Famobi HTML5 Game Catalogue",
-      "engine": "brave"
-    },
-    {
-      "url": "https://returnman3game.com/games/american-football-kicks",
-      "title": "Returnman3game returnman3game.com \u203a games  \u203a american-football-kicks   American Football Kicks - Sports Games",
-      "engine": "brave"
-    },
-    {
       "url": "https://www.gamepix.com/play/american-football-kicks",
       "title": "GamePix gamepix.com \u203a play  \u203a american-football-kicks   American Football Kicks \ud83d\udd79\ufe0f Play Now on GamePix",
       "engine": "brave"
@@ -137,39 +122,54 @@
       "engine": "brave"
     },
     {
+      "url": "https://returnman3game.com/games/american-football-kicks",
+      "title": "Returnman3game returnman3game.com \u203a games  \u203a american-football-kicks   American Football Kicks - Sports Games",
+      "engine": "brave"
+    },
+    {
       "url": "https://sites.google.com/site/unblockedgamesportal/american-football-kicks",
       "title": "Google Sites sites.google.com \u203a site  \u203a unblockedgamesportal  \u203a american-football-kicks   Unblocked Games Portal - American Football Kicks",
+      "engine": "brave"
+    },
+    {
+      "url": "https://hackerone.com/brave",
+      "title": "Report a security issue",
+      "engine": "brave"
+    },
+    {
+      "url": "https://status.brave.app/",
+      "title": "Status",
       "engine": "brave"
     }
   ],
   "search_selection": {
     "selected_urls": [
       "https://www.miniplay.com/game/football-kicks",
-      "https://www.safekidgames.com/american-football-kicks/",
+      "https://www.silvergames.com/en/american-football-kicks",
       "https://arcadespot.com/game/american-football-kicks/",
       "https://www.cokogames.com/american-football-kicks/",
-      "https://www.gameforge.com/en-US/littlegames/american-football-kicks/",
-      "https://www.yad.com/American-Football-Kicks",
-      "https://www.footballgames.org/american-football-kicks/",
-      "https://www.funnygames.org/game/american_football_kicks.html",
       "https://www.gamepix.com/play/american-football-kicks",
-      "https://www.outlawsgameroom.com/game/american-football-kicks"
+      "https://www.outlawsgameroom.com/game/american-football-kicks",
+      "https://returnman3game.com/games/american-football-kicks",
+      "https://www.yad.com/American-Football-Kicks",
+      "https://www.primarygames.com/arcade/sports/americanfootballkicks/",
+      "https://www.hoodamath.com/games/americanfootballkicks.html"
     ],
-    "reasoning": "These URLs are likely to lead directly to the playable 'Football Kicks' or 'American Football Kicks' game based on their titles and the structure of the websites, which commonly host online games. They are not extension stores or generic category pages, increasing the likelihood of finding the game readily playable in a browser."
+    "reasoning": "These URLs are selected because they are likely to offer an embedded playable browser game. They are not extension stores or generic category pages. The titles and descriptions suggest the game can be played directly online, which matches the search intent."
   },
   "search_results": [
     "https://www.miniplay.com/game/football-kicks",
-    "https://www.safekidgames.com/american-football-kicks/",
+    "https://www.silvergames.com/en/american-football-kicks",
     "https://arcadespot.com/game/american-football-kicks/",
     "https://www.cokogames.com/american-football-kicks/",
-    "https://www.gameforge.com/en-US/littlegames/american-football-kicks/",
-    "https://www.yad.com/American-Football-Kicks",
-    "https://www.footballgames.org/american-football-kicks/",
-    "https://www.funnygames.org/game/american_football_kicks.html",
     "https://www.gamepix.com/play/american-football-kicks",
-    "https://www.outlawsgameroom.com/game/american-football-kicks"
+    "https://www.outlawsgameroom.com/game/american-football-kicks",
+    "https://returnman3game.com/games/american-football-kicks",
+    "https://www.yad.com/American-Football-Kicks",
+    "https://www.primarygames.com/arcade/sports/americanfootballkicks/",
+    "https://www.hoodamath.com/games/americanfootballkicks.html"
   ],
-  "candidate_count": 3,
+  "candidate_count": 4,
   "failures": [
     {
       "rank": 1,
@@ -182,28 +182,23 @@
       "reason": "No playable render could be captured."
     },
     {
+      "rank": 4,
+      "url": "https://www.cokogames.com/american-football-kicks/",
+      "reason": "No playable render could be captured."
+    },
+    {
       "rank": 5,
-      "url": "https://www.gameforge.com/en-US/littlegames/american-football-kicks/",
-      "reason": "No playable render could be captured."
-    },
-    {
-      "rank": 6,
-      "url": "https://www.yad.com/American-Football-Kicks",
-      "reason": "No playable render could be captured."
-    },
-    {
-      "rank": 7,
-      "url": "https://www.footballgames.org/american-football-kicks/",
+      "url": "https://www.gamepix.com/play/american-football-kicks",
       "reason": "No playable render could be captured."
     },
     {
       "rank": 8,
-      "url": "https://www.funnygames.org/game/american_football_kicks.html",
+      "url": "https://www.yad.com/American-Football-Kicks",
       "reason": "No playable render could be captured."
     },
     {
       "rank": 9,
-      "url": "https://www.gamepix.com/play/american-football-kicks",
+      "url": "https://www.primarygames.com/arcade/sports/americanfootballkicks/",
       "reason": "No playable render could be captured."
     }
   ],
