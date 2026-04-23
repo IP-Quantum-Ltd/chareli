@@ -174,11 +174,7 @@ workflow.add_node("scribe", scribe_node)
 
 workflow.set_entry_point("capture")
 workflow.add_edge("capture", "research")
-workflow.add_edge("research", "analyze")
-workflow.add_edge("analyze", "librarian")
-workflow.add_edge("librarian", "architect")
-workflow.add_edge("architect", "scribe")
-workflow.add_edge("scribe", END)
+workflow.add_edge("research", END)
 
 # Compile
 app_graph = workflow.compile()

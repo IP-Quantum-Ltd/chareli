@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class VisualLibrarian(BaseService, BaseAIClient):
     """
     Stage 0: Visual Librarian.
-    Supports three modes: 'precision' (classic scoring), 'batch' (vision selection), or 'hybrid'.
+    Optimized Precision Mode: Saves the prize-winning screenshot to avoid double-visiting URLs.
     """
 
     def __init__(self):
@@ -36,40 +36,26 @@ class VisualLibrarian(BaseService, BaseAIClient):
         if not internal_screenshots:
             return {"status": "failed", "reason": "No internal reference images."}
 
-        # Reference image for correlation (Latest gameplay frame)
         reference_img = internal_screenshots[-1]
 
         # 1. Search Logic
+        search_query = f"{game_title} arcade browser game play online"
         if self.mode == "batch":
-            # Colleague's Playwright Meta-Search
-            search_query = f"{game_title} arcade browser game play online"
             search_step = await search_for_urls(
                 search_query=search_query,
                 output_dir=str(Path(__file__).parents[2] / "stage0_artifacts" / game_id / "search")
             )
             raw_candidates = search_step.get("candidates", [])
         else:
-            # User's Precise Tavily Search
-            search_query = f"{game_title} arcade browser game play online"
             raw_candidates = await self._get_candidate_urls(search_query)
 
         if not raw_candidates:
             return {"status": "failed", "reason": "Search returned 0 candidates."}
 
-        # 2. Filtering Logic
-        candidates_to_verify = []
-        if self.mode in ["batch", "hybrid"] and len(raw_candidates) > 3:
-            # Use Vision-Assisted Selection to pick top 3 targets
-            selection = await self._select_search_results_with_vision(
-                game_title, reference_img, raw_candidates
-            )
-            selected_urls = selection.get("selected_urls") or []
-            candidates_to_verify = [c for c in raw_candidates if c['url'] in selected_urls][:3]
-        else:
-            # Just take top 3
-            candidates_to_verify = raw_candidates[:3]
+        # 2. Candidate Selection
+        candidates_to_verify = raw_candidates[:3] # Focus on top 3 for precision
 
-        # 3. Correlation Loop (User's Scoring Logic)
+        # 3. Correlation Loop
         candidates = []
         external_dir = Path(__file__).resolve().parents[2] / "stage0_artifacts" / game_id / "external"
         external_dir.mkdir(parents=True, exist_ok=True)
@@ -83,6 +69,7 @@ class VisualLibrarian(BaseService, BaseAIClient):
                 with open(output_path, "rb") as f:
                     ext_base64 = base64.b64encode(f.read()).decode("utf-8")
                 
+                # Perform Triple-Image Correlation
                 score_data = await self._calculate_correlation(game_title, reference_img, ext_base64, url)
                 
                 candidates.append({
@@ -90,6 +77,7 @@ class VisualLibrarian(BaseService, BaseAIClient):
                     "confidence_score": score_data.get("confidence_score", 0),
                     "reasoning": score_data.get("reasoning", "Unknown"),
                     "extracted_facts": score_data.get("facts", {}),
+                    "base64": ext_base64, # Save for deep extraction
                     "screenshot_path": str(output_path)
                 })
 
@@ -98,10 +86,18 @@ class VisualLibrarian(BaseService, BaseAIClient):
             
         best_match = max(candidates, key=lambda x: x["confidence_score"])
         
-        # 4. Deep Extraction (Winners only)
+        # 4. Optional Deep Extraction (REUSES the existing screenshot to avoid double-visit)
+        best_match["deep_research_results"] = {} 
         if best_match["confidence_score"] > 75:
-            deep_info = await self._extract_deep_content(best_match["url"])
-            best_match["extracted_facts"].update(deep_info)
+            self.logger.info(f"High confidence match ({best_match['confidence_score']}%). Performing deep content grab...")
+            deep_info = await self._extract_deep_content_from_image(best_match["url"], best_match["base64"])
+            if deep_info:
+                best_match["deep_research_results"] = deep_info
+                best_match["extracted_facts"].update(deep_info)
+
+        # Cleanup bulky base64s before returning to avoid state bloat
+        for c in candidates:
+            if "base64" in c: del c["base64"]
 
         return {
             "status": "success",
@@ -121,23 +117,22 @@ class VisualLibrarian(BaseService, BaseAIClient):
             return results.get("results", [])
         except: return []
 
-    async def _select_search_results_with_vision(self, title: str, thumb: str, results: List[Dict[str, Any]]):
-        # Mini-selection logic to pick the best 3 URLs from context
-        prompt = f"Given these search results for the game '{title}', and the thumbnail provided, pick the top 3 URLs that are most likely the official or primary gameplay source. Return JSON {{'selected_urls': []}}"
-        # ... logic to call LLM with search text
-        return {"selected_urls": [r['url'] for r in results[:3]]}
-
     async def _calculate_correlation(self, title, internal_img, external_img, url):
-        # User's original GPT-4o Scoring Logic with explicit JSON instruction
         prompt = f"""
         Task: Triple-Image Correlation Analysis for '{title}' at {url}.
         Compare the internal reference image against this external web page.
-        Analyze UI consistency, art style, and branding assets to determine if they are the search results for the same game.
+        Analyze UI consistency, art style, and branding assets to determine if they are the same game.
         
         Return a JSON object with:
-        - confidence_score: int (0-100)
-        - reasoning: brief analysis
-        - facts: {{'controls': '...', 'rules': '...'}}
+        {{
+            "confidence_score": int (0-100),
+            "reasoning": "string",
+            "facts": {{
+                "controls": "string",
+                "rules": "string",
+                "original_developer": "string"
+            }}
+        }}
         """
         messages = [
             {"role": "user", "content": [
@@ -148,14 +143,17 @@ class VisualLibrarian(BaseService, BaseAIClient):
         ]
         return await self.chat_completion(messages=messages, response_format={"type": "json_object"})
 
-    async def _extract_deep_content(self, url: str) -> Dict[str, Any]:
-        # User's Deep Fact Pass with explicit JSON instruction
-        output_path = "deep_research.png"
-        await capture_external_page(url, output_path) 
-        if not os.path.exists(output_path): return {}
-        with open(output_path, "rb") as f:
-            base64_img = base64.b64encode(f.read()).decode("utf-8")
-        prompt = "Extract instructions, controls, and unique features from this game page screenshot. Return the data as a structured JSON object."
+    async def _extract_deep_content_from_image(self, url: str, base64_img: str) -> Dict[str, Any]:
+        """Performs deep pass on existing screenshot to avoid double-visiting the URL."""
+        prompt = f"""
+        Analyze this game page screenshot from {url}.
+        Extract EXACT factual details for:
+        - How to Play / Instructions
+        - Key Game Controls (Keyboard, Mouse, Touch)
+        - Unique Features, Modes or Power-ups
+        
+        Return as a structured JSON object.
+        """
         messages = [
             {"role": "user", "content": [
                 {"type": "text", "text": prompt},
@@ -163,5 +161,4 @@ class VisualLibrarian(BaseService, BaseAIClient):
             ]}
         ]
         res = await self.chat_completion(messages=messages, response_format={"type": "json_object"})
-        if os.path.exists(output_path): os.remove(output_path)
         return res if res else {}

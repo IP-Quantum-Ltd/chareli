@@ -2,6 +2,7 @@ import asyncio
 import logging
 import json
 from app.services.graph_orchestrator import run_pipeline_with_tracking
+from app.config import settings
 
 # Configure Logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s — %(message)s")
@@ -14,9 +15,9 @@ async def test_full_flow():
     """
     logger.info("=== STARTING LANGGRAPH TEST FLOW (COST TRACKING ENABLED) ===")
     
-    # Proposal ID for 'Feed Monster' based on live staging slug
-    test_id = "74098748-0e72-4bbb-b93f-d4a92ad3c249"
-    game_title = "Football Kicks"
+    # Game ID and Title for validation
+    test_id = settings.TEST_GAME_ID
+    game_title = settings.TEST_GAME_TITLE
     
     try:
         final_state = await run_pipeline_with_tracking(test_id, game_title)
