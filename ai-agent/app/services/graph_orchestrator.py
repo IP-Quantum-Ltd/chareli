@@ -4,6 +4,7 @@ import base64
 from typing import TypedDict, Dict, Any, List, Optional
 from langgraph.graph import StateGraph, END
 from langsmith import traceable
+from app.config import settings
 
 from app.services.browser_agent import capture_game_preview
 from app.services.visual_librarian import VisualLibrarian
@@ -28,6 +29,8 @@ class AgentState(TypedDict):
     article: str
     accumulated_cost: float
     status: str
+    report_path: Optional[str]
+    max_candidates: int
     error_message: Optional[str]
 
 # --- Node Implementations ---
@@ -75,7 +78,8 @@ async def research_node(state: AgentState) -> AgentState:
     result = await librarian.verify_and_research(
         game_id=state["game_id"],
         game_title=state["game_title"], 
-        internal_screenshots=state["internal_imgs_base64"]
+        internal_screenshots=state["internal_imgs_base64"],
+        max_candidates=state.get("max_candidates", settings.LIBRARIAN_MAX_CANDIDATES)
     )
     
     state["accumulated_cost"] += librarian.last_cost
@@ -161,6 +165,24 @@ async def scribe_node(state: AgentState) -> AgentState:
     state["status"] = "complete"
     return state
 
+async def reporter_node(state: AgentState) -> AgentState:
+    if state["status"] == "failed": return state
+    logger.info("Node: Reporter (Final Audit)")
+    
+    from app.services.reporter_service import ReporterService
+    reporter = ReporterService()
+    
+    report_path = f"stage0_artifacts/{state['game_id']}/audit_report_{state['game_id']}.pdf"
+    path = reporter.generate_audit_report(
+        state["game_id"],
+        state["game_title"],
+        state["investigation"],
+        report_path
+    )
+    
+    state["report_path"] = path
+    return state
+
 # --- Build the Graph ---
 
 workflow = StateGraph(AgentState)
@@ -171,16 +193,18 @@ workflow.add_node("analyze", analyze_node)
 workflow.add_node("librarian", librarian_node)
 workflow.add_node("architect", architect_node)
 workflow.add_node("scribe", scribe_node)
+workflow.add_node("reporter", reporter_node)
 
 workflow.set_entry_point("capture")
 workflow.add_edge("capture", "research")
-workflow.add_edge("research", END)
+workflow.add_edge("research", "reporter")
+workflow.add_edge("reporter", END)
 
 # Compile
 app_graph = workflow.compile()
 
 @traceable(run_type="chain", name="ArcadeBox SEO Pipeline")
-async def run_pipeline_with_tracking(game_id: str, game_title: str) -> Dict[str, Any]:
+async def run_pipeline_with_tracking(game_id: str, game_title: str, max_candidates: Optional[int] = None) -> Dict[str, Any]:
     initial_state = {
         "game_id": game_id,
         "game_title": game_title,
@@ -194,6 +218,8 @@ async def run_pipeline_with_tracking(game_id: str, game_title: str) -> Dict[str,
         "article": "",
         "accumulated_cost": 0.0,
         "status": "starting",
+        "report_path": None,
+        "max_candidates": max_candidates or settings.LIBRARIAN_MAX_CANDIDATES,
         "error_message": None
     }
     

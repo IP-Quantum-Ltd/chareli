@@ -3,8 +3,9 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     # Main ArcadeBox API
-    ARCADE_API_BASE_URL: str
-    ARCADE_API_TOKEN: str
+    ARCADE_API_BASE_URL: str = "http://localhost:5173"
+    ARCADE_CLIENT_BASE_URL: str = "https://staging.arcadesbox.com"
+    ARCADE_API_TOKEN: str = ""
 
     # OpenAI
     OPENAI_API_KEY: str
@@ -37,6 +38,7 @@ class Settings(BaseSettings):
     # Librarian Configuration
     # 'precision' (Classic Scoring), 'batch' (Colleague), 'hybrid' (Both)
     LIBRARIAN_MODE: str = "precision"
+    LIBRARIAN_MAX_CANDIDATES: int = 3
     TEST_GAME_ID: str = "d1fbe524-b5e6-434c-91c4-bd3e7032fc72"
     TEST_GAME_TITLE: str = "Feed monster"
 

@@ -7,18 +7,10 @@ from io import BytesIO
 from pathlib import Path
 from urllib.parse import quote_plus
 from playwright.async_api import async_playwright
-from dotenv import load_dotenv
 from PIL import Image
+from app.config import settings
 
-load_dotenv()
-
-# Pull credentials strictly from the .env file
-BASE_URL = os.getenv("CLIENT_URL")
-if not BASE_URL:
-    raise ValueError("CLIENT_URL must be strictly defined in the .env file.")
-
-
-async def _wait_for_iframe_render(page, game_element, timeout_seconds: int = 30):
+async def _wait_for_iframe_render(page, game_element, timeout_seconds: int = 45):
     """
     Advanced pixel and text detection to ensure the game has finished loading 
     its engine (Unity/HTML5) before we snap the final photo.
@@ -80,30 +72,26 @@ async def _wait_for_iframe_render(page, game_element, timeout_seconds: int = 30)
             print(f"Activity detected (Churn: {churn:.2f}). Giving the engine 4s to settle...")
             await page.wait_for_timeout(4000)
             return
-
-            print("Gameplay iframe looks ready for final capture.")
-            await page.wait_for_timeout(2000)
-            return
         except Exception: 
             await page.wait_for_timeout(1000)
 
 
 async def capture_game_preview(game_id: str, output_path: str = "screenshot.png"):
     """
-    Agent 1: Navigates directly to the public gameplay screen and captures 
-    a dual-frame sequence for the Visual Librarian.
+    Agent 1: Navigates directly to the hosted gameplay screen.
+    Uses settings.ARCADE_CLIENT_BASE_URL.
     """
-    print(f"Starting Clean Multi-Frame Agent 1 for Game ID: {game_id}")
+    print(f"Starting Multi-Frame Agent 1 for Game ID: {game_id}")
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(viewport={"width": 1280, "height": 800})
+        context = await browser.new_context(viewport={"width": 1440, "height": 900})
         page = await context.new_page()
 
         try:
             # 1. Navigate directly to the public gameplay URL
-            preview_url = f"{BASE_URL}/gameplay/{game_id}"
+            preview_url = f"{settings.ARCADE_CLIENT_BASE_URL}/gameplay/{game_id}"
             print(f"Navigating to game preview: {preview_url}")
-            await page.goto(preview_url, wait_until="domcontentloaded")
+            await page.goto(preview_url, wait_until="domcontentloaded", timeout=45000)
 
             # Dismiss banners immediately
             await _dismiss_common_overlays(page)
@@ -113,7 +101,7 @@ async def capture_game_preview(game_id: str, output_path: str = "screenshot.png"
             await page.wait_for_selector("iframe", state="visible", timeout=20000)
             game_element = page.locator("iframe").first
             
-            # Patience for splash screen
+            # Patience for splash screen before first frame
             await page.wait_for_timeout(6000) 
             
             initial_path = f"initial_{game_id}.png"
@@ -133,7 +121,7 @@ async def capture_game_preview(game_id: str, output_path: str = "screenshot.png"
             return {"paths": [initial_path, final_path]}
 
         except Exception as e:
-            print(f"Error during multi-frame capture: {e}")
+            print(f"Error during staging capture: {e}")
             raise e
         finally:
             await browser.close()
@@ -145,7 +133,7 @@ async def capture_external_page(url: str, output_path: str):
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context(
-            viewport={"width": 1280, "height": 800},
+            viewport={"width": 1440, "height": 900},
             user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
         )
         page = await context.new_page()
@@ -158,7 +146,7 @@ async def capture_external_page(url: str, output_path: str):
 
             game_element = await _locate_external_game_surface(page)
             if game_element:
-                # Use the variance-aware render waiter for both iframes and raw surfaces
+                # Use the variance-aware render waiter
                 await _wait_for_iframe_render(page, game_element)
                 await game_element.screenshot(path=output_path)
                 return {"screenshot_path": output_path, "mode": "precision", "metadata": await _extract_external_page_metadata(page, url)}
@@ -166,6 +154,7 @@ async def capture_external_page(url: str, output_path: str):
             await page.screenshot(path=output_path, full_page=True)
             return {"screenshot_path": output_path, "mode": "full_page", "metadata": await _extract_external_page_metadata(page, url)}
         except Exception as e:
+            print(f"Failed external capture for {url}: {e}")
             return None
         finally:
             await browser.close()
@@ -185,7 +174,7 @@ async def _dismiss_common_overlays(page):
             btn = page.locator(s).first
             if await btn.is_visible(): 
                 await btn.click(timeout=1500)
-                await page.wait_for_timeout(500) # Small pause for animation
+                await page.wait_for_timeout(500) 
         except: continue
 
 async def _click_start_controls(page):
@@ -217,7 +206,7 @@ async def _extract_external_page_metadata(page, source_url: str) -> dict:
         return {"title": "Unknown", "source_url": source_url}
 
 async def search_for_urls(search_query: str, output_dir: str, count: int = 5) -> dict:
-    """Multi-engine meta-search (Google, Brave, Bing) with Bot Evasion."""
+    """Multi-engine meta-search (Google, Brave, Bing)."""
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
     
@@ -232,7 +221,7 @@ async def search_for_urls(search_query: str, output_dir: str, count: int = 5) ->
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context(
             user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-            viewport={"width": 1280, "height": 800}
+            viewport={"width": 1440, "height": 900}
         )
         page = await context.new_page()
         
@@ -262,8 +251,7 @@ async def search_for_urls(search_query: str, output_dir: str, count: int = 5) ->
                             "engine": name, 
                             "screenshot_path": str(search_snap)
                         })
-            except Exception as e:
-                # print(f"Engine {name} failed: {e}")
+            except Exception:
                 continue
                 
         await browser.close()

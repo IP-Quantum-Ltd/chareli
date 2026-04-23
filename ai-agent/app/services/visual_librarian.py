@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import json
 import logging
@@ -16,7 +17,7 @@ logger = logging.getLogger(__name__)
 class VisualLibrarian(BaseService, BaseAIClient):
     """
     Stage 0: Visual Librarian.
-    Optimized Precision Mode: Saves the prize-winning screenshot to avoid double-visiting URLs.
+    Implements Sequential Correlation Analysis to minimize system resource usage.
     """
 
     def __init__(self):
@@ -29,9 +30,10 @@ class VisualLibrarian(BaseService, BaseAIClient):
         self, 
         game_id: str, 
         game_title: str, 
-        internal_screenshots: List[str]
+        internal_screenshots: List[str],
+        max_candidates: int = 3
     ) -> Dict[str, Any]:
-        self.logger.info(f"Visual Librarian initiating {self.mode} investigation for: {game_title}")
+        self.logger.info(f"Visual Librarian initiating sequential {self.mode} investigation for: {game_title}")
 
         if not internal_screenshots:
             return {"status": "failed", "reason": "No internal reference images."}
@@ -39,7 +41,7 @@ class VisualLibrarian(BaseService, BaseAIClient):
         reference_img = internal_screenshots[-1]
 
         # 1. Search Logic
-        search_query = f"{game_title} arcade browser game play online"
+        search_query = f"{game_title} play arcade browser game online"
         if self.mode == "batch":
             search_step = await search_for_urls(
                 search_query=search_query,
@@ -53,40 +55,44 @@ class VisualLibrarian(BaseService, BaseAIClient):
             return {"status": "failed", "reason": "Search returned 0 candidates."}
 
         # 2. Candidate Selection
-        candidates_to_verify = raw_candidates[:3] # Focus on top 3 for precision
+        candidates_to_verify = raw_candidates[:max_candidates]
 
-        # 3. Correlation Loop
-        candidates = []
+        # 3. Sequential Investigation Loop (Resource Friendly)
         external_dir = Path(__file__).resolve().parents[2] / "stage0_artifacts" / game_id / "external"
         external_dir.mkdir(parents=True, exist_ok=True)
         
+        candidates = []
         for i, result in enumerate(candidates_to_verify):
             url = result["url"]
             output_path = external_dir / f"candidate_{i}.png"
+            self.logger.info(f"Investigating candidate {i+1}/{len(candidates_to_verify)}: {url}")
             
-            capture_data = await capture_external_page(url, str(output_path))
-            if capture_data and os.path.exists(output_path):
-                with open(output_path, "rb") as f:
-                    ext_base64 = base64.b64encode(f.read()).decode("utf-8")
-                
-                # Perform Triple-Image Correlation
-                score_data = await self._calculate_correlation(game_title, reference_img, ext_base64, url)
-                
-                candidates.append({
-                    "url": url,
-                    "confidence_score": score_data.get("confidence_score", 0),
-                    "reasoning": score_data.get("reasoning", "Unknown"),
-                    "extracted_facts": score_data.get("facts", {}),
-                    "base64": ext_base64, # Save for deep extraction
-                    "screenshot_path": str(output_path)
-                })
+            try:
+                capture_data = await capture_external_page(url, str(output_path))
+                if capture_data and os.path.exists(output_path):
+                    with open(output_path, "rb") as f:
+                        ext_base64 = base64.b64encode(f.read()).decode("utf-8")
+                    
+                    # Perform Triple-Image Correlation
+                    score_data = await self._calculate_correlation(game_title, reference_img, ext_base64, url)
+                    
+                    candidates.append({
+                        "url": url,
+                        "confidence_score": score_data.get("confidence_score", 0),
+                        "reasoning": score_data.get("reasoning", "Unknown"),
+                        "extracted_facts": score_data.get("facts", {}),
+                        "base64": ext_base64,
+                        "screenshot_path": str(output_path)
+                    })
+            except Exception as e:
+                self.logger.error(f"Failed to investigate {url}: {e}")
 
         if not candidates:
             return {"status": "failed", "reason": "No valid external matches found."}
             
         best_match = max(candidates, key=lambda x: x["confidence_score"])
         
-        # 4. Optional Deep Extraction (REUSES the existing screenshot to avoid double-visit)
+        # 4. Deep Extraction (REUSES the existing screenshot)
         best_match["deep_research_results"] = {} 
         if best_match["confidence_score"] > 75:
             self.logger.info(f"High confidence match ({best_match['confidence_score']}%). Performing deep content grab...")
@@ -95,7 +101,7 @@ class VisualLibrarian(BaseService, BaseAIClient):
                 best_match["deep_research_results"] = deep_info
                 best_match["extracted_facts"].update(deep_info)
 
-        # Cleanup bulky base64s before returning to avoid state bloat
+        # Cleanup bulky base64s
         for c in candidates:
             if "base64" in c: del c["base64"]
 
@@ -107,7 +113,6 @@ class VisualLibrarian(BaseService, BaseAIClient):
         }
 
     async def _get_candidate_urls(self, query: str) -> List[Dict[str, str]]:
-        import asyncio
         loop = asyncio.get_event_loop()
         try:
             results = await loop.run_in_executor(
@@ -121,7 +126,7 @@ class VisualLibrarian(BaseService, BaseAIClient):
         prompt = f"""
         Task: Triple-Image Correlation Analysis for '{title}' at {url}.
         Compare the internal reference image against this external web page.
-        Analyze UI consistency, art style, and branding assets to determine if they are the same game.
+        Analyze UI consistency, art style, and branding assets to determine if they represent the same game.
         
         CRITICAL RULE: If the external image is a solid color, a loading screen, a login wall, or a 'grey box' where content hasn't rendered yet, you MUST return a confidence_score of 0. Do not hallucinate content.
         
@@ -150,7 +155,6 @@ class VisualLibrarian(BaseService, BaseAIClient):
         )
 
     async def _extract_deep_content_from_image(self, url: str, base64_img: str) -> Dict[str, Any]:
-        """Performs deep pass on existing screenshot to avoid double-visiting the URL."""
         prompt = f"""
         Analyze this game page screenshot from {url}.
         Extract EXACT factual details for:
