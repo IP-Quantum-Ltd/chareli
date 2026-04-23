@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings
 
+
 class Settings(BaseSettings):
     # Main ArcadeBox API
     ARCADE_API_BASE_URL: str
@@ -35,7 +36,7 @@ class Settings(BaseSettings):
 
     # Librarian Configuration
     # 'precision' (Classic Scoring), 'batch' (Colleague), 'hybrid' (Both)
-    LIBRARIAN_MODE: str = "hybrid"
+    LIBRARIAN_MODE: str = "precision"
 
     # Webhook & Cron
     WEBHOOK_SECRET: str = ""
@@ -44,5 +45,6 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         extra = "ignore"
+
 
 settings = Settings()

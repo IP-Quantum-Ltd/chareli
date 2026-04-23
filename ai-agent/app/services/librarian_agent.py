@@ -651,6 +651,16 @@ class LibrarianAgent(BaseService, BaseAIClient):
             metadata={"stage": "librarian_grounding"},
         )
 
+    def _sanitize_for_json(self, data: Any) -> Any:
+        """Recursively convert non-serializable objects (like datetime) to strings."""
+        if isinstance(data, dict):
+            return {k: self._sanitize_for_json(v) for k, v in data.items()}
+        elif isinstance(data, list):
+            return [self._sanitize_for_json(v) for v in data]
+        elif isinstance(data, datetime):
+            return data.isoformat()
+        return data
+
     @traceable(run_type="chain", name="Grounded Context Retrieval")
     async def build_grounded_context(
         self,
@@ -671,7 +681,7 @@ class LibrarianAgent(BaseService, BaseAIClient):
             mongo_context,
         )
 
-        return {
+        raw_result = {
             "status": "success",
             "retrieval_queries": retrieval_queries,
             "postgres": postgres_context,
@@ -679,3 +689,6 @@ class LibrarianAgent(BaseService, BaseAIClient):
             "mongo_persistence": mongo_persistence,
             "grounded_packet": grounded_packet,
         }
+
+        # Final sanitization pass to prevent serialization errors in downstream nodes (Scribe, etc.)
+        return self._sanitize_for_json(raw_result)
