@@ -1,11 +1,16 @@
 from pydantic_settings import BaseSettings
-
+from pydantic import field_validator
 
 class Settings(BaseSettings):
     # Main ArcadeBox API
     ARCADE_API_BASE_URL: str = "http://localhost:5173"
     ARCADE_CLIENT_BASE_URL: str = "https://staging.arcadesbox.com"
     ARCADE_API_TOKEN: str = ""
+
+    @field_validator("ARCADE_API_BASE_URL", "ARCADE_CLIENT_BASE_URL", mode="before")
+    @classmethod
+    def strip_slashes(cls, v: str) -> str:
+        return v.rstrip("/") if isinstance(v, str) else v
 
     # OpenAI
     OPENAI_API_KEY: str
