@@ -176,12 +176,15 @@ async def reporter_node(state: AgentState) -> AgentState:
     from app.services.reporter_service import ReporterService
     reporter = ReporterService()
     
-    report_path = f"stage0_artifacts/{state['game_id']}/audit_report_{state['game_id']}.pdf"
+    # Use the final frame as the target baseline
+    ref_img = state["internal_imgs_paths"][-1] if state.get("internal_imgs_paths") else None
+    
     path = reporter.generate_audit_report(
         state["game_id"],
         state["game_title"],
         state["investigation"],
-        report_path
+        report_path,
+        reference_image_path=ref_img
     )
     
     state["report_path"] = path
