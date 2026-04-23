@@ -576,6 +576,12 @@ class LibrarianAgent(BaseService, BaseAIClient):
             "mongo_results": mongo_context.get("results") or [],
         }
 
+        # Handle datetime serialization for JSON
+        def datetime_handler(obj):
+            if isinstance(obj, datetime):
+                return obj.isoformat()
+            return str(obj)
+
         prompt = f"""
         Task: Stage 2 Librarian grounding for the ArcadeBox game '{game_title}'.
 
@@ -589,7 +595,7 @@ class LibrarianAgent(BaseService, BaseAIClient):
         - Keep the packet practical for Stage 3 and Stage 5.
 
         Evidence bundle:
-        {json.dumps(evidence_bundle, indent=2)}
+        {json.dumps(evidence_bundle, indent=2, default=datetime_handler)}
 
         Return ONLY valid JSON:
         {{

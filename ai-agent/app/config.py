@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     MONGODB_RAG_COLLECTION: str = "stage2_grounded_contexts"
     MONGODB_VECTOR_INDEX: str = "stage2_grounded_context_vector_index"
 
+    # Librarian Configuration
+    # 'precision' (Classic Scoring), 'batch' (Colleague), 'hybrid' (Both)
+    LIBRARIAN_MODE: str = "hybrid"
+
     # Webhook & Cron
     WEBHOOK_SECRET: str = ""
     CRON_INTERVAL_MINUTES: int = 15
