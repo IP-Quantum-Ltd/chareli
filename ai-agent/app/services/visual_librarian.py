@@ -134,7 +134,9 @@ class VisualLibrarian(BaseService, BaseAIClient):
         Compare the internal reference image against this external web page.
         Analyze UI consistency, art style, and branding assets to determine if they represent the same game.
         
-        CRITICAL RULE: If the external image is a solid color, a loading screen, a login wall, or a 'grey box' where content hasn't rendered yet, you MUST return a confidence_score of 0. Do not hallucinate content.
+        CRITICAL RULE: If the external image is a solid color, a blank 'grey box', a login wall, or a generic connection error, you MUST return a confidence_score of 0.
+        
+        However, if the image shows a BRANDED SPLASH SCREEN, a LOADING BAR with the game's logo, or recognisable ART belonging to the game, you SHOULD return a positive confidence score based on the visual match, even if the active gameplay hasn't rendered yet.
         
         Return a JSON object with:
         {{

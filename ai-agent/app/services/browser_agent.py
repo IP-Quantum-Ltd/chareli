@@ -50,7 +50,7 @@ async def _wait_for_iframe_render(page, game_element, timeout_seconds: int = 45)
             avg_r, avg_g, avg_b = sum(p[0] for p in pixels1)/len(pixels1), sum(p[1] for p in pixels1)/len(pixels1), sum(p[2] for p in pixels1)/len(pixels1)
             variance = sum((p[0]-avg_r)**2 + (p[1]-avg_g)**2 + (p[2]-avg_b)**2 for p in pixels1) / len(pixels1)
             
-            if variance < 300: # Increased threshold for stricter grounding
+            if variance < 150: # Lowered from 300 to allow minimalist splash screens
                 print(f"Gameplay looks too simplistic/void-like (Var: {variance:.2f}). Waiting...")
                 await page.wait_for_timeout(4000)
                 continue
