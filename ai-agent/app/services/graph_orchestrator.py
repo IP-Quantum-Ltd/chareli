@@ -178,6 +178,7 @@ async def reporter_node(state: AgentState) -> AgentState:
     
     # Use the final frame as the target baseline
     ref_img = state["internal_imgs_paths"][-1] if state.get("internal_imgs_paths") else None
+    report_path = f"stage0_artifacts/{state['game_id']}/audit_report_{state['game_id']}.pdf"
     
     path = reporter.generate_audit_report(
         state["game_id"],
