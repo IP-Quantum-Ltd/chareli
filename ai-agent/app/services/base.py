@@ -64,13 +64,19 @@ class BaseAIClient:
             usage = response.usage_metadata
             self.last_cost = self._calculate_langchain_cost(usage)
             logger.info(f"[Financial Monitor] Step Cost: ${self.last_cost:.4f}")
-            content = response.content
+            content = response.content or ""
+            raw_content = content.strip()
 
             if response_format and response_format.get("type") == "json_object":
                 import json
                 try:
+                    # Detect Silent Refusal (Empty Content)
+                    if not raw_content:
+                        logger.warning("Empty response detected from LLM (Potential Refusal). Using fallback.")
+                        if fallback_data is not None: return fallback_data
+                        return {"error": "Empty response from AI"}
+ 
                     # Robust cleaning for Markdown-wrapped JSON
-                    raw_content = content.strip()
                     if raw_content.startswith("```"):
                         # Extract content between backticks
                         lines = raw_content.splitlines()

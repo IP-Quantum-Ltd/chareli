@@ -49,14 +49,23 @@ async def _wait_for_iframe_render(page, game_element, timeout_seconds: int = 30)
                 await page.wait_for_timeout(2000)
                 continue
 
-            # Pixel check for black screens
+            # Advanced Pixel Check for "Solid Voids" (Grey/Black/White slabs)
             screenshot_bytes = await game_element.screenshot()
             image = Image.open(BytesIO(screenshot_bytes)).convert("RGB").resize((160, 90))
             pixels = list(image.getdata())
-            black_pixels = sum(1 for r, g, b in pixels if max(r, g, b) < 24)
-            if (black_pixels / len(pixels)) > 0.95:
-                print("Gameplay still looks like a black loading screen.")
-                await page.wait_for_timeout(2000)
+            
+            # Calculate standard deviation to detect 'solidness'
+            r_vals = [p[0] for p in pixels]
+            g_vals = [p[1] for p in pixels]
+            b_vals = [p[2] for p in pixels]
+            
+            avg_r, avg_g, avg_b = sum(r_vals)/len(pixels), sum(g_vals)/len(pixels), sum(b_vals)/len(pixels)
+            variance = sum((p[0]-avg_r)**2 + (p[1]-avg_g)**2 + (p[2]-avg_b)**2 for p in pixels) / len(pixels)
+            
+            # Low variance (< 100) means the image is a generic solid block (grey/black/etc.)
+            if variance < 100:
+                print(f"Gameplay looks like a solid color void (Variance: {variance:.2f}). Waiting...")
+                await page.wait_for_timeout(3000)
                 continue
 
             print("Gameplay iframe looks ready for final capture.")
@@ -136,8 +145,8 @@ async def capture_external_page(url: str, output_path: str):
 
             game_element = await _locate_external_game_surface(page)
             if game_element:
-                if (await game_element.evaluate("el => el.tagName.toLowerCase()")) == "iframe":
-                    await _wait_for_iframe_render(page, game_element)
+                # Use the variance-aware render waiter for both iframes and raw surfaces
+                await _wait_for_iframe_render(page, game_element)
                 await game_element.screenshot(path=output_path)
                 return {"screenshot_path": output_path, "mode": "precision", "metadata": await _extract_external_page_metadata(page, url)}
             

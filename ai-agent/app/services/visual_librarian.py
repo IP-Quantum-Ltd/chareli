@@ -123,6 +123,8 @@ class VisualLibrarian(BaseService, BaseAIClient):
         Compare the internal reference image against this external web page.
         Analyze UI consistency, art style, and branding assets to determine if they are the same game.
         
+        CRITICAL RULE: If the external image is a solid color, a loading screen, a login wall, or a 'grey box' where content hasn't rendered yet, you MUST return a confidence_score of 0. Do not hallucinate content.
+        
         Return a JSON object with:
         {{
             "confidence_score": int (0-100),
@@ -141,7 +143,11 @@ class VisualLibrarian(BaseService, BaseAIClient):
                 {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{external_img}"}}
             ]}
         ]
-        return await self.chat_completion(messages=messages, response_format={"type": "json_object"})
+        return await self.chat_completion(
+            messages=messages, 
+            response_format={"type": "json_object"},
+            fallback_data={"confidence_score": 0, "reasoning": "Vision pass failed or returned empty content.", "facts": {}}
+        )
 
     async def _extract_deep_content_from_image(self, url: str, base64_img: str) -> Dict[str, Any]:
         """Performs deep pass on existing screenshot to avoid double-visiting the URL."""
@@ -160,5 +166,9 @@ class VisualLibrarian(BaseService, BaseAIClient):
                 {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{base64_img}"}}
             ]}
         ]
-        res = await self.chat_completion(messages=messages, response_format={"type": "json_object"})
+        res = await self.chat_completion(
+            messages=messages, 
+            response_format={"type": "json_object"},
+            fallback_data={"instructions": "None", "controls": "None", "features": []}
+        )
         return res if res else {}
