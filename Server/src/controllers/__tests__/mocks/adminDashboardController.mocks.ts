@@ -78,7 +78,7 @@ export const createMockDashboardData = (overrides: Partial<MockDashboardData> = 
   anonymousTimePlayed: 18000,
   totalRegisteredUsers: 25,
   dailyActiveUsers: 5,
-  dailyAnonymousVisitors: 20,
+  dailyAnonymousPlayers: 20,
   avgSessionDuration: 180,
   ...overrides,
 });
@@ -90,7 +90,7 @@ export interface MockDashboardData {
   anonymousTimePlayed: number;
   totalRegisteredUsers: number;
   dailyActiveUsers: number;
-  dailyAnonymousVisitors: number;
+  dailyAnonymousPlayers: number;
   avgSessionDuration: number;
 }
 

@@ -113,6 +113,7 @@ export const cachePatterns = {
     `cache:${cacheConfig.version}:category:${categoryId}:games:*`,
   allSearch: () => `cache:${cacheConfig.version}:search:*`,
   allAnalytics: () => `cache:${cacheConfig.version}:analytics:*`,
+  analyticsDashboard: () => `cache:${cacheConfig.version}:analytics:dashboard:*`,
   everything: () => `cache:${cacheConfig.version}:*`,
 };
 

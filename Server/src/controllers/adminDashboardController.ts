@@ -170,7 +170,10 @@ export const getDashboardAnalytics = async (
       .select('COUNT(DISTINCT COALESCE(CAST(a1.userId AS VARCHAR), a1.sessionId))', 'count')
       .leftJoin('a1.user', 'user1')
       .leftJoin('user1.role', 'role1')
-      .where('a1.createdAt > :twentyFourHoursAgo', { twentyFourHoursAgo })
+      .where('a1.createdAt BETWEEN :outerStart AND :outerEnd', {
+        outerStart: twentyFourHoursAgo,
+        outerEnd: now,
+      })
       .andWhere('a1.gameId IS NOT NULL')
       .andWhere('a1.startTime IS NOT NULL')
       .andWhere('a1.endTime IS NOT NULL')
@@ -342,7 +345,7 @@ export const getDashboardAnalytics = async (
     // 3. Game Coverage - Percentage of total games that have been played
     // Track all users: authenticated (userId) + anonymous (sessionId)
     // Exclude admin users from analytics (only include players and anonymous users)
-    const totalGames = await gameRepository.count();
+    const totalGames = await gameRepository.count({ where: { status: GameStatus.ACTIVE } });
 
     // Get games played in current period
     let currentPlayedGamesQuery = analyticsRepository
@@ -545,7 +548,7 @@ export const getDashboardAnalytics = async (
       .andWhere('analytics.startTime IS NOT NULL')
       .andWhere('analytics.endTime IS NOT NULL')
       .andWhere('analytics.duration >= :minDuration', { minDuration: 30 })
-      .andWhere('analytics.startTime BETWEEN :start AND :end', {
+      .andWhere('analytics.createdAt BETWEEN :start AND :end', {
         start: twentyFourHoursAgo,
         end: now,
       })
@@ -560,7 +563,7 @@ export const getDashboardAnalytics = async (
       .andWhere('analytics.startTime IS NOT NULL')
       .andWhere('analytics.endTime IS NOT NULL')
       .andWhere('analytics.duration >= :minDuration', { minDuration: 30 })
-      .andWhere('analytics.startTime BETWEEN :start AND :end', {
+      .andWhere('analytics.createdAt BETWEEN :start AND :end', {
         start: fortyEightHoursAgo,
         end: twentyFourHoursAgo,
       })
@@ -672,8 +675,9 @@ export const getDashboardAnalytics = async (
             .andWhere('analytics.startTime IS NOT NULL')
             .andWhere('analytics.endTime IS NOT NULL')
             .andWhere('analytics.duration >= :minDuration', { minDuration: 30 })
-            .andWhere('analytics.createdAt > :twentyFourHoursAgo', {
-              twentyFourHoursAgo,
+            .andWhere('analytics.createdAt BETWEEN :start AND :end', {
+              start: twentyFourHoursAgo,
+              end: now,
             })
             .andWhere("(role.name NOT IN (:...excludedRoles) OR analytics.userId IS NULL)", { excludedRoles });
 
@@ -817,13 +821,15 @@ export const getDashboardAnalytics = async (
 
     // ==================== ANONYMOUS USER ANALYTICS ====================
 
-    // 1. Daily Anonymous Visitors (DAV) - Always 24 hours, unique sessionIds with 30+ second sessions
-    const dailyAnonymousVisitorsNow = new Date();
-    const dailyAnonymousVisitors24HoursAgo = new Date(
-      dailyAnonymousVisitorsNow.getTime() - 24 * 60 * 60 * 1000
+    // 1. Daily Anonymous Players (DAP) — anonymous sessions in the last 24 hours
+    // with a 30+ second game session. The gameId + duration filters are why
+    // this is "players" not "visitors".
+    const dailyAnonymousPlayersNow = new Date();
+    const dailyAnonymousPlayers24HoursAgo = new Date(
+      dailyAnonymousPlayersNow.getTime() - 24 * 60 * 60 * 1000
     );
 
-    const dailyAnonymousVisitorsQuery = analyticsRepository
+    const dailyAnonymousPlayersQuery = analyticsRepository
       .createQueryBuilder('analytics')
       .select('COUNT(DISTINCT analytics.sessionId)', 'count')
       .where('analytics.sessionId IS NOT NULL')
@@ -831,14 +837,14 @@ export const getDashboardAnalytics = async (
       .andWhere('analytics.gameId IS NOT NULL')
       .andWhere('analytics.duration >= :minDuration', { minDuration: 30 })
       .andWhere('analytics.createdAt BETWEEN :start AND :end', {
-        start: dailyAnonymousVisitors24HoursAgo,
-        end: dailyAnonymousVisitorsNow,
+        start: dailyAnonymousPlayers24HoursAgo,
+        end: dailyAnonymousPlayersNow,
       });
 
-    const dailyAnonymousVisitorsResult =
-      await dailyAnonymousVisitorsQuery.getRawOne();
-    const dailyAnonymousVisitors =
-      parseInt(dailyAnonymousVisitorsResult?.count) || 0;
+    const dailyAnonymousPlayersResult =
+      await dailyAnonymousPlayersQuery.getRawOne();
+    const dailyAnonymousPlayers =
+      parseInt(dailyAnonymousPlayersResult?.count) || 0;
 
     // 2. Total Visitors (Authenticated + Anonymous) for current and previous periods
     // Now includes both game sessions AND page visits to align with GA4
@@ -855,14 +861,13 @@ export const getDashboardAnalytics = async (
         '(analytics.gameId IS NOT NULL OR analytics.activityType = :pageVisit)',
         { pageVisit: 'homepage_visit' }
       )
+      // Exclude soft-deleted short sessions. Other dashboard queries get this for
+      // free via duration >= 30, but Total Visitors has no duration filter.
+      .andWhere('analytics.isDiscarded = false')
       .andWhere('analytics.createdAt BETWEEN :start AND :end', {
         start: twentyFourHoursAgo,
         end: now,
       })
-      .andWhere(
-        '(user.hasCompletedFirstLogin = :hasCompleted OR analytics.userId IS NULL)',
-        { hasCompleted: true }
-      )
       .andWhere("(role.name NOT IN (:...excludedRoles) OR analytics.userId IS NULL)", { excludedRoles });
 
     let previousTotalVisitorsQuery = analyticsRepository
@@ -877,25 +882,26 @@ export const getDashboardAnalytics = async (
         '(analytics.gameId IS NOT NULL OR analytics.activityType = :pageVisit)',
         { pageVisit: 'homepage_visit' }
       )
+      // Exclude soft-deleted short sessions. Other dashboard queries get this for
+      // free via duration >= 30, but Total Visitors has no duration filter.
+      .andWhere('analytics.isDiscarded = false')
       .andWhere('analytics.createdAt BETWEEN :start AND :end', {
         start: fortyEightHoursAgo,
         end: twentyFourHoursAgo,
       })
-      .andWhere(
-        '(user.hasCompletedFirstLogin = :hasCompleted OR analytics.userId IS NULL)',
-        { hasCompleted: true }
-      )
       .andWhere("(role.name NOT IN (:...excludedRoles) OR analytics.userId IS NULL)", { excludedRoles });
 
-    // Add country filter if provided (only applies to authenticated users with country data)
+    // Country filter must apply to anonymous traffic too via analytics.country (IP-resolved
+    // by the analytics worker). Otherwise selecting a country lets every anonymous user
+    // from every country pass through, since user_id is NULL for them.
     if (countries.length > 0) {
       currentTotalVisitorsQuery = currentTotalVisitorsQuery.andWhere(
-        '(user.country IN (:...countries) OR analytics.userId IS NULL)',
+        '(user.country IN (:...countries) OR analytics.country IN (:...countries))',
         { countries }
       );
 
       previousTotalVisitorsQuery = previousTotalVisitorsQuery.andWhere(
-        '(user.country IN (:...countries) OR analytics.userId IS NULL)',
+        '(user.country IN (:...countries) OR analytics.country IN (:...countries))',
         { countries }
       );
     }
@@ -950,6 +956,15 @@ export const getDashboardAnalytics = async (
         end: twentyFourHoursAgo,
       });
 
+    // Anonymous queries have no user join, so country must come from the IP-resolved
+    // analytics.country column written by the analytics worker.
+    if (countries.length > 0) {
+      currentAnonymousSessionsQuery = currentAnonymousSessionsQuery
+        .andWhere('analytics.country IN (:...countries)', { countries });
+      previousAnonymousSessionsQuery = previousAnonymousSessionsQuery
+        .andWhere('analytics.country IN (:...countries)', { countries });
+    }
+
     const [currentAnonymousSessions, previousAnonymousSessions] =
       await Promise.all([
         currentAnonymousSessionsQuery.getCount(),
@@ -979,7 +994,7 @@ export const getDashboardAnalytics = async (
       .andWhere('analytics.startTime IS NOT NULL')
       .andWhere('analytics.endTime IS NOT NULL')
       .andWhere('analytics.duration >= :minDuration', { minDuration: 30 })
-      .andWhere('analytics.startTime BETWEEN :start AND :end', {
+      .andWhere('analytics.createdAt BETWEEN :start AND :end', {
         start: twentyFourHoursAgo,
         end: now,
       });
@@ -993,10 +1008,17 @@ export const getDashboardAnalytics = async (
       .andWhere('analytics.startTime IS NOT NULL')
       .andWhere('analytics.endTime IS NOT NULL')
       .andWhere('analytics.duration >= :minDuration', { minDuration: 30 })
-      .andWhere('analytics.startTime BETWEEN :start AND :end', {
+      .andWhere('analytics.createdAt BETWEEN :start AND :end', {
         start: fortyEightHoursAgo,
         end: twentyFourHoursAgo,
       });
+
+    if (countries.length > 0) {
+      currentAnonymousTimePlayedQuery = currentAnonymousTimePlayedQuery
+        .andWhere('analytics.country IN (:...countries)', { countries });
+      previousAnonymousTimePlayedQuery = previousAnonymousTimePlayedQuery
+        .andWhere('analytics.country IN (:...countries)', { countries });
+    }
 
     const [
       currentAnonymousTimePlayedResult,
@@ -1038,25 +1060,21 @@ export const getDashboardAnalytics = async (
     const anonymousTime = currentAnonymousTimePlayed;
     const authenticatedTime = Math.max(0, totalTime - anonymousTime);
 
-    const authenticatedSessionsPercentage =
-      totalSessions > 0
-        ? Number(((authenticatedSessions / totalSessions) * 100).toFixed(2))
-        : 0;
-
+    // Compute one share and derive the other as 100 - share so the pie always sums to 100.
+    // Rounding both independently can drift to 100.01% / 99.99%.
     const anonymousSessionsPercentage =
       totalSessions > 0
         ? Number(((anonymousSessions / totalSessions) * 100).toFixed(2))
         : 0;
-
-    const authenticatedTimePercentage =
-      totalTime > 0
-        ? Number(((authenticatedTime / totalTime) * 100).toFixed(2))
-        : 0;
+    const authenticatedSessionsPercentage =
+      totalSessions > 0 ? Number((100 - anonymousSessionsPercentage).toFixed(2)) : 0;
 
     const anonymousTimePercentage =
       totalTime > 0
         ? Number(((anonymousTime / totalTime) * 100).toFixed(2))
         : 0;
+    const authenticatedTimePercentage =
+      totalTime > 0 ? Number((100 - anonymousTimePercentage).toFixed(2)) : 0;
 
     // Build response object
     const responseData = {
@@ -1066,8 +1084,8 @@ export const getDashboardAnalytics = async (
           current: dailyActiveUsers,
           // No percentage change since it's always 24 hours
         },
-        dailyAnonymousVisitors: {
-          current: dailyAnonymousVisitors,
+        dailyAnonymousPlayers: {
+          current: dailyAnonymousPlayers,
           // No percentage change since it's always 24 hours
         },
         totalVisitors: {
@@ -1138,8 +1156,10 @@ export const getDashboardAnalytics = async (
       },
     };
 
-    // Cache the response (TTL: 3 minutes = 180 seconds)
-    await cacheService.setAnalytics('dashboard', cacheKey, responseData, undefined, 180);
+    // Cache the response. TTL is the safety net — every analytics write that
+    // changes a dashboard number calls cacheService.invalidateDashboard(), so
+    // 60s is plenty of headroom while keeping stale-data debug-friction low.
+    await cacheService.setAnalytics('dashboard', cacheKey, responseData, undefined, 60);
     logger.debug(`[CACHE SET] Dashboard analytics for ${cacheKey}`);
 
     res.status(200).json(responseData);

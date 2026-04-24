@@ -4,6 +4,8 @@ import { AppDataSource } from '../config/database';
 import { Analytics } from '../entities/Analytics';
 import { User } from '../entities/User';
 import logger from '../utils/logger';
+import { AdminExclusionService } from '../services/adminExclusion.service';
+import { cacheService } from '../services/cache.service';
 
 const analyticsRepository = AppDataSource.getRepository(Analytics);
 const userRepository = AppDataSource.getRepository(User);
@@ -25,11 +27,10 @@ queueService.createWorker<HomepageVisitJobData>(
           relations: ['role'],
         });
 
-        // Exclude all admin-type roles from analytics
-        const adminRoles = ['superadmin', 'admin', 'editor', 'viewer'];
-        if (user && user.role && adminRoles.includes(user.role.name)) {
+        // Centralised admin exclusion — same source of truth as controllers and dashboard queries.
+        if (user && !AdminExclusionService.shouldTrackUser(user)) {
           logger.debug(
-            `[Homepage Visit Worker] Skipping homepage visit tracking for ${user.role.name} user ${userId} - admin activities are excluded from analytics`
+            `[Homepage Visit Worker] Skipping homepage visit tracking for ${user.role!.name} user ${userId} - admin activities are excluded from analytics`
           );
           return { success: true, analyticsId: 'admin-excluded' };
         }
@@ -48,6 +49,7 @@ queueService.createWorker<HomepageVisitJobData>(
       });
 
       await analyticsRepository.save(analytics);
+      await cacheService.invalidateDashboard();
 
       logger.debug(
         `Homepage visit tracked for ${userId ? `user ${userId}` : `session ${sessionId}`}`

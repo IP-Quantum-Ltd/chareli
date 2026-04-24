@@ -437,6 +437,27 @@ class CacheService {
     }
   }
 
+  /**
+   * Invalidate every cached admin-dashboard response. Call after any analytics
+   * write that changes a number a dashboard card displays — session create /
+   * end, signup, login. Skip on heartbeats (they only update lastSeenAt and
+   * don't affect any dashboard aggregation, so invalidating on every tick
+   * would defeat caching with no upside).
+   */
+  async invalidateDashboard(): Promise<void> {
+    if (!this.enabled) return;
+
+    try {
+      const pattern = cachePatterns.analyticsDashboard();
+      const deletedCount = await redisService.deletePattern(pattern);
+      if (deletedCount > 0) {
+        logger.debug(`Invalidated ${deletedCount} dashboard cache entries`);
+      }
+    } catch (error) {
+      logger.error(`Error invalidating dashboard cache:`, error);
+    }
+  }
+
   // ============= LIKE COUNTS =============
 
   /**

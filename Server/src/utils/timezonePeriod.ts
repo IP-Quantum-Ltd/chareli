@@ -6,43 +6,69 @@ export interface PeriodBoundaries {
   prevEnd: Date;
 }
 
-// Resolve today's calendar date as the user perceives it (e.g. "2026-04-24"
-// for a Tokyo user at Apr 23 15:49 UTC because JST has already tipped into
-// the next day). `toZonedTime` returns a Date whose UTC accessors reflect
-// the target timezone's wall clock — safer than date-fns-tz's `format` with
-// a `timeZone` option, which behaves inconsistently across v3 versions.
-function todayDateInUserTz(nowUtc: Date, userTimezone: string): string {
-  const zoned = toZonedTime(nowUtc, userTimezone);
-  const year = zoned.getUTCFullYear();
-  const month = String(zoned.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(zoned.getUTCDate()).padStart(2, '0');
+function isoDateFromUtcContainer(d: Date): string {
+  const year = d.getUTCFullYear();
+  const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
 
-// Previous implementation used setHours(0,0,0,0) which operates in the SERVER's
+// Resolve today's calendar date as the user perceives it (e.g. "2026-04-24"
+// for a Tokyo user at Apr 23 15:49 UTC because JST has already tipped into
+// the next day). Uses toZonedTime + UTC accessors; date-fns-tz's `format`
+// with a `timeZone` option behaves inconsistently across v3 versions.
+function todayDateInUserTz(nowUtc: Date, userTimezone: string): string {
+  return isoDateFromUtcContainer(toZonedTime(nowUtc, userTimezone));
+}
+
+// Walk `daysBefore` calendar days back from `dateStr` (a YYYY-MM-DD string in
+// the user's timezone). Returns a new YYYY-MM-DD string.
+//
+// Arithmetic happens on the calendar date itself via a UTC-container Date.
+// This is deliberate: every UTC day is exactly 24h, so setUTCDate-based
+// subtraction walks calendar days cleanly. Resolving the string back to a
+// UTC instant via fromZonedTime happens once at the END, so DST transitions
+// in the user's timezone just shift the offset of the resulting instant
+// instead of bleeding an hour into the boundary.
+function calendarDateDaysBefore(dateStr: string, daysBefore: number): string {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const anchor = new Date(Date.UTC(y, m - 1, d));
+  anchor.setUTCDate(anchor.getUTCDate() - daysBefore);
+  return isoDateFromUtcContainer(anchor);
+}
+
+function zonedMidnight(dateStr: string, userTimezone: string): Date {
+  return fromZonedTime(`${dateStr}T00:00:00`, userTimezone);
+}
+
+// Previous implementation used setHours(0,0,0,0) which operates in server-
 // local time (UTC on our ECS Fargate containers), silently discarding the
 // timezone shift applied by toZonedTime. Every period on the admin dashboard
 // became "since UTC midnight today" regardless of the timezone filter.
 //
+// An earlier revision of this fix anchored on "today's user-tz midnight" as
+// a UTC instant and then subtracted UTC days. That was still subtly wrong:
+// UTC-day arithmetic silently drifts an hour on weeks that cross a DST
+// transition in the user's timezone (e.g. NY "last 7 days" on Nov 5, after
+// fall-back: the boundary for Oct 30 would land at 05:00 UTC / 01:00 EDT
+// instead of 04:00 UTC / 00:00 EDT).
+//
 // Correct approach: (1) resolve today's calendar date as the user sees it,
-// (2) interpret "midnight on that date" in the user's timezone, (3) convert
-// back to a UTC instant. `currentStart` is the "today so far" boundary for
-// daysBack=1, "six days before today's midnight" for daysBack=7, etc.
+// (2) walk the calendar DATE by integer days, (3) only then interpret
+// "midnight on that date" in the user's timezone to get a UTC instant.
+// Every boundary lands on a true user-timezone midnight regardless of DST.
 export function getPeriodBoundaries(
   nowUtc: Date,
   userTimezone: string,
   daysBack: number,
   prevDaysBack: number,
 ): PeriodBoundaries {
-  const todayInUserTz = todayDateInUserTz(nowUtc, userTimezone);
-  const startOfTodayUtc = fromZonedTime(`${todayInUserTz}T00:00:00`, userTimezone);
+  const today = todayDateInUserTz(nowUtc, userTimezone);
+  const currentStartDate = calendarDateDaysBefore(today, daysBack - 1);
+  const prevStartDate = calendarDateDaysBefore(today, prevDaysBack - 1);
 
-  const currentStart = new Date(startOfTodayUtc);
-  currentStart.setUTCDate(currentStart.getUTCDate() - daysBack + 1);
-
-  const prevStart = new Date(startOfTodayUtc);
-  prevStart.setUTCDate(prevStart.getUTCDate() - prevDaysBack + 1);
-
+  const currentStart = zonedMidnight(currentStartDate, userTimezone);
+  const prevStart = zonedMidnight(prevStartDate, userTimezone);
   const prevEnd = new Date(currentStart);
 
   return { currentStart, prevStart, prevEnd };

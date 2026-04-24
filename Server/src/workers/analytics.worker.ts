@@ -5,6 +5,8 @@ import { User } from '../entities/User';
 import logger from '../utils/logger';
 import { AnalyticsProcessingJobData } from '../services/queue.service';
 import { getCountryFromIP } from '../utils/ipUtils';
+import { AdminExclusionService } from '../services/adminExclusion.service';
+import { cacheService } from '../services/cache.service';
 
 const analyticsRepository = AppDataSource.getRepository(Analytics);
 const userRepository = AppDataSource.getRepository(User);
@@ -47,11 +49,10 @@ export async function processAnalyticsJob(
         relations: ['role'],
       });
 
-      // Exclude all admin-type roles from analytics
-      const adminRoles = ['superadmin', 'admin', 'editor', 'viewer'];
-      if (user && user.role && adminRoles.includes(user.role.name)) {
+      // Centralised admin exclusion — same source of truth as controllers and dashboard queries.
+      if (user && !AdminExclusionService.shouldTrackUser(user)) {
         logger.debug(
-          `[Analytics Worker] Skipping analytics for ${user.role.name} user ${userId} - admin activities are excluded from analytics`
+          `[Analytics Worker] Skipping analytics for ${user.role!.name} user ${userId} - admin activities are excluded from analytics`
         );
         // Return a placeholder analytics object to maintain API compatibility
         // This will not be saved to the database
@@ -97,6 +98,7 @@ export async function processAnalyticsJob(
 
     // Save to database
     const saved = await analyticsRepository.save(analytics);
+    await cacheService.invalidateDashboard();
 
     logger.debug(
       `[Analytics Worker] Successfully saved analytics ${saved.id} for ${

@@ -28,6 +28,11 @@ export default function GamePlay() {
   const { mutate: createAnalytics } = useCreateAnalytics();
   const { mutate: updateAnalytics } = useUpdateAnalytics();
   const analyticsIdRef = useRef<string | null>(null);
+  // Guards against double session creation if the createAnalytics mutation
+  // reference becomes unstable (parent re-render, hook upgrade, etc.). Without
+  // this, a re-fired effect would insert a second analytics row for the same
+  // game session and inflate session counts in the dashboard.
+  const hasCreatedSessionRef = useRef(false);
   const gameContainerRef = useRef<HTMLDivElement>(null);
   const gameStartTimeRef = useRef<Date | null>(null);
   const gameLoadStartTimeRef = useRef<Date | null>(null);
@@ -253,7 +258,8 @@ export default function GamePlay() {
 
   // Create analytics record when game starts
   useEffect(() => {
-    if (game && !hasAdminAccess) {
+    if (game && !hasAdminAccess && !hasCreatedSessionRef.current) {
+      hasCreatedSessionRef.current = true;
       const startTime = new Date();
       gameStartTimeRef.current = startTime;
 
@@ -332,6 +338,12 @@ export default function GamePlay() {
              keepalive: true,
              headers: {
                 'Authorization': `Bearer ${localStorage.getItem('token')}` // If needed, but route is optionalAuthenticate
+             }
+          }).then(res => {
+             // 410 Gone means the row was discarded server-side (e.g. short session).
+             // Drop the ref so subsequent ticks don't re-ping a permanently-absent row.
+             if (res.status === 410) {
+                analyticsIdRef.current = null;
              }
           }).catch(err => console.error("Heartbeat failed", err));
        }
