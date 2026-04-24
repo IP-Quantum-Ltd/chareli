@@ -861,6 +861,9 @@ export const getDashboardAnalytics = async (
         '(analytics.gameId IS NOT NULL OR analytics.activityType = :pageVisit)',
         { pageVisit: 'homepage_visit' }
       )
+      // Exclude soft-deleted short sessions. Other dashboard queries get this for
+      // free via duration >= 30, but Total Visitors has no duration filter.
+      .andWhere('analytics.isDiscarded = false')
       .andWhere('analytics.createdAt BETWEEN :start AND :end', {
         start: twentyFourHoursAgo,
         end: now,
@@ -879,6 +882,9 @@ export const getDashboardAnalytics = async (
         '(analytics.gameId IS NOT NULL OR analytics.activityType = :pageVisit)',
         { pageVisit: 'homepage_visit' }
       )
+      // Exclude soft-deleted short sessions. Other dashboard queries get this for
+      // free via duration >= 30, but Total Visitors has no duration filter.
+      .andWhere('analytics.isDiscarded = false')
       .andWhere('analytics.createdAt BETWEEN :start AND :end', {
         start: fortyEightHoursAgo,
         end: twentyFourHoursAgo,

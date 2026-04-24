@@ -106,6 +106,16 @@ export class Analytics {
   @Index()
   endedAt: Date | null;
 
+  // Soft-delete marker for game sessions that ended with duration < 30s. Replaces
+  // the previous hard-delete on /end so we keep the row for audit and product
+  // signal (quick-bounce patterns, broken games) while still excluding it from
+  // dashboard aggregations. Only Total Visitors needs an explicit filter; every
+  // other dashboard query already requires duration >= 30 and so excludes these
+  // implicitly.
+  @Column({ name: 'is_discarded', type: 'boolean', default: false })
+  @Index()
+  isDiscarded: boolean;
+
   @CreateDateColumn()
   @Index()
   createdAt: Date;

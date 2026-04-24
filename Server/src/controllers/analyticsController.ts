@@ -483,15 +483,18 @@ export const updateAnalytics = async (
       // Part 3: Explicitly assign duration (provides clarity + redundancy with entity hook)
       analytics.duration = duration;
 
-      // For game sessions, only save if duration >= 30 seconds
+      // For game sessions under 30 seconds, mark as discarded instead of deleting.
+      // The row is preserved for product analysis (quick-bounce rate, broken games)
+      // but excluded from dashboard aggregations by the duration >= 30 filter that
+      // every dashboard query already enforces.
       if (analytics.gameId && duration < 30) {
-        // Delete the analytics record if it's a game session with duration < 30 seconds
-        await analyticsRepository.remove(analytics);
+        analytics.isDiscarded = true;
+        await analyticsRepository.save(analytics);
 
         res.status(200).json({
           success: true,
           message:
-            'Analytics entry removed due to insufficient duration (< 30 seconds)',
+            'Analytics entry marked as discarded due to insufficient duration (< 30 seconds)',
           data: null,
         });
         return;
@@ -541,8 +544,8 @@ export const updateAnalytics = async (
  *     responses:
  *       204:
  *         description: Heartbeat received
- *       404:
- *         description: Analytics entry not found
+ *       410:
+ *         description: Analytics entry no longer exists (e.g. discarded short session). Client should stop heartbeating.
  *       500:
  *         description: Internal server error
  */
@@ -554,19 +557,16 @@ export const heartbeatAnalytics = async (
   try {
     const { id } = req.params;
 
-    // Use update for efficiency (avoid fetch if possible, but typeorm update won't check existance/ownership strictly unless we check result)
-    // For simplicity and correctness with entities, fetch then save
-    // Or simpler: update directly
     const result = await analyticsRepository.update(id, {
       lastSeenAt: new Date(),
     });
 
+    // 410 Gone signals to the client that the row is permanently absent (typically
+    // because a short game session was discarded on /end). The client uses this to
+    // stop the heartbeat interval instead of pinging a dead row forever.
     if (result.affected === 0) {
-       // Optional: return 404 if we want strict checking, but usually for heartbeat
-       // we can just return 204.
-       // However, if the ID doesn't exist, we probably shouldn't return 204 success.
-       // But the plan says "Lightweight endpoint", so maybe just ignore.
-       // Let's stick to 204.
+      res.status(410).send();
+      return;
     }
 
     res.status(204).send();
@@ -637,15 +637,18 @@ export const updateAnalyticsEndTime = async (
       // Part 3: Explicitly assign duration (provides clarity + redundancy with entity hook)
       analytics.duration = duration;
 
-      // For game sessions, only save if duration >= 30 seconds
+      // For game sessions under 30 seconds, mark as discarded instead of deleting.
+      // The row is preserved for product analysis (quick-bounce rate, broken games)
+      // but excluded from dashboard aggregations by the duration >= 30 filter that
+      // every dashboard query already enforces.
       if (analytics.gameId && duration < 30) {
-        // Delete the analytics record if it's a game session with duration < 30 seconds
-        await analyticsRepository.remove(analytics);
+        analytics.isDiscarded = true;
+        await analyticsRepository.save(analytics);
 
         res.status(200).json({
           success: true,
           message:
-            'Analytics entry removed due to insufficient duration (< 30 seconds)',
+            'Analytics entry marked as discarded due to insufficient duration (< 30 seconds)',
           data: null,
         });
         return;
