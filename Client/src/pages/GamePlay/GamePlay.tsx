@@ -333,6 +333,12 @@ export default function GamePlay() {
              headers: {
                 'Authorization': `Bearer ${localStorage.getItem('token')}` // If needed, but route is optionalAuthenticate
              }
+          }).then(res => {
+             // 410 Gone means the row was discarded server-side (e.g. short session).
+             // Drop the ref so subsequent ticks don't re-ping a permanently-absent row.
+             if (res.status === 410) {
+                analyticsIdRef.current = null;
+             }
           }).catch(err => console.error("Heartbeat failed", err));
        }
     }, 15000);

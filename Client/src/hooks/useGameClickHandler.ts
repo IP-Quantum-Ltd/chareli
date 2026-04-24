@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { useRecordGameClick } from '../backend/games.service';
+import { trackEvent } from '../utils/analytics';
 
 interface UseGameClickHandlerOptions {
   onSuccess?: () => void;
@@ -60,14 +61,14 @@ export const useGameClickHandler = (
           }
         }
 
-        // Track in Google Analytics via Zaraz
-        if (typeof (window as any).zaraz !== 'undefined') {
-          (window as any).zaraz.track('game_click', {
-            game_id: gameId,
-            game_slug: gameSlug || gameId,
-            source: window.location.pathname,
-          });
-        }
+        // Track in Google Analytics via Zaraz. Routed through trackEvent so the
+        // shouldLoadAnalytics gate is honored (the previous direct zaraz.track
+        // call only checked Zaraz presence, not the env-loading flag).
+        trackEvent('game_click', {
+          game_id: gameId,
+          game_slug: gameSlug || gameId,
+          source: window.location.pathname,
+        });
       } catch (error) {
         console.warn('Failed to track game click:', error);
         onError?.(error);

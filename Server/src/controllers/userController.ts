@@ -13,6 +13,7 @@ import { getCountryFromIP, extractClientIP } from "../utils/ipUtils";
 import { detectDeviceType } from "../utils/deviceUtils";
 import { emailService } from "../services/email.service";
 import { anonymizationService } from "../services/anonymization.service";
+import { AdminExclusionService } from "../services/adminExclusion.service";
 import logger from "../utils/logger";
 
 const userRepository = AppDataSource.getRepository(User);
@@ -388,14 +389,15 @@ export const createUser = async (
 
     await userRepository.save(user);
 
-    // Create analytics entry for signup
-    // Create analytics entry for signup - only for players
+    // Only emit a signup analytics row for tracked roles (players today, plus any
+    // future tracked role). Going through AdminExclusionService keeps the gate in
+    // sync with the rest of the analytics pipeline.
     const userWithRole = await userRepository.findOne({
       where: { id: user.id },
       relations: ['role']
     });
 
-    if (userWithRole?.role?.name === 'player') {
+    if (userWithRole && AdminExclusionService.shouldTrackUser(userWithRole)) {
       const signupAnalytics = new Analytics();
       signupAnalytics.userId = user.id;
       signupAnalytics.activityType = "Signed up";

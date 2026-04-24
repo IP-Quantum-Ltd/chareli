@@ -35,7 +35,7 @@ export default function StatsCard({ filters }: StatsCardProps) {
     );
   }
 
-  if (isError) {
+  if (isError || !dashboardAnalytics) {
     return (
       <div className="col-span-1 md:col-span-2 lg:col-span-4 mt-4">
         <Card className="bg-[#F1F5F9] dark:bg-[#121C2D] shadow-none border-none w-full">
@@ -45,7 +45,9 @@ export default function StatsCard({ filters }: StatsCardProps) {
     );
   }
 
-  const data = dashboardAnalytics as any;
+  // Use the typed payload directly so future server-side renames are caught at
+  // compile time rather than crashing at render time.
+  const data = dashboardAnalytics;
 
   // Generate dynamic description based on time range
   const getTimeRangeDescription = () => {

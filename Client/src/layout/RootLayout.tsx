@@ -1,13 +1,20 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import CanonicalTag from '../components/single/CanonicalTag';
 import { getOrCreateSessionId, clearSessionId } from '../utils/sessionUtils';
 import { useAuth } from '../context/AuthContext';
 
+// Throttle homepage-visit beacons so a user clicking through 10 games doesn't
+// generate 10 rows. Same identity (userId or sessionId) within this window is
+// suppressed client-side; auth-state transitions still fire because the key
+// changes from sessionId-based to userId-based.
+const HOMEPAGE_VISIT_THROTTLE_MS = 30_000;
+
 // Analytics tracking component for Cloudflare Zaraz and Facebook Pixel
 const AnalyticsTracker = () => {
   const location = useLocation();
   const { user } = useAuth();
+  const lastBeaconRef = useRef<{ key: string; sentAt: number } | null>(null);
 
   // 1. Auth/session lifecycle
   // Clear session ID when user logs in
@@ -27,6 +34,14 @@ const AnalyticsTracker = () => {
 
         // Only send session ID if user is not authenticated
         const sessionId = user ? null : getOrCreateSessionId();
+
+        const beaconKey = user ? `u:${user.id}` : `s:${sessionId}`;
+        const now = Date.now();
+        const last = lastBeaconRef.current;
+        if (last && last.key === beaconKey && now - last.sentAt < HOMEPAGE_VISIT_THROTTLE_MS) {
+          return;
+        }
+        lastBeaconRef.current = { key: beaconKey, sentAt: now };
 
         const url = `${baseURL}/api/analytics/homepage-visit`;
 
