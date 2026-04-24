@@ -205,7 +205,7 @@ interface DashboardAnalytics {
     current: number;
     // No percentage change since it's always 24 hours
   };
-  dailyAnonymousVisitors: {
+  dailyAnonymousPlayers: {
     current: number;
     // No percentage change since it's always 24 hours
   };
