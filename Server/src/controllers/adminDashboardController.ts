@@ -821,13 +821,15 @@ export const getDashboardAnalytics = async (
 
     // ==================== ANONYMOUS USER ANALYTICS ====================
 
-    // 1. Daily Anonymous Visitors (DAV) - Always 24 hours, unique sessionIds with 30+ second sessions
-    const dailyAnonymousVisitorsNow = new Date();
-    const dailyAnonymousVisitors24HoursAgo = new Date(
-      dailyAnonymousVisitorsNow.getTime() - 24 * 60 * 60 * 1000
+    // 1. Daily Anonymous Players (DAP) — anonymous sessions in the last 24 hours
+    // with a 30+ second game session. The gameId + duration filters are why
+    // this is "players" not "visitors".
+    const dailyAnonymousPlayersNow = new Date();
+    const dailyAnonymousPlayers24HoursAgo = new Date(
+      dailyAnonymousPlayersNow.getTime() - 24 * 60 * 60 * 1000
     );
 
-    const dailyAnonymousVisitorsQuery = analyticsRepository
+    const dailyAnonymousPlayersQuery = analyticsRepository
       .createQueryBuilder('analytics')
       .select('COUNT(DISTINCT analytics.sessionId)', 'count')
       .where('analytics.sessionId IS NOT NULL')
@@ -835,14 +837,14 @@ export const getDashboardAnalytics = async (
       .andWhere('analytics.gameId IS NOT NULL')
       .andWhere('analytics.duration >= :minDuration', { minDuration: 30 })
       .andWhere('analytics.createdAt BETWEEN :start AND :end', {
-        start: dailyAnonymousVisitors24HoursAgo,
-        end: dailyAnonymousVisitorsNow,
+        start: dailyAnonymousPlayers24HoursAgo,
+        end: dailyAnonymousPlayersNow,
       });
 
-    const dailyAnonymousVisitorsResult =
-      await dailyAnonymousVisitorsQuery.getRawOne();
-    const dailyAnonymousVisitors =
-      parseInt(dailyAnonymousVisitorsResult?.count) || 0;
+    const dailyAnonymousPlayersResult =
+      await dailyAnonymousPlayersQuery.getRawOne();
+    const dailyAnonymousPlayers =
+      parseInt(dailyAnonymousPlayersResult?.count) || 0;
 
     // 2. Total Visitors (Authenticated + Anonymous) for current and previous periods
     // Now includes both game sessions AND page visits to align with GA4
@@ -863,10 +865,6 @@ export const getDashboardAnalytics = async (
         start: twentyFourHoursAgo,
         end: now,
       })
-      .andWhere(
-        '(user.hasCompletedFirstLogin = :hasCompleted OR analytics.userId IS NULL)',
-        { hasCompleted: true }
-      )
       .andWhere("(role.name NOT IN (:...excludedRoles) OR analytics.userId IS NULL)", { excludedRoles });
 
     let previousTotalVisitorsQuery = analyticsRepository
@@ -885,10 +883,6 @@ export const getDashboardAnalytics = async (
         start: fortyEightHoursAgo,
         end: twentyFourHoursAgo,
       })
-      .andWhere(
-        '(user.hasCompletedFirstLogin = :hasCompleted OR analytics.userId IS NULL)',
-        { hasCompleted: true }
-      )
       .andWhere("(role.name NOT IN (:...excludedRoles) OR analytics.userId IS NULL)", { excludedRoles });
 
     // Country filter must apply to anonymous traffic too via analytics.country (IP-resolved
@@ -1084,8 +1078,8 @@ export const getDashboardAnalytics = async (
           current: dailyActiveUsers,
           // No percentage change since it's always 24 hours
         },
-        dailyAnonymousVisitors: {
-          current: dailyAnonymousVisitors,
+        dailyAnonymousPlayers: {
+          current: dailyAnonymousPlayers,
           // No percentage change since it's always 24 hours
         },
         totalVisitors: {
