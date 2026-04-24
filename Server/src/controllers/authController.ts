@@ -13,6 +13,7 @@ import { getCountryFromIP, extractClientIP } from '../utils/ipUtils';
 import { detectDeviceType } from '../utils/deviceUtils';
 import logger from '../utils/logger';
 import { AdminExclusionService } from '../services/adminExclusion.service';
+import { cacheService } from '../services/cache.service';
 
 // Section: Core Authentication
 // This controller handles core authentication functions like registration, login, and OTP verification
@@ -106,6 +107,7 @@ export const registerPlayer = async (
       signupAnalytics.userId = user.id;
       signupAnalytics.activityType = 'Signed up';
       await analyticsRepository.save(signupAnalytics);
+      await cacheService.invalidateDashboard();
     }
 
     res.status(201).json({
@@ -217,6 +219,7 @@ export const registerFromInvitation = async (
       // Don't set startTime for non-game activities
       // Don't set sessionCount for non-game activities
       await analyticsRepository.save(signupAnalytics);
+      await cacheService.invalidateDashboard();
     }
 
     res.status(201).json({
@@ -300,6 +303,7 @@ export const login = async (
         loginAnalytics.userId = user.id;
         loginAnalytics.activityType = 'Logged in';
         await analyticsRepository.save(loginAnalytics);
+        await cacheService.invalidateDashboard();
       }
 
       res.status(200).json({
@@ -338,6 +342,7 @@ export const login = async (
           loginAnalytics.userId = user.id;
           loginAnalytics.activityType = 'Logged in';
           await analyticsRepository.save(loginAnalytics);
+          await cacheService.invalidateDashboard();
         }
 
         res.status(200).json({
@@ -506,6 +511,7 @@ export const verifyOtp = async (
         loginAnalytics.userId = user.id;
         loginAnalytics.activityType = 'Logged in';
         await analyticsRepository.save(loginAnalytics);
+        await cacheService.invalidateDashboard();
       }
     }
 
@@ -546,6 +552,12 @@ export const verifyOtp = async (
  *       500:
  *         description: Internal server error
  */
+// Intentionally writes no analytics row. A token refresh fires every ~15
+// minutes for an active session — counting it as a "Logged in" event would
+// inflate Total Visitors / Daily Active by ~96x per session and break
+// retention math. Refresh is silent infrastructure, not a user-visible event.
+// If you ever want to track session continuity, add a separate activityType
+// rather than reusing "Logged in" for this path.
 export const refreshToken = async (
   req: Request,
   res: Response,

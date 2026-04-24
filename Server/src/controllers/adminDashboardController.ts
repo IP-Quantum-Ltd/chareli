@@ -1156,8 +1156,10 @@ export const getDashboardAnalytics = async (
       },
     };
 
-    // Cache the response (TTL: 3 minutes = 180 seconds)
-    await cacheService.setAnalytics('dashboard', cacheKey, responseData, undefined, 180);
+    // Cache the response. TTL is the safety net — every analytics write that
+    // changes a dashboard number calls cacheService.invalidateDashboard(), so
+    // 60s is plenty of headroom while keeping stale-data debug-friction low.
+    await cacheService.setAnalytics('dashboard', cacheKey, responseData, undefined, 60);
     logger.debug(`[CACHE SET] Dashboard analytics for ${cacheKey}`);
 
     res.status(200).json(responseData);
