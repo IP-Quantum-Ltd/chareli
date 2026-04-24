@@ -1,4 +1,6 @@
 /* eslint-disable */
+import { hasMarketingConsent, syncConsentToVendors } from './utils/consent';
+
 export const initAnalytics = () => {
   // Only enable analytics on production domains
   const ANALYTICS_ENABLED_DOMAINS = [
@@ -48,8 +50,19 @@ export const initAnalytics = () => {
         );
         // @ts-expect-error Facebook Pixel global
         fbq("init", "1940362026887774");
-        // @ts-expect-error Facebook Pixel global
-        fbq("track", "PageView");
+
+        // Apply current consent state immediately. SDK defaults to "granted",
+        // so without this every page would track once before the user even
+        // sees the banner.
+        syncConsentToVendors();
+
+        // Initial PageView only fires for users who already accepted on a
+        // previous visit. New users get a PageView once they click Accept
+        // (handled by setConsent → syncConsentToVendors).
+        if (hasMarketingConsent()) {
+          // @ts-expect-error Facebook Pixel global
+          fbq("track", "PageView");
+        }
 
         console.log("[Analytics] Facebook Pixel enabled");
       }
