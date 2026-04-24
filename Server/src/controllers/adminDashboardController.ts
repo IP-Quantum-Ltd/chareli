@@ -170,7 +170,10 @@ export const getDashboardAnalytics = async (
       .select('COUNT(DISTINCT COALESCE(CAST(a1.userId AS VARCHAR), a1.sessionId))', 'count')
       .leftJoin('a1.user', 'user1')
       .leftJoin('user1.role', 'role1')
-      .where('a1.createdAt > :twentyFourHoursAgo', { twentyFourHoursAgo })
+      .where('a1.createdAt BETWEEN :outerStart AND :outerEnd', {
+        outerStart: twentyFourHoursAgo,
+        outerEnd: now,
+      })
       .andWhere('a1.gameId IS NOT NULL')
       .andWhere('a1.startTime IS NOT NULL')
       .andWhere('a1.endTime IS NOT NULL')
@@ -342,7 +345,7 @@ export const getDashboardAnalytics = async (
     // 3. Game Coverage - Percentage of total games that have been played
     // Track all users: authenticated (userId) + anonymous (sessionId)
     // Exclude admin users from analytics (only include players and anonymous users)
-    const totalGames = await gameRepository.count();
+    const totalGames = await gameRepository.count({ where: { status: GameStatus.ACTIVE } });
 
     // Get games played in current period
     let currentPlayedGamesQuery = analyticsRepository
@@ -545,7 +548,7 @@ export const getDashboardAnalytics = async (
       .andWhere('analytics.startTime IS NOT NULL')
       .andWhere('analytics.endTime IS NOT NULL')
       .andWhere('analytics.duration >= :minDuration', { minDuration: 30 })
-      .andWhere('analytics.startTime BETWEEN :start AND :end', {
+      .andWhere('analytics.createdAt BETWEEN :start AND :end', {
         start: twentyFourHoursAgo,
         end: now,
       })
@@ -560,7 +563,7 @@ export const getDashboardAnalytics = async (
       .andWhere('analytics.startTime IS NOT NULL')
       .andWhere('analytics.endTime IS NOT NULL')
       .andWhere('analytics.duration >= :minDuration', { minDuration: 30 })
-      .andWhere('analytics.startTime BETWEEN :start AND :end', {
+      .andWhere('analytics.createdAt BETWEEN :start AND :end', {
         start: fortyEightHoursAgo,
         end: twentyFourHoursAgo,
       })
@@ -672,8 +675,9 @@ export const getDashboardAnalytics = async (
             .andWhere('analytics.startTime IS NOT NULL')
             .andWhere('analytics.endTime IS NOT NULL')
             .andWhere('analytics.duration >= :minDuration', { minDuration: 30 })
-            .andWhere('analytics.createdAt > :twentyFourHoursAgo', {
-              twentyFourHoursAgo,
+            .andWhere('analytics.createdAt BETWEEN :start AND :end', {
+              start: twentyFourHoursAgo,
+              end: now,
             })
             .andWhere("(role.name NOT IN (:...excludedRoles) OR analytics.userId IS NULL)", { excludedRoles });
 
@@ -887,15 +891,17 @@ export const getDashboardAnalytics = async (
       )
       .andWhere("(role.name NOT IN (:...excludedRoles) OR analytics.userId IS NULL)", { excludedRoles });
 
-    // Add country filter if provided (only applies to authenticated users with country data)
+    // Country filter must apply to anonymous traffic too via analytics.country (IP-resolved
+    // by the analytics worker). Otherwise selecting a country lets every anonymous user
+    // from every country pass through, since user_id is NULL for them.
     if (countries.length > 0) {
       currentTotalVisitorsQuery = currentTotalVisitorsQuery.andWhere(
-        '(user.country IN (:...countries) OR analytics.userId IS NULL)',
+        '(user.country IN (:...countries) OR analytics.country IN (:...countries))',
         { countries }
       );
 
       previousTotalVisitorsQuery = previousTotalVisitorsQuery.andWhere(
-        '(user.country IN (:...countries) OR analytics.userId IS NULL)',
+        '(user.country IN (:...countries) OR analytics.country IN (:...countries))',
         { countries }
       );
     }
@@ -950,6 +956,15 @@ export const getDashboardAnalytics = async (
         end: twentyFourHoursAgo,
       });
 
+    // Anonymous queries have no user join, so country must come from the IP-resolved
+    // analytics.country column written by the analytics worker.
+    if (countries.length > 0) {
+      currentAnonymousSessionsQuery = currentAnonymousSessionsQuery
+        .andWhere('analytics.country IN (:...countries)', { countries });
+      previousAnonymousSessionsQuery = previousAnonymousSessionsQuery
+        .andWhere('analytics.country IN (:...countries)', { countries });
+    }
+
     const [currentAnonymousSessions, previousAnonymousSessions] =
       await Promise.all([
         currentAnonymousSessionsQuery.getCount(),
@@ -979,7 +994,7 @@ export const getDashboardAnalytics = async (
       .andWhere('analytics.startTime IS NOT NULL')
       .andWhere('analytics.endTime IS NOT NULL')
       .andWhere('analytics.duration >= :minDuration', { minDuration: 30 })
-      .andWhere('analytics.startTime BETWEEN :start AND :end', {
+      .andWhere('analytics.createdAt BETWEEN :start AND :end', {
         start: twentyFourHoursAgo,
         end: now,
       });
@@ -993,10 +1008,17 @@ export const getDashboardAnalytics = async (
       .andWhere('analytics.startTime IS NOT NULL')
       .andWhere('analytics.endTime IS NOT NULL')
       .andWhere('analytics.duration >= :minDuration', { minDuration: 30 })
-      .andWhere('analytics.startTime BETWEEN :start AND :end', {
+      .andWhere('analytics.createdAt BETWEEN :start AND :end', {
         start: fortyEightHoursAgo,
         end: twentyFourHoursAgo,
       });
+
+    if (countries.length > 0) {
+      currentAnonymousTimePlayedQuery = currentAnonymousTimePlayedQuery
+        .andWhere('analytics.country IN (:...countries)', { countries });
+      previousAnonymousTimePlayedQuery = previousAnonymousTimePlayedQuery
+        .andWhere('analytics.country IN (:...countries)', { countries });
+    }
 
     const [
       currentAnonymousTimePlayedResult,
@@ -1038,25 +1060,21 @@ export const getDashboardAnalytics = async (
     const anonymousTime = currentAnonymousTimePlayed;
     const authenticatedTime = Math.max(0, totalTime - anonymousTime);
 
-    const authenticatedSessionsPercentage =
-      totalSessions > 0
-        ? Number(((authenticatedSessions / totalSessions) * 100).toFixed(2))
-        : 0;
-
+    // Compute one share and derive the other as 100 - share so the pie always sums to 100.
+    // Rounding both independently can drift to 100.01% / 99.99%.
     const anonymousSessionsPercentage =
       totalSessions > 0
         ? Number(((anonymousSessions / totalSessions) * 100).toFixed(2))
         : 0;
-
-    const authenticatedTimePercentage =
-      totalTime > 0
-        ? Number(((authenticatedTime / totalTime) * 100).toFixed(2))
-        : 0;
+    const authenticatedSessionsPercentage =
+      totalSessions > 0 ? Number((100 - anonymousSessionsPercentage).toFixed(2)) : 0;
 
     const anonymousTimePercentage =
       totalTime > 0
         ? Number(((anonymousTime / totalTime) * 100).toFixed(2))
         : 0;
+    const authenticatedTimePercentage =
+      totalTime > 0 ? Number((100 - anonymousTimePercentage).toFixed(2)) : 0;
 
     // Build response object
     const responseData = {
