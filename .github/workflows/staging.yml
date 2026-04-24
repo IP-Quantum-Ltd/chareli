@@ -2,7 +2,7 @@ name: Deploy to Production Environment (arcadesbox)
 
 on:
   push:
-    branches: [main]
+    branches: [ main ]
     tags:
       - "v*"
 
@@ -29,10 +29,10 @@ jobs:
       frontend: ${{ steps.filter.outputs.frontend }}
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Check for changes
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@v4
         id: filter
         with:
           base: ${{ github.event.before }}
@@ -47,21 +47,23 @@ jobs:
 
   build-and-test-backend:
     name: Build & Test Backend
-    needs: [detect-changes]
+    needs: [ detect-changes ]
     if: needs.detect-changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
-    environment: ${{ github.ref_name == 'release' && 'production' || github.ref_name == 'dev' && 'development' || github.ref_name == 'main' && 'staging' || 'development' }}
+    environment: ${{ github.ref_name == 'release' && 'production' || github.ref_name
+      == 'dev' && 'development' || github.ref_name == 'main' && 'staging' ||
+      'development' }}
     strategy:
       matrix:
-        node-version: ["22.x"]
+        node-version: [ "22.x" ]
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # --- Backend (Server Prod) ---
       - name: Setup Node.js for Backend
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.node-version }}
           cache: "npm"
@@ -80,23 +82,24 @@ jobs:
         working-directory: ./Server
         run: npm test
         continue-on-error: true
-
       # --- Frontend (Client) ---
   build-and-test-frontend:
     name: Build & Test Frontend
-    needs: [detect-changes]
+    needs: [ detect-changes ]
     if: needs.detect-changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
-    environment: "${{ github.ref_name == 'release' && 'production' || github.ref_name == 'dev' && 'development' || github.ref_name == 'main' && 'staging' || 'development' }}"
+    environment: "${{ github.ref_name == 'release' && 'production' ||
+      github.ref_name == 'dev' && 'development' || github.ref_name == 'main' &&
+      'staging' || 'development' }}"
     strategy:
       matrix:
-        node-version: ["22.x"]
+        node-version: [ "22.x" ]
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Setup Node.js for Frontend
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.node-version }}
           cache: "npm"
@@ -137,9 +140,11 @@ jobs:
 
   deploy-backend:
     name: Deploy Backend to ECS
-    needs: [detect-changes, build-and-test-backend]
+    needs: [ detect-changes, build-and-test-backend ]
     runs-on: ubuntu-latest
-    environment: ${{ github.ref_name == 'release' && 'production' || github.ref_name == 'dev' && 'development' || github.ref_name == 'main' && 'staging' || 'development' }}
+    environment: ${{ github.ref_name == 'release' && 'production' || github.ref_name
+      == 'dev' && 'development' || github.ref_name == 'main' && 'staging' ||
+      'development' }}
     if: |
       github.event_name == 'push' &&
       github.ref == 'refs/heads/main' &&
@@ -147,16 +152,16 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_OIDC_ROLE }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Set up Docker BuildX
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
@@ -169,7 +174,7 @@ jobs:
 
       - name: Extract Docker metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO }}
           tags: |
@@ -210,9 +215,11 @@ jobs:
 
   deploy-frontend:
     name: Deploy Frontend to Cloudflare Pages
-    needs: [detect-changes, build-and-test-frontend]
+    needs: [ detect-changes, build-and-test-frontend ]
     runs-on: ubuntu-latest
-    environment: ${{ github.ref_name == 'release' && 'production' || github.ref_name == 'dev' && 'development' || github.ref_name == 'main' && 'staging' || 'development' }}
+    environment: ${{ github.ref_name == 'release' && 'production' || github.ref_name
+      == 'dev' && 'development' || github.ref_name == 'main' && 'staging' ||
+      'development' }}
     if: |
       github.event_name == 'push' &&
       github.ref == 'refs/heads/main' &&
@@ -220,7 +227,7 @@ jobs:
 
     steps:
       - name: Download Frontend Build Artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: frontend-build
           path: ./frontend-build-output
@@ -230,7 +237,8 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy ./frontend-build-output --project-name=${{ vars.PAGES_PROJECT_NAME }}
+          command: pages deploy ./frontend-build-output --project-name=${{
+            vars.PAGES_PROJECT_NAME }}
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Purge Cloudflare Cache
@@ -244,9 +252,11 @@ jobs:
 
   deploy-worker:
     name: Deploy Game ZIP Worker to Cloudflare
-    needs: [detect-changes]
+    needs: [ detect-changes ]
     runs-on: ubuntu-latest
-    environment: ${{ github.ref_name == 'release' && 'production' || github.ref_name == 'dev' && 'development' || github.ref_name == 'main' && 'staging' || 'development' }}
+    environment: ${{ github.ref_name == 'release' && 'production' || github.ref_name
+      == 'dev' && 'development' || github.ref_name == 'main' && 'staging' ||
+      'development' }}
     if: |
       github.event_name == 'push' &&
       github.ref == 'refs/heads/main' &&
@@ -254,7 +264,7 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install dependencies
         working-directory: Server/workers/game-zip-processor
@@ -301,11 +311,14 @@ jobs:
         deploy-backend,
         deploy-worker,
       ]
-    environment: ${{ github.ref_name == 'release' && 'production' || github.ref_name == 'dev' && 'development' || github.ref_name == 'main' && 'staging' || 'development' }}
+    environment: ${{ github.ref_name == 'release' && 'production' || github.ref_name
+      == 'dev' && 'development' || github.ref_name == 'main' && 'staging' ||
+      'development' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    if: ${{ always() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    if: ${{ always() && github.event_name == 'push' && github.ref ==
+      'refs/heads/main' }}
 
     steps:
       - name: Generate Build Status
