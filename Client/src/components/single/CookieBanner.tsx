@@ -1,24 +1,24 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { getConsentState, setConsent } from '../../utils/consent';
 
 export default function CookieBanner() {
   const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
-    // Check if user has already made a choice
-    const cookieConsent = localStorage.getItem('cookieConsent');
-    if (!cookieConsent) {
-      setIsVisible(true);
-    }
+    // Show until the user has made an explicit choice. Closing the banner
+    // without choosing leaves state as 'pending' and re-prompts next visit
+    // (GDPR-safe: no choice = no consent = no marketing tracking).
+    setIsVisible(getConsentState() === 'pending');
   }, []);
 
   const handleAccept = () => {
-    localStorage.setItem('cookieConsent', 'accepted');
+    setConsent('accepted');
     setIsVisible(false);
   };
 
   const handleDecline = () => {
-    localStorage.setItem('cookieConsent', 'declined');
+    setConsent('declined');
     setIsVisible(false);
   };
 
