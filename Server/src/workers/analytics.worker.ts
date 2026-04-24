@@ -6,6 +6,7 @@ import logger from '../utils/logger';
 import { AnalyticsProcessingJobData } from '../services/queue.service';
 import { getCountryFromIP } from '../utils/ipUtils';
 import { AdminExclusionService } from '../services/adminExclusion.service';
+import { cacheService } from '../services/cache.service';
 
 const analyticsRepository = AppDataSource.getRepository(Analytics);
 const userRepository = AppDataSource.getRepository(User);
@@ -97,6 +98,7 @@ export async function processAnalyticsJob(
 
     // Save to database
     const saved = await analyticsRepository.save(analytics);
+    await cacheService.invalidateDashboard();
 
     logger.debug(
       `[Analytics Worker] Successfully saved analytics ${saved.id} for ${

@@ -5,6 +5,7 @@ import { Analytics } from '../entities/Analytics';
 import { User } from '../entities/User';
 import logger from '../utils/logger';
 import { AdminExclusionService } from '../services/adminExclusion.service';
+import { cacheService } from '../services/cache.service';
 
 const analyticsRepository = AppDataSource.getRepository(Analytics);
 const userRepository = AppDataSource.getRepository(User);
@@ -48,6 +49,7 @@ queueService.createWorker<HomepageVisitJobData>(
       });
 
       await analyticsRepository.save(analytics);
+      await cacheService.invalidateDashboard();
 
       logger.debug(
         `Homepage visit tracked for ${userId ? `user ${userId}` : `session ${sessionId}`}`

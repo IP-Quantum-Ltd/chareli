@@ -14,6 +14,7 @@ import { detectDeviceType } from "../utils/deviceUtils";
 import { emailService } from "../services/email.service";
 import { anonymizationService } from "../services/anonymization.service";
 import { AdminExclusionService } from "../services/adminExclusion.service";
+import { cacheService } from "../services/cache.service";
 import logger from "../utils/logger";
 
 const userRepository = AppDataSource.getRepository(User);
@@ -402,6 +403,7 @@ export const createUser = async (
       signupAnalytics.userId = user.id;
       signupAnalytics.activityType = "Signed up";
       await analyticsRepository.save(signupAnalytics);
+      await cacheService.invalidateDashboard();
     }
 
     // Don't return sensitive information

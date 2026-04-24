@@ -23,9 +23,20 @@ const ALLOWED_ACTIVITY_TYPES = new Set<string>([
 ]);
 
 const MAX_CLOCK_SKEW_MS = 60_000;
+// Reject timestamps older than this — protects historical aggregations from
+// clients with broken clocks, fixed test fixtures in production, or tampered
+// dev tools. 24h gives ample headroom for legitimate background-tab sessions
+// while bounding the blast radius of a single bad client.
+const MAX_PAST_TIMESTAMP_MS = 24 * 60 * 60 * 1000;
 
 const isFutureTimestamp = (ts: Date): boolean =>
   ts.getTime() - Date.now() > MAX_CLOCK_SKEW_MS;
+
+const isAncientTimestamp = (ts: Date): boolean =>
+  Date.now() - ts.getTime() > MAX_PAST_TIMESTAMP_MS;
+
+const isInvalidTimestamp = (ts: Date): boolean =>
+  isNaN(ts.getTime()) || isFutureTimestamp(ts) || isAncientTimestamp(ts);
 
 /**
  * @swagger
@@ -105,13 +116,13 @@ export const createAnalytics = async (
     }
 
     const parsedStartTime = new Date(startTime);
-    if (isNaN(parsedStartTime.getTime()) || isFutureTimestamp(parsedStartTime)) {
+    if (isInvalidTimestamp(parsedStartTime)) {
       return next(ApiError.badRequest('Invalid or future startTime'));
     }
 
     const parsedEndTime = endTime ? new Date(endTime) : undefined;
-    if (parsedEndTime && (isNaN(parsedEndTime.getTime()) || isFutureTimestamp(parsedEndTime))) {
-      return next(ApiError.badRequest('Invalid or future endTime'));
+    if (parsedEndTime && isInvalidTimestamp(parsedEndTime)) {
+      return next(ApiError.badRequest('Invalid endTime'));
     }
 
     // Extract IP address from request
@@ -449,8 +460,8 @@ export const updateAnalytics = async (
 
     if (endTime !== undefined && endTime) {
       const parsedEndTime = new Date(endTime);
-      if (isNaN(parsedEndTime.getTime()) || isFutureTimestamp(parsedEndTime)) {
-        return next(ApiError.badRequest('Invalid or future endTime'));
+      if (isInvalidTimestamp(parsedEndTime)) {
+        return next(ApiError.badRequest('Invalid endTime'));
       }
     }
 
@@ -490,6 +501,7 @@ export const updateAnalytics = async (
       if (analytics.gameId && duration < 30) {
         analytics.isDiscarded = true;
         await analyticsRepository.save(analytics);
+        await cacheService.invalidateDashboard();
 
         res.status(200).json({
           success: true,
@@ -515,6 +527,7 @@ export const updateAnalytics = async (
     }
 
     await analyticsRepository.save(analytics);
+    await cacheService.invalidateDashboard();
 
     res.status(200).json({
       success: true,
@@ -644,6 +657,7 @@ export const updateAnalyticsEndTime = async (
       if (analytics.gameId && duration < 30) {
         analytics.isDiscarded = true;
         await analyticsRepository.save(analytics);
+        await cacheService.invalidateDashboard();
 
         res.status(200).json({
           success: true,
@@ -656,6 +670,7 @@ export const updateAnalyticsEndTime = async (
     }
 
     await analyticsRepository.save(analytics);
+    await cacheService.invalidateDashboard();
 
     res.status(200).json({
       success: true,
@@ -709,6 +724,7 @@ export const deleteAnalytics = async (
     }
 
     await analyticsRepository.remove(analytics);
+    await cacheService.invalidateDashboard();
 
     res.status(200).json({
       success: true,
