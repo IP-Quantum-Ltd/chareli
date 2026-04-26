@@ -1,7 +1,8 @@
 import asyncio
 import logging
 import json
-from app.services.graph_orchestrator import run_pipeline_with_tracking
+from app.domain.dto import ProposalContext
+from app.runtime import get_runtime
 
 # Configure Logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s — %(message)s")
@@ -19,7 +20,10 @@ async def test_full_flow():
     game_title = "Football Kicks"
     
     try:
-        final_state = await run_pipeline_with_tracking(test_id, game_title)
+        runtime = get_runtime()
+        final_state = await runtime.agent_workflow.run_stages(
+            ProposalContext(proposal_id=test_id, game_id=test_id, game_title=game_title, proposal_snapshot={})
+        )
         
         logger.info("=== TEST RUN COMPLETE ===")
         logger.info(f"Final Status: {final_state['status']}")

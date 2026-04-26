@@ -5,12 +5,9 @@ from contextlib import asynccontextmanager
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI
 
-from app.config import settings
-from app.db.mongo import close_mongodb
-from app.db.postgres import close_postgres_pool
-from app.routers import health, webhook, stage0
-from app.services import task_queue as queue, agent
-from app.services.arcade_client import get_pending_proposals
+from app.config import get_settings
+from app.runtime import get_runtime, init_runtime, shutdown_runtime
+from app.api import agent, health, jobs, stage0, webhook
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s — %(message)s")
 logger = logging.getLogger(__name__)
@@ -23,10 +20,13 @@ async def cron_scan():
     """
     logger.info("[cron] Scanning for pending proposals...")
     try:
-        proposals = await get_pending_proposals()
+        runtime = get_runtime()
+        proposals = await runtime.arcade_client.get_pending_proposals()
         count = 0
         for p in proposals:
-            enqueued = await queue.enqueue(p["id"])
+            existing_job = runtime.job_store.find_active_job("proposal_review", p["id"])
+            job = existing_job or runtime.job_store.create_job("proposal_review", p["id"], submit_review=True)
+            enqueued = existing_job is None and await runtime.queue.enqueue(job.job_id)
             if enqueued:
                 count += 1
         logger.info(f"[cron] Enqueued {count} new proposals from {len(proposals)} pending")
@@ -36,8 +36,10 @@ async def cron_scan():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    settings = get_settings()
+    runtime = init_runtime()
     # Start queue worker
-    worker_task = asyncio.create_task(queue.run_worker(agent.run_pipeline))
+    worker_task = asyncio.create_task(runtime.queue.run_worker(runtime.process_job))
 
     # Start cron scheduler
     scheduler = AsyncIOScheduler()
@@ -49,8 +51,7 @@ async def lifespan(app: FastAPI):
 
     scheduler.shutdown(wait=False)
     worker_task.cancel()
-    await close_mongodb()
-    await close_postgres_pool()
+    await shutdown_runtime()
 
 
 app = FastAPI(
@@ -80,6 +81,14 @@ app = FastAPI(
             "description": "Inbound ArcadeBox webhook endpoints for queueing proposal review jobs.",
         },
         {
+            "name": "Agent",
+            "description": "Direct agent execution endpoints for running the workflow from a game id.",
+        },
+        {
+            "name": "Jobs",
+            "description": "Queue job tracking and job status inspection endpoints.",
+        },
+        {
             "name": "Stage 0",
             "description": "On-demand Stage 0 visual verification and artifact retrieval endpoints.",
         },
@@ -88,4 +97,6 @@ app = FastAPI(
 
 app.include_router(health.router)
 app.include_router(webhook.router)
+app.include_router(agent.router)
+app.include_router(jobs.router)
 app.include_router(stage0.router)

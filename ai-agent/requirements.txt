@@ -10,6 +10,9 @@ motor==3.6.0
 openai>=1.58.1
 anthropic==0.40.0
 langgraph==0.2.59
+langgraph-cli[inmem]==0.1.70
+langgraph-api==0.1.70
+Pillow>=10.0.0
 langchain-openai==0.2.14
 langsmith>=0.1.0
 python-dotenv==1.0.1

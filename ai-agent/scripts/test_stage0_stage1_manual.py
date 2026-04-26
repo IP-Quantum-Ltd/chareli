@@ -4,8 +4,7 @@ import json
 import sys
 from pathlib import Path
 
-from app.services.analyst_agent import AnalystAgent
-from app.services.visual_librarian import VisualLibrarian
+from app.runtime import get_runtime
 
 
 DEFAULT_PROPOSAL_ID = "74098748-0e72-4bbb-b93f-d4a92ad3c249"
@@ -35,15 +34,14 @@ async def main() -> None:
 
     internal_screenshots = [_load_image_base64(path) for path in internal_paths]
 
-    librarian = VisualLibrarian()
-    investigation = await librarian.verify_and_research(
+    runtime = get_runtime()
+    investigation = await runtime.visual_verification.verify_and_research(
         proposal_id=proposal_id,
         game_title=game_title,
         internal_screenshots=internal_screenshots,
     )
 
-    analyst = AnalystAgent()
-    seo_blueprint = await analyst.analyze_seo_potential(
+    seo_blueprint = await runtime.analyst.analyze_seo_potential(
         game_title=game_title,
         investigation=investigation,
     )

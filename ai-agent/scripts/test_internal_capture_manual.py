@@ -1,7 +1,7 @@
 import asyncio
 import json
 
-from app.services.browser_agent import capture_game_preview
+from app.runtime import get_runtime
 
 
 PROPOSAL_ID = "74098748-0e72-4bbb-b93f-d4a92ad3c249"
@@ -10,17 +10,10 @@ THUMBNAIL_URL = "https://staging.cdn.arcadesbox.org/thumbnails/65309581-4de4-4f3
 
 
 async def main() -> None:
-    proposal_snapshot = {
-        "proposedData": {
-            "title": GAME_TITLE,
-            "image": THUMBNAIL_URL,
-        }
-    }
-
-    result = await capture_game_preview(
+    runtime = get_runtime()
+    result = await runtime.internal_capture.capture_proposal_gameplay(
         proposal_id=PROPOSAL_ID,
-        proposal_snapshot=proposal_snapshot,
-        game_title=GAME_TITLE,
+        output_path=f"test_internal_{PROPOSAL_ID}.png",
     )
     print(json.dumps(result, indent=2))
 

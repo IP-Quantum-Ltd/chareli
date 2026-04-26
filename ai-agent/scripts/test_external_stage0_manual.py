@@ -3,7 +3,7 @@ import base64
 import json
 from pathlib import Path
 
-from app.services.visual_librarian import VisualLibrarian
+from app.runtime import get_runtime
 
 
 PROPOSAL_ID = "74098748-0e72-4bbb-b93f-d4a92ad3c249"
@@ -22,8 +22,8 @@ async def main() -> None:
         with open(path, "rb") as handle:
             internal_base64.append(base64.b64encode(handle.read()).decode("utf-8"))
 
-    librarian = VisualLibrarian()
-    result = await librarian.verify_and_research(
+    runtime = get_runtime()
+    result = await runtime.visual_verification.verify_and_research(
         proposal_id=PROPOSAL_ID,
         game_title=GAME_TITLE,
         internal_screenshots=internal_base64,

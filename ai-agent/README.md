@@ -1,213 +1,190 @@
-# ArcadeBox AI Game Review Agent
+# ArcadeBox AI Review + SEO Agent
 
-FastAPI microservice that analyzes new game submissions and sends a structured AI review back to the main ArcadeBox app. The current live flow uses a visual-first verification gate before any SEO drafting happens.
+FastAPI + LangGraph service for ArcadeBox that verifies a game visually, grounds content against PostgreSQL and MongoDB, runs plan and draft validation, and returns a structured AI review payload.
 
----
+## Current Pipeline
 
-## How It Works
-
-```
-New GameProposal created
-        |
-        +-> Webhook: POST /webhook/proposal-created
-        |
-        +-> Cron fallback scan: GET /api/game-proposals/pending
-                        |
-               In-memory job queue (dedup by proposalId)
-                        |
-               Stage 0: Internal gameplay capture
-               Playwright captures two gameplay frames from ArcadeBox
-                        |
-               Stage 0: Visual Librarian
-               Browser search -> external page screenshots -> visual correlation
-                        |
-               Stage 1: SEO intelligence
-                        |
-               Stage 2: grounded retrieval
-               PostgreSQL metadata + MongoDB context packet
-                        |
-               Stage 3+: outline -> draft generation
-                        |
-               Submit structured AI review back to main app
+```text
+Webhook / Cron / Direct Agent Run
+  -> In-memory job queue
+  -> Stage 0 Capture
+  -> Stage 0 Visual Verification
+  -> Stage 1 SEO Intelligence
+  -> Stage 2 Grounded Retrieval
+  -> Stage 3 Architect
+  -> Stage 4 Critic
+  -> Stage 5 Scribe
+  -> Stage 6 Auditor
+  -> Stage 7 Optimizer
+  -> AI review mapping
+  -> Optional review writeback
 ```
 
-## Stage 2 Explained
+The service supports two entry modes:
 
-Stage 2 is the librarian layer. Its job is to turn the verified Stage 0 match and the Stage 1 SEO blueprint into a grounded context packet for writing.
+- proposal-driven runs from the ArcadeBox main app
+- direct `game_id` runs for internal agent execution and LangGraph development
 
-Why PostgreSQL exists in Stage 2:
-- PostgreSQL is for structured, authoritative metadata.
-- It is where we want exact fields such as game title, slug, developer, publisher, category, instructions, rules, tags, or other canonical records when they exist.
-- In practice, this gives us deterministic grounding instead of relying only on scraped web copy.
+## API
 
-Why MongoDB also exists in Stage 2:
-- MongoDB is for broader search-oriented context.
-- It is better suited for semi-structured summaries, chunked knowledge, vector-search style content, and previously enriched documents.
-- This helps us retrieve supporting text that is useful for FAQ, how-to-play sections, and related context.
+### Health
 
-Why we need both:
-- PostgreSQL answers: "What is the canonical structured record?"
-- MongoDB answers: "What supporting context and searchable knowledge do we already have?"
-- Together they reduce hallucination and give Stage 3 and Stage 5 a better evidence base than web screenshots alone.
+- `GET /health`
+- `GET /health/live`
 
-Current Stage 2 behavior:
-- It derives retrieval queries from Stage 0 and Stage 1.
-- It saves the highest-confidence verified match into a dedicated Mongo RAG collection with an embedding.
-- It tries MongoDB Atlas vector search against that collection first.
-- It searches PostgreSQL for matching structured records.
-- It falls back to Mongo text retrieval if Atlas vector search is unavailable.
-- It synthesizes both into one `grounded_context` packet for the downstream content stages.
+### Proposal Intake
 
-Mongo vector-search note:
-- The app expects a Mongo collection named by `MONGODB_RAG_COLLECTION`.
-- It expects an Atlas vector index named by `MONGODB_VECTOR_INDEX`.
-- If that index is missing, Stage 2 still works, but Mongo retrieval falls back to text search instead of true vector RAG.
+- `POST /webhook/proposal-created`
 
----
+Queues a proposal review job. The service fetches the proposal from the main app and writes the final `aiReview` payload back through the current proposal update contract.
 
-## Setup
+### Direct Agent Runs
 
-### 1. Install dependencies
+- `POST /agent/run`
+
+Request body:
+
+```json
+{
+  "game_id": "uuid",
+  "submit_review": false
+}
+```
+
+This enqueues a full end-to-end agent run using only the canonical game record.
+
+### Job Status
+
+- `GET /jobs`
+- `GET /jobs/{job_id}`
+
+These endpoints expose queue status, timestamps, errors, and the final result payload for direct and proposal-backed jobs.
+
+### Stage 0
+
+- `POST /stage0/run`
+- `GET /stage0/{game_id}/result`
+- `GET /stage0/{game_id}/comparison-scores`
+- `GET /stage0/{game_id}/research-findings`
+- `GET /stage0/{game_id}/candidates`
+
+## Architecture
+
+```text
+app/
+├── api/                     FastAPI routers
+├── config/                  env-backed settings + runtime config dataclasses
+├── domain/                  DTOs and API schemas
+├── infrastructure/          DB, browser, LLM, external API, storage adapters
+├── services/                global queue, job store, observability
+└── workflows/ai_review_agent/
+    ├── workflow.py          LangGraph orchestration
+    ├── context.py           graph state contract
+    ├── nodes/               one file per stage
+    └── services/            workflow-local logic
+```
+
+## LangGraph Development
+
+The repository includes [langgraph.json](./langgraph.json) and [app/langgraph_entry.py](./app/langgraph_entry.py) so the graph can run under the LangGraph dev server.
+
+Local commands:
 
 ```bash
-python -m venv venv
-source venv/bin/activate   # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 playwright install chromium
-```
-
-### 2. Configure environment
-
-```bash
-cp .env.example .env
-```
-
-Fill in:
-
-| Variable | Description |
-|---|---|
-| `ARCADE_API_BASE_URL` | Main ArcadeBox API base URL |
-| `ARCADE_API_TOKEN` | Non-expiry editor-role service account token |
-| `AI_PROVIDER` | `openai` or `claude` |
-| `OPENAI_API_KEY` | OpenAI API key |
-| `ANTHROPIC_API_KEY` | Anthropic API key when using Claude |
-| `PRIMARY_LLM_MODEL` | Main model for visual verification and drafting |
-| `SECONDARY_LLM_MODEL` | Secondary model for lighter steps |
-| `EMBEDDING_MODEL` | Embedding model used by Stage 2 retrieval/reranking |
-| `DATABASE_URL` | Optional direct Postgres DSN for Stage 2 |
-| `DB_HOST` / `DB_PORT` / `DB_USERNAME` / `DB_PASSWORD` / `DB_DATABASE` | Postgres connection parts if `DATABASE_URL` is not used |
-| `MONGODB_URL` | MongoDB connection string for Stage 2 |
-| `MONGODB_DB_NAME` | MongoDB database name |
-| `MONGODB_RAG_COLLECTION` | Mongo collection used for persisted Stage 0/2 grounded documents |
-| `MONGODB_VECTOR_INDEX` | Atlas vector index name used for Stage 2 RAG retrieval |
-| `CLIENT_URL` | ArcadeBox client URL used for gameplay capture |
-| `SUPERADMIN_EMAIL` | Browser-agent environment requirement |
-| `SUPERADMIN_PASSWORD` | Browser-agent environment requirement |
-| `WEBHOOK_SECRET` | Shared secret for inbound webhooks |
-| `CRON_INTERVAL_MINUTES` | Fallback scan interval |
-| `LANGCHAIN_TRACING_V2` | Enables LangSmith tracing |
-| `LANGCHAIN_API_KEY` | LangSmith API key |
-| `LANGCHAIN_PROJECT` | LangSmith project name |
-
-### 3. Run locally
-
-```bash
 uvicorn app.main:app --reload --port 8000
 ```
 
-Windows PowerShell:
-
-```powershell
-cd C:\Users\nyama\Arcade\chareli\ai-agent
-$env:PYTHONPATH="C:\Users\nyama\Arcade\chareli\ai-agent"
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8020
-```
-
-If `python` is not on your PATH, use your local virtual environment instead:
-
-```powershell
-cd C:\Users\nyama\Arcade\chareli\ai-agent
-$env:PYTHONPATH="C:\Users\nyama\Arcade\chareli\ai-agent"
-.\venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8020
-```
-
-Important for Stage 0:
-- Keep the terminal running while you use the API.
-- Make sure the ArcadeBox client/frontend is also running.
-- Set `CLIENT_URL` in `.env` to the actual frontend URL, for example:
-
-```env
-CLIENT_URL=http://localhost:5174
-```
-
-Swagger / OpenAPI docs:
-
-```text
-http://127.0.0.1:8020/docs
-http://127.0.0.1:8020/redoc
-http://127.0.0.1:8020/openapi.json
-```
-
-### 4. Run with Docker
+For LangGraph local dev:
 
 ```bash
-docker compose up --build
+langgraph dev
 ```
 
+The default LangGraph dev server port is `2024`. The graph name is `ai_review_agent`.
 
----
+## Environment Setup
 
-## API Endpoints
+Copy `.env.example` to `.env`. The example file now matches the codepath used by:
 
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/health` | Health check |
-| `POST` | `/webhook/proposal-created` | Enqueues a proposal for asynchronous AI processing |
-| `POST` | `/stage0/run` | Runs Stage 0 end-to-end for a `public.games.id` |
-| `GET` | `/stage0/{game_id}/result` | Returns the saved Stage 0 manifest |
-| `GET` | `/stage0/{game_id}/comparison-scores` | Returns `comparison_scores.json` |
-| `GET` | `/stage0/{game_id}/research-findings` | Returns `research_findings_<game_id>.json` |
-| `GET` | `/stage0/{game_id}/candidates` | Returns candidate and failure entries from Stage 0 |
+- FastAPI runtime
+- LangGraph dev
+- Stage 0 browser capture
+- Stage 2 Mongo/Postgres grounding
+- Stage 7 optimizer evaluation persistence
 
----
+Important variables:
 
-## Project Structure
+- `ARCADE_API_BASE_URL`
+- `ARCADE_API_TOKEN`
+- `OPENAI_API_KEY`
+- `OPENAI_WEB_SEARCH_MODEL`
+- `DATABASE_URL` or `DB_*`
+- `MONGODB_URL`
+- `SUPERADMIN_EMAIL`
+- `SUPERADMIN_PASSWORD`
+- `MAX_PLAN_REVISIONS`
+- `MAX_DRAFT_REVISIONS`
 
-```
-ai-agent/
-|-- app/
-|   |-- main.py
-|   |-- config.py
-|   |-- db/
-|   |   |-- mongo.py
-|   |   `-- postgres.py
-|   |-- models/
-|   |   `-- schemas.py
-|   |-- routers/
-|   |   |-- health.py
-|   |   `-- webhook.py
-|   `-- services/
-|       |-- agent.py
-|       |-- arcade_client.py
-|       |-- browser_agent.py
-|       |-- graph_orchestrator.py
-|       |-- librarian_agent.py
-|       |-- task_queue.py
-|       `-- visual_librarian.py
-|-- requirements.txt
-|-- .env.example
-|-- Dockerfile
-`-- docker-compose.yml
+The app accepts both `LANGCHAIN_*` and `LANGSMITH_*` observability aliases.
+
+### Creating the Environment
+
+```bash
+# Create a virtual environment
+python3 -m venv venv
+
+# Activate the environment
+source venv/bin/activate
 ```
 
----
+### Installing Dependencies
 
-## Main App Configuration
+```bash
+# Install dependencies
+pip install -r requirements.txt
 
-Add this to the main ArcadeBox server `.env`:
-
-```env
-AI_AGENT_WEBHOOK_URL=http://localhost:8000
+# Install Playwright browsers
+playwright install chromium
 ```
 
-Leave it empty to disable AI notifications without breaking the main app.
+### Updating and Freezing Requirements
+
+When adding new dependencies, update and freeze the requirements:
+
+```bash
+# Add new package
+pip install <package-name>
+
+# Update requirements.txt
+pip freeze > requirements.txt
+```
+
+Alternatively, use pip-tools for more controlled dependency management:
+
+```bash
+# Install pip-tools if not already installed
+pip install pip-tools
+
+# Generate requirements.in from your imports
+pip-compile -o requirements.in
+
+# Compile to requirements.txt with pinned versions
+pip-compile requirements.in -o requirements.txt
+```
+
+## Current Limits
+
+- Queue and job storage are still in-memory only.
+- Review writeback still depends on the existing proposal update contract, not a dedicated AI review endpoint.
+- The agent is end-to-end in code, but external correctness still depends on live Playwright access, DB connectivity, OpenAI responses, and the main app contract.
+
+## Verification
+
+Current local verification:
+
+```bash
+python3 -m compileall app tests scripts
+python3 -m unittest discover -s tests
+```

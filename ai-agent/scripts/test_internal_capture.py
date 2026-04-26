@@ -2,13 +2,13 @@ import asyncio
 import json
 import sys
 
-from app.services.arcade_client import get_proposal
-from app.services.browser_agent import capture_game_preview
+from app.runtime import get_runtime
 
 
 async def main() -> None:
+    runtime = get_runtime()
     proposal_id = sys.argv[1] if len(sys.argv) > 1 else "74098748-0e72-4bbb-b93f-d4a92ad3c249"
-    proposal = await get_proposal(proposal_id)
+    proposal = await runtime.arcade_client.get_proposal(proposal_id)
     proposed_data = proposal.get("proposedData") or {}
     game = proposal.get("game") or {}
     title = (
@@ -19,10 +19,9 @@ async def main() -> None:
         or "Unknown Game"
     )
 
-    result = await capture_game_preview(
+    result = await runtime.internal_capture.capture_proposal_gameplay(
         proposal_id=proposal_id,
-        proposal_snapshot=proposal,
-        game_title=title,
+        output_path=f"test_internal_{proposal_id}.png",
     )
     print(json.dumps(result, indent=2))
 
