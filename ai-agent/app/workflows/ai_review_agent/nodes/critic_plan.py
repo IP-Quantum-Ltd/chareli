@@ -11,13 +11,13 @@ class CriticPlanNode:
             state["grounded_context"],
             state["seo_blueprint"],
         )
-        state["accumulated_cost"] += self.critic.last_cost
+        state["accumulated_cost"] = float(state.get("accumulated_cost") or 0.0) + self.critic.last_cost
         state["content_plan_validation"] = validation
         if validation.get("approved"):
             state["status"] = "plan_approved"
             return state
-        state["plan_revision_count"] += 1
-        state["revision_history"].append(
+        state["plan_revision_count"] = int(state.get("plan_revision_count") or 0) + 1
+        state.setdefault("revision_history", []).append(
             {
                 "stage": "critic",
                 "revision_count": state["plan_revision_count"],

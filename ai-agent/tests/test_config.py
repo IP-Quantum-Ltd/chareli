@@ -11,6 +11,9 @@ class ConfigFactoryTests(unittest.TestCase):
             OPENAI_API_KEY="key",
             SUPERADMIN_EMAIL="admin@example.com",
             SUPERADMIN_PASSWORD="secret",
+            STAGE0_REQUIRED_CANDIDATES=5,
+            STAGE0_MAX_SEARCH_RESULTS=5,
+            STAGE0_CANDIDATE_CAPTURE_TIMEOUT_SECONDS=30,
         )
 
         runtime = build_runtime_config(settings)
@@ -20,3 +23,6 @@ class ConfigFactoryTests(unittest.TestCase):
         self.assertEqual(runtime.browser.admin_email, "admin@example.com")
         self.assertEqual(runtime.llm.primary_model, "gpt-4o")
         self.assertEqual(runtime.mongo.rag_collection, "stage2_grounded_contexts")
+        self.assertEqual(runtime.queue.stage0_required_candidates, 5)
+        self.assertEqual(runtime.queue.stage0_max_search_results, 5)
+        self.assertEqual(runtime.queue.stage0_candidate_capture_timeout_seconds, 30)

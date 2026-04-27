@@ -19,7 +19,7 @@ class PlanContentNode:
                 "revision_feedback": revision_feedback,
             },
         )
-        state["accumulated_cost"] += self.architect.last_cost
+        state["accumulated_cost"] = float(state.get("accumulated_cost") or 0.0) + self.architect.last_cost
         state["outline"] = outline
         state["status"] = "architected"
         return state

@@ -62,6 +62,9 @@ def build_runtime_config(app_settings: AppSettings) -> RuntimeConfig:
             max_plan_revisions=app_settings.MAX_PLAN_REVISIONS,
             max_draft_revisions=app_settings.MAX_DRAFT_REVISIONS,
             job_retention_hours=app_settings.JOB_RETENTION_HOURS,
+            stage0_required_candidates=max(1, app_settings.STAGE0_REQUIRED_CANDIDATES),
+            stage0_max_search_results=max(1, app_settings.STAGE0_MAX_SEARCH_RESULTS),
+            stage0_candidate_capture_timeout_seconds=max(5, app_settings.STAGE0_CANDIDATE_CAPTURE_TIMEOUT_SECONDS),
         ),
     )
 

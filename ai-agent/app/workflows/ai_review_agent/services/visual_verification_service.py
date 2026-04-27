@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import logging
 import mimetypes
@@ -25,12 +26,18 @@ class VisualVerificationService:
         correlation_service: VisualCorrelationService,
         external_capture_service: ExternalCaptureService,
         artifact_store: ArtifactStore,
+        required_candidates: int = 5,
+        max_search_results: int = 5,
+        candidate_capture_timeout_seconds: int = 30,
     ):
         self.ai = ai
         self.search_service = search_service
         self.correlation_service = correlation_service
         self.external_capture_service = external_capture_service
         self.artifact_store = artifact_store
+        self.required_candidates = max(1, required_candidates)
+        self.max_search_results = max(self.required_candidates, max_search_results)
+        self.candidate_capture_timeout_seconds = max(5, candidate_capture_timeout_seconds)
         self.last_cost = 0.0
 
     def _image_prompt_parts(self, images_b64: List[str]) -> List[Dict[str, Any]]:
@@ -40,7 +47,7 @@ class VisualVerificationService:
             if image_b64
         ]
 
-    def _attach_artifacts_to_trace(self, artifact_paths: Dict[str, str]) -> None:
+    async def _attach_artifacts_to_trace(self, artifact_paths: Dict[str, str]) -> None:
         run_tree = get_current_run_tree()
         if run_tree is None:
             return
@@ -55,7 +62,8 @@ class VisualVerificationService:
                 continue
             mime_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
             try:
-                attachments[name] = (mime_type, path.read_bytes())
+                file_bytes = await asyncio.to_thread(path.read_bytes)
+                attachments[name] = (mime_type, file_bytes)
                 traced_artifacts[name] = str(path)
             except Exception as exc:
                 logger.warning("Failed to attach artifact %s (%s): %s", name, path, exc)
@@ -68,6 +76,8 @@ class VisualVerificationService:
 
     @traceable(run_type="chain", name="Visual Librarian Investigation")
     async def verify_and_research(self, proposal_id: str, game_title: str, internal_screenshots: List[str]) -> Dict[str, Any]:
+        logger.info("Research start | proposal=%s game=%s internal_images=%s", proposal_id, game_title, len(internal_screenshots))
+        self.last_cost = 0.0
         proposal_dir, external_dir = await self.artifact_store.ensure_proposal_dirs(proposal_id)
         internal_artifact_candidates = [
             proposal_dir / "internal" / "reference_thumbnail.png",
@@ -81,45 +91,86 @@ class VisualVerificationService:
         search_plan = await self._build_image_weighted_search_query(game_title, internal_screenshots[0])
         exact_identity = await self._infer_exact_game_identity(game_title, internal_screenshots)
         search_query = self._compose_search_query(game_title, search_plan, exact_identity)
-        search_step = await self.search_service.search_candidates(game_title, internal_screenshots, search_query, exact_identity, count=10)
+        logger.info("Research search | proposal=%s query=%s", proposal_id, search_query)
+        search_step = await self.search_service.search_candidates(
+            game_title,
+            internal_screenshots,
+            search_query,
+            exact_identity,
+            count=self.max_search_results,
+        )
         raw_candidates = search_step.get("candidates") or []
         if not raw_candidates:
             return Stage0Investigation(status="failed", reason="Image + name OpenAI web search returned 0 usable candidates.", search_query=search_query).to_dict()
 
-        search_results = [candidate["url"] for candidate in raw_candidates[:10] if isinstance(candidate, dict) and isinstance(candidate.get("url"), str) and candidate.get("url")]
-        if len(search_results) < 5:
-            return Stage0Investigation(status="failed", reason=f"OpenAI web search returned only {len(search_results)} usable URLs; Stage 0 requires 5.", search_query=search_query, raw_candidates=raw_candidates).to_dict()
+        search_results = [
+            candidate["url"]
+            for candidate in raw_candidates[: self.max_search_results]
+            if isinstance(candidate, dict) and isinstance(candidate.get("url"), str) and candidate.get("url")
+        ]
+        if len(search_results) < self.required_candidates:
+            return Stage0Investigation(
+                status="failed",
+                reason=(
+                    f"OpenAI web search returned only {len(search_results)} usable URLs; "
+                    f"Stage 0 requires {self.required_candidates}."
+                ),
+                search_query=search_query,
+                raw_candidates=raw_candidates,
+            ).to_dict()
 
         candidates: List[CandidateCapture] = []
         failures: List[Dict[str, Any]] = []
         for index, url in enumerate(search_results, start=1):
+            logger.info("Research candidate start | proposal=%s rank=%s url=%s", proposal_id, index, url)
             screenshot_path = external_dir / f"candidate_{index:02d}_render.png"
-            capture_result = await self.external_capture_service.capture_external_page(url, str(screenshot_path))
+            try:
+                capture_result = await asyncio.wait_for(
+                    self.external_capture_service.capture_external_page(url, str(screenshot_path)),
+                    timeout=self.candidate_capture_timeout_seconds,
+                )
+            except asyncio.TimeoutError:
+                failures.append({"rank": index, "url": url, "reason": "External page capture timed out."})
+                logger.warning("Research candidate timeout | proposal=%s rank=%s url=%s", proposal_id, index, url)
+                continue
             if not capture_result:
                 failures.append({"rank": index, "url": url, "reason": "No playable render could be captured."})
+                logger.info("Research candidate skipped | proposal=%s rank=%s url=%s", proposal_id, index, url)
                 continue
-            with open(capture_result["screenshot_path"], "rb") as handle:
-                external_base64 = base64.b64encode(handle.read()).decode("utf-8")
+            screenshot_bytes = await asyncio.to_thread(Path(capture_result["screenshot_path"]).read_bytes)
+            external_base64 = base64.b64encode(screenshot_bytes).decode("utf-8")
             correlation = await self._calculate_correlation(game_title, internal_screenshots, external_base64, url, capture_result["metadata"])
             seo_intelligence = self.correlation_service.build_candidate_seo_intelligence(game_title, search_query, capture_result["metadata"])
             scoring = self.correlation_service.score_candidate(correlation, seo_intelligence)
             candidates.append(CandidateCapture(rank=index, url=url, search_query=search_query, screenshot_path=capture_result["screenshot_path"], metadata_path=capture_result["metadata_path"], metadata=capture_result["metadata"], correlation=correlation, seo_intelligence=seo_intelligence, scoring=scoring, confidence_score=scoring["confidence_score"], reasoning=correlation.get("reasoning", "Unknown"), extracted_facts=correlation.get("facts", {}), comparison_triplet={"reference_thumbnail": "internal_screenshots[0]", "internal_gameplay": "internal_screenshots[1]" if len(internal_screenshots) > 1 else "", "external_render_path": capture_result["screenshot_path"], "external_metadata_path": capture_result["metadata_path"]}))
-            if len(candidates) == 5:
+            logger.info("Research candidate scored | proposal=%s rank=%s url=%s confidence=%s", proposal_id, index, url, scoring["confidence_score"])
+            if len(candidates) == self.required_candidates:
                 break
 
         comparison_scores_path = await self.artifact_store.write_comparison_scores(proposal_dir, proposal_id, game_title, search_query, candidates, failures)
-        self._attach_artifacts_to_trace(
+        await self._attach_artifacts_to_trace(
             {"comparison_scores_json": comparison_scores_path, **{f"internal_artifact_{index + 1}_{path.name.replace('.', '_')}": str(path) for index, path in enumerate(internal_artifact_candidates) if path.exists()}, **{f"candidate_{candidate.rank:02d}_render_png": candidate.screenshot_path for candidate in candidates}, **{f"candidate_{candidate.rank:02d}_render_json": candidate.metadata_path for candidate in candidates}}
         )
         manifest_path = await self.artifact_store.write_manifest(
             proposal_dir,
             {"proposal_id": proposal_id, "game_title": game_title, "search_query": search_query, "search_plan": search_plan, "exact_identity": exact_identity, "search_engine": search_step.get("engine", ""), "search_model": search_step.get("model", ""), "raw_candidates": raw_candidates, "web_search_sources": search_step.get("sources", []), "search_results": search_results, "candidate_count": len(candidates), "failures": failures, "comparison_scores_path": comparison_scores_path},
         )
-        self._attach_artifacts_to_trace({"stage0_manifest_json": manifest_path})
+        await self._attach_artifacts_to_trace({"stage0_manifest_json": manifest_path})
 
-        if len(candidates) != 5:
+        if len(candidates) != self.required_candidates:
             findings_path = await self.artifact_store.write_research_findings(proposal_id, game_title, search_query, candidates, failures, self.last_cost)
-            return Stage0Investigation(status="failed", reason=f"Stage 0 captured {len(candidates)} playable external renders after trying {len(search_results)} ranked search results; 5 are required.", search_query=search_query, failures=failures, all_candidates=candidates, comparison_scores_path=comparison_scores_path, research_findings_path=findings_path).to_dict()
+            return Stage0Investigation(
+                status="failed",
+                reason=(
+                    f"Stage 0 captured {len(candidates)} playable external renders after trying "
+                    f"{len(search_results)} ranked search results; {self.required_candidates} are required."
+                ),
+                search_query=search_query,
+                failures=failures,
+                all_candidates=candidates,
+                comparison_scores_path=comparison_scores_path,
+                research_findings_path=findings_path,
+            ).to_dict()
 
         best_match = max(candidates, key=lambda item: item.confidence_score)
         if best_match.confidence_score > 80:
@@ -129,7 +180,8 @@ class VisualVerificationService:
                 best_match.extracted_facts.update(deep_info)
 
         findings_path = await self.artifact_store.write_research_findings(proposal_id, game_title, search_query, candidates, failures, self.last_cost, best_match.to_dict())
-        self._attach_artifacts_to_trace({"research_findings_json": findings_path})
+        await self._attach_artifacts_to_trace({"research_findings_json": findings_path})
+        logger.info("Research success | proposal=%s candidates=%s best=%s", proposal_id, len(candidates), best_match.url)
         return Stage0Investigation(status="success", search_query=search_query, search_plan=search_plan, exact_identity=exact_identity, search_engine=search_step.get("engine", ""), search_model=search_step.get("model", ""), raw_candidates=raw_candidates, best_match=best_match, all_candidates=candidates, failures=failures, comparison_scores_path=comparison_scores_path, research_findings_path=findings_path).to_dict()
 
     def _compose_search_query(self, title: str, search_plan: Dict[str, Any], exact_identity: Dict[str, Any]) -> str:

@@ -67,6 +67,9 @@ class QueueConfig:
     max_plan_revisions: int
     max_draft_revisions: int
     job_retention_hours: int
+    stage0_required_candidates: int
+    stage0_max_search_results: int
+    stage0_candidate_capture_timeout_seconds: int
 
 
 @dataclass(frozen=True)

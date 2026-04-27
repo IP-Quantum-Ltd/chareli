@@ -1,5 +1,7 @@
 import logging
 
+from app.workflows.ai_review_agent.context import ensure_state_defaults
+
 logger = logging.getLogger(__name__)
 
 
@@ -10,6 +12,7 @@ class InitializeAgentNode:
         self.proposal_context_builder = proposal_context_builder
 
     async def __call__(self, state):
+        ensure_state_defaults(state)
         proposal_id = (state.get("proposal_id") or "").strip()
         game_id = (state.get("game_id") or "").strip()
         submit_review = bool(state.get("submit_review", False))

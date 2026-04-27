@@ -62,3 +62,31 @@ def build_initial_state(
         "status": "starting",
         "error_message": "",
     }
+
+
+def ensure_state_defaults(state: Dict[str, Any]) -> Dict[str, Any]:
+    state.setdefault("proposal_id", "")
+    state.setdefault("game_id", "")
+    state.setdefault("game_title", "")
+    state.setdefault("proposal_snapshot", {})
+    state.setdefault("submit_review", False)
+    state.setdefault("internal_capture_metadata", {})
+    state.setdefault("internal_imgs_base64", [])
+    state.setdefault("internal_imgs_paths", [])
+    state.setdefault("investigation", {})
+    state.setdefault("seo_blueprint", {})
+    state.setdefault("grounded_context", {})
+    state.setdefault("outline", {})
+    state.setdefault("content_plan_validation", {})
+    state.setdefault("article", "")
+    state.setdefault("audit_report", {})
+    state.setdefault("optimization", {})
+    state.setdefault("revision_history", [])
+    state.setdefault("plan_revision_count", 0)
+    state.setdefault("draft_revision_count", 0)
+    state.setdefault("max_plan_revisions", 2)
+    state.setdefault("max_draft_revisions", 2)
+    state.setdefault("accumulated_cost", 0.0)
+    state.setdefault("status", "starting")
+    state.setdefault("error_message", "")
+    return state

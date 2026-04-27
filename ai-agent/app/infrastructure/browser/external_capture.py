@@ -1,3 +1,4 @@
+import asyncio
 import json
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -41,7 +42,7 @@ class ExternalCaptureService:
             await game_element.screenshot(path=output_path)
             metadata_path = str(Path(output_path).with_suffix(".json"))
             metadata = await extract_external_page_metadata(page, url)
-            Path(metadata_path).write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+            await asyncio.to_thread(Path(metadata_path).write_text, json.dumps(metadata, indent=2), encoding="utf-8")
             return {
                 "screenshot_path": output_path,
                 "metadata_path": metadata_path,

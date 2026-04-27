@@ -10,7 +10,7 @@ class VisualVerifyNode:
             game_title=state["game_title"],
             internal_screenshots=state["internal_imgs_base64"],
         )
-        state["accumulated_cost"] += self.visual_librarian.last_cost
+        state["accumulated_cost"] = float(state.get("accumulated_cost") or 0.0) + self.visual_librarian.last_cost
         if result["status"] == "failed":
             state["status"] = "failed"
             state["error_message"] = result.get("reason", "Stage 0 failed.")

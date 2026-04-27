@@ -16,7 +16,7 @@ class GroundedRetrieveNode:
                 state["investigation"],
                 state["seo_blueprint"],
             )
-            state["accumulated_cost"] += self.librarian.last_cost
+            state["accumulated_cost"] = float(state.get("accumulated_cost") or 0.0) + self.librarian.last_cost
             state["grounded_context"] = grounded_context
             state["status"] = "grounded"
         except Exception as exc:

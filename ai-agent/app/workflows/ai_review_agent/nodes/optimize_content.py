@@ -13,7 +13,7 @@ class OptimizeContentNode:
             state["outline"],
             state["audit_report"],
         )
-        state["accumulated_cost"] += self.optimizer.last_cost
+        state["accumulated_cost"] = float(state.get("accumulated_cost") or 0.0) + self.optimizer.last_cost
         state["optimization"] = optimization
         state["status"] = "complete"
         return state

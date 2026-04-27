@@ -19,7 +19,7 @@ class DraftContentNode:
                 "revision_feedback": revision_feedback,
             },
         )
-        state["accumulated_cost"] += self.scribe.last_cost
+        state["accumulated_cost"] = float(state.get("accumulated_cost") or 0.0) + self.scribe.last_cost
         state["article"] = article
         state["status"] = "complete"
         return state

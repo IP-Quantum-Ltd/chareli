@@ -6,7 +6,7 @@ class SeoAnalyzeNode:
         if state["status"] == "failed":
             return state
         blueprint = await self.analyst.analyze_seo_potential(state["game_title"], state["investigation"])
-        state["accumulated_cost"] += self.analyst.last_cost
+        state["accumulated_cost"] = float(state.get("accumulated_cost") or 0.0) + self.analyst.last_cost
         state["seo_blueprint"] = blueprint
         state["status"] = "analyzed"
         return state

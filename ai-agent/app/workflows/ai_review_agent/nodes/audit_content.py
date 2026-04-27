@@ -12,13 +12,13 @@ class AuditContentNode:
             state["investigation"],
             state["outline"],
         )
-        state["accumulated_cost"] += self.auditor.last_cost
+        state["accumulated_cost"] = float(state.get("accumulated_cost") or 0.0) + self.auditor.last_cost
         state["audit_report"] = report
         if report.get("approved"):
             state["status"] = "audited"
             return state
-        state["draft_revision_count"] += 1
-        state["revision_history"].append(
+        state["draft_revision_count"] = int(state.get("draft_revision_count") or 0) + 1
+        state.setdefault("revision_history", []).append(
             {
                 "stage": "auditor",
                 "revision_count": state["draft_revision_count"],

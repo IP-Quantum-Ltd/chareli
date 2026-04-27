@@ -48,6 +48,9 @@ class AppSettings(BaseSettings):
     MAX_PLAN_REVISIONS: int = 2
     MAX_DRAFT_REVISIONS: int = 2
     JOB_RETENTION_HOURS: int = 24
+    STAGE0_REQUIRED_CANDIDATES: int = 5
+    STAGE0_MAX_SEARCH_RESULTS: int = 5
+    STAGE0_CANDIDATE_CAPTURE_TIMEOUT_SECONDS: int = 30
 
 
 @lru_cache(maxsize=1)

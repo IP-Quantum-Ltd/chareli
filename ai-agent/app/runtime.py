@@ -61,6 +61,9 @@ class ApplicationRuntime:
             correlation_service=self.visual_correlation,
             external_capture_service=self.external_capture,
             artifact_store=self.artifact_store,
+            required_candidates=config.queue.stage0_required_candidates,
+            max_search_results=config.queue.stage0_max_search_results,
+            candidate_capture_timeout_seconds=config.queue.stage0_candidate_capture_timeout_seconds,
         )
         self.analyst = SeoAnalysisService(self.ai_factory.create_executor())
         self.librarian = GroundedRetrievalService(
