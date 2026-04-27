@@ -11,7 +11,16 @@ class VisualSearchService:
     def __init__(self, ai: AIExecutor):
         self._ai = ai
 
+    def _input_images(self, internal_images: List[str]) -> List[Dict[str, str]]:
+        return [
+            {"type": "input_image", "image_url": f"data:image/png;base64,{image_b64}"}
+            for image_b64 in internal_images
+            if image_b64
+        ]
+
     async def search_candidates(self, title: str, internal_images: List[str], search_query: str, exact_identity: Dict[str, Any], count: int = 10) -> Dict[str, Any]:
+        if not internal_images:
+            return {"engine": "openai_responses_web_search", "model": self._ai.llm_config.web_search_model, "query": search_query, "candidates": [], "sources": [], "error": "No internal images provided."}
         exact_title = str(exact_identity.get("exact_game_name") or "").strip() or title
         aliases = [item for item in (exact_identity.get("aliases") or []) if isinstance(item, str)]
         distinguishing_features = [item for item in (exact_identity.get("distinguishing_features") or []) if isinstance(item, str)]
@@ -34,7 +43,7 @@ class VisualSearchService:
                 tools=[{"type": "web_search"}],
                 tool_choice="auto",
                 include=["web_search_call.action.sources"],
-                input=[{"role": "user", "content": [{"type": "input_text", "text": prompt}, {"type": "input_image", "image_url": f"data:image/png;base64,{internal_images[0]}"}, {"type": "input_image", "image_url": f"data:image/png;base64,{internal_images[1]}"}]}],
+                input=[{"role": "user", "content": [{"type": "input_text", "text": prompt}, *self._input_images(internal_images)]}],
             )
             raw_output_text = getattr(response, "output_text", "") or ""
             parsed = self._parse_json_text(raw_output_text, {"candidates": []})

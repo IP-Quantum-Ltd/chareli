@@ -1,5 +1,7 @@
+import asyncio
 import base64
 import logging
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -10,23 +12,30 @@ class CaptureInternalAssetsNode:
         self.artifact_store = artifact_store
 
     async def __call__(self, state):
-        logger.info("Node: Capture | Proposal: %s", state["proposal_id"])
+        if state.get("status") == "failed":
+            return state
+        logger.info("Node: Capture | Proposal: %s", state.get("proposal_id") or state.get("game_id"))
         try:
+            proposal_id = str(state.get("proposal_id") or state.get("game_id") or "")
+            game_id = str(state.get("game_id") or "")
+            if not proposal_id or not game_id:
+                raise ValueError("Capture node requires initialized proposal_id/game_id state.")
             capture_result = await self.capture_service.capture_stage0_internal_assets(
-                state["game_id"],
-                str(self.artifact_store.proposal_dir(state["proposal_id"])),
+                game_id,
+                str(self.artifact_store.proposal_dir(proposal_id)),
             )
             state["internal_imgs_paths"] = capture_result.paths
             state["internal_capture_metadata"] = capture_result.metadata
-            if not capture_result.paths or len(capture_result.paths) < 2:
-                raise ValueError("Failed to capture both internal reference images.")
+            if not capture_result.paths:
+                raise ValueError("Failed to capture any internal reference image.")
             state["internal_imgs_base64"] = []
             for path in capture_result.paths:
-                with open(path, "rb") as handle:
-                    state["internal_imgs_base64"].append(base64.b64encode(handle.read()).decode("utf-8"))
+                file_bytes = await asyncio.to_thread(Path(path).read_bytes)
+                state["internal_imgs_base64"].append(base64.b64encode(file_bytes).decode("utf-8"))
             state["status"] = "captured"
         except Exception as exc:
-            logger.error("Capture Integrity Failed: %s", exc)
+            detail = str(exc).strip() or repr(exc)
+            logger.error("Capture Integrity Failed: %s", detail)
             state["status"] = "failed"
-            state["error_message"] = f"CRITICAL: Internal capture failed. Pipeline terminated. Detail: {exc}"
+            state["error_message"] = f"CRITICAL: Internal capture failed. Pipeline terminated. Detail: {detail}"
         return state

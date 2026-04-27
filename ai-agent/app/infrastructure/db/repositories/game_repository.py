@@ -13,7 +13,12 @@ class GameRepository:
         if pool is None or not game_id:
             return None
         async with pool.acquire() as conn:
-            row = await conn.fetchrow('SELECT * FROM public."game" WHERE id = $1 LIMIT 1', game_id)
+            try:
+                row = await conn.fetchrow('SELECT * FROM public."game" WHERE id = $1 LIMIT 1', game_id)
+            except Exception as exc:
+                if 'relation "public.game" does not exist' not in str(exc):
+                    raise
+                row = await conn.fetchrow('SELECT * FROM public.games WHERE id = $1 LIMIT 1', game_id)
             return dict(row) if row else None
 
     async def get_public_game_by_offset(self, offset: int = 0) -> Optional[Dict[str, Any]]:

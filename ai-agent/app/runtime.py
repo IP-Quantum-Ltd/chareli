@@ -18,6 +18,7 @@ from app.workflows.ai_review_agent.nodes.capture_internal_assets import CaptureI
 from app.workflows.ai_review_agent.nodes.critic_plan import CriticPlanNode
 from app.workflows.ai_review_agent.nodes.draft_content import DraftContentNode
 from app.workflows.ai_review_agent.nodes.grounded_retrieve import GroundedRetrieveNode
+from app.workflows.ai_review_agent.nodes.initialize_agent import InitializeAgentNode
 from app.workflows.ai_review_agent.nodes.optimize_content import OptimizeContentNode
 from app.workflows.ai_review_agent.nodes.plan_content import PlanContentNode
 from app.workflows.ai_review_agent.nodes.seo_analyze import SeoAnalyzeNode
@@ -83,6 +84,11 @@ class ApplicationRuntime:
             game_repository=self.game_repository,
             proposal_context_builder=ProposalContextBuilder(),
             review_mapper=ReviewMapper(),
+            initialize_node=InitializeAgentNode(
+                arcade_client=self.arcade_client,
+                game_repository=self.game_repository,
+                proposal_context_builder=ProposalContextBuilder(),
+            ),
             capture_node=CaptureInternalAssetsNode(self.internal_capture, self.artifact_store),
             visual_verify_node=VisualVerifyNode(self.visual_verification),
             seo_analyze_node=SeoAnalyzeNode(self.analyst),

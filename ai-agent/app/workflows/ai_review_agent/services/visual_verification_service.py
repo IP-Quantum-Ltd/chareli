@@ -33,6 +33,13 @@ class VisualVerificationService:
         self.artifact_store = artifact_store
         self.last_cost = 0.0
 
+    def _image_prompt_parts(self, images_b64: List[str]) -> List[Dict[str, Any]]:
+        return [
+            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_b64}"}}
+            for image_b64 in images_b64
+            if image_b64
+        ]
+
     def _attach_artifacts_to_trace(self, artifact_paths: Dict[str, str]) -> None:
         run_tree = get_current_run_tree()
         if run_tree is None:
@@ -61,15 +68,15 @@ class VisualVerificationService:
 
     @traceable(run_type="chain", name="Visual Librarian Investigation")
     async def verify_and_research(self, proposal_id: str, game_title: str, internal_screenshots: List[str]) -> Dict[str, Any]:
-        proposal_dir, external_dir = self.artifact_store.ensure_proposal_dirs(proposal_id)
+        proposal_dir, external_dir = await self.artifact_store.ensure_proposal_dirs(proposal_id)
         internal_artifact_candidates = [
             proposal_dir / "internal" / "reference_thumbnail.png",
             proposal_dir / "internal" / "reference_gameplay_start.png",
             proposal_dir / "internal_thumbnail.png",
             proposal_dir / "internal_gameplay.png",
         ]
-        if len(internal_screenshots) < 2:
-            return Stage0Investigation(status="failed", reason="Stage 0 requires two internal reference screenshots.").to_dict()
+        if len(internal_screenshots) < 1:
+            return Stage0Investigation(status="failed", reason="Stage 0 requires at least one internal reference screenshot.").to_dict()
 
         search_plan = await self._build_image_weighted_search_query(game_title, internal_screenshots[0])
         exact_identity = await self._infer_exact_game_identity(game_title, internal_screenshots)
@@ -96,22 +103,22 @@ class VisualVerificationService:
             correlation = await self._calculate_correlation(game_title, internal_screenshots, external_base64, url, capture_result["metadata"])
             seo_intelligence = self.correlation_service.build_candidate_seo_intelligence(game_title, search_query, capture_result["metadata"])
             scoring = self.correlation_service.score_candidate(correlation, seo_intelligence)
-            candidates.append(CandidateCapture(rank=index, url=url, search_query=search_query, screenshot_path=capture_result["screenshot_path"], metadata_path=capture_result["metadata_path"], metadata=capture_result["metadata"], correlation=correlation, seo_intelligence=seo_intelligence, scoring=scoring, confidence_score=scoring["confidence_score"], reasoning=correlation.get("reasoning", "Unknown"), extracted_facts=correlation.get("facts", {}), comparison_triplet={"reference_thumbnail": "internal_screenshots[0]", "internal_gameplay": "internal_screenshots[1]", "external_render_path": capture_result["screenshot_path"], "external_metadata_path": capture_result["metadata_path"]}))
+            candidates.append(CandidateCapture(rank=index, url=url, search_query=search_query, screenshot_path=capture_result["screenshot_path"], metadata_path=capture_result["metadata_path"], metadata=capture_result["metadata"], correlation=correlation, seo_intelligence=seo_intelligence, scoring=scoring, confidence_score=scoring["confidence_score"], reasoning=correlation.get("reasoning", "Unknown"), extracted_facts=correlation.get("facts", {}), comparison_triplet={"reference_thumbnail": "internal_screenshots[0]", "internal_gameplay": "internal_screenshots[1]" if len(internal_screenshots) > 1 else "", "external_render_path": capture_result["screenshot_path"], "external_metadata_path": capture_result["metadata_path"]}))
             if len(candidates) == 5:
                 break
 
-        comparison_scores_path = self.artifact_store.write_comparison_scores(proposal_dir, proposal_id, game_title, search_query, candidates, failures)
+        comparison_scores_path = await self.artifact_store.write_comparison_scores(proposal_dir, proposal_id, game_title, search_query, candidates, failures)
         self._attach_artifacts_to_trace(
             {"comparison_scores_json": comparison_scores_path, **{f"internal_artifact_{index + 1}_{path.name.replace('.', '_')}": str(path) for index, path in enumerate(internal_artifact_candidates) if path.exists()}, **{f"candidate_{candidate.rank:02d}_render_png": candidate.screenshot_path for candidate in candidates}, **{f"candidate_{candidate.rank:02d}_render_json": candidate.metadata_path for candidate in candidates}}
         )
-        manifest_path = self.artifact_store.write_manifest(
+        manifest_path = await self.artifact_store.write_manifest(
             proposal_dir,
             {"proposal_id": proposal_id, "game_title": game_title, "search_query": search_query, "search_plan": search_plan, "exact_identity": exact_identity, "search_engine": search_step.get("engine", ""), "search_model": search_step.get("model", ""), "raw_candidates": raw_candidates, "web_search_sources": search_step.get("sources", []), "search_results": search_results, "candidate_count": len(candidates), "failures": failures, "comparison_scores_path": comparison_scores_path},
         )
         self._attach_artifacts_to_trace({"stage0_manifest_json": manifest_path})
 
         if len(candidates) != 5:
-            findings_path = self.artifact_store.write_research_findings(proposal_id, game_title, search_query, candidates, failures, self.last_cost)
+            findings_path = await self.artifact_store.write_research_findings(proposal_id, game_title, search_query, candidates, failures, self.last_cost)
             return Stage0Investigation(status="failed", reason=f"Stage 0 captured {len(candidates)} playable external renders after trying {len(search_results)} ranked search results; 5 are required.", search_query=search_query, failures=failures, all_candidates=candidates, comparison_scores_path=comparison_scores_path, research_findings_path=findings_path).to_dict()
 
         best_match = max(candidates, key=lambda item: item.confidence_score)
@@ -121,7 +128,7 @@ class VisualVerificationService:
                 best_match.deep_research_results = deep_info
                 best_match.extracted_facts.update(deep_info)
 
-        findings_path = self.artifact_store.write_research_findings(proposal_id, game_title, search_query, candidates, failures, self.last_cost, best_match.to_dict())
+        findings_path = await self.artifact_store.write_research_findings(proposal_id, game_title, search_query, candidates, failures, self.last_cost, best_match.to_dict())
         self._attach_artifacts_to_trace({"research_findings_json": findings_path})
         return Stage0Investigation(status="success", search_query=search_query, search_plan=search_plan, exact_identity=exact_identity, search_engine=search_step.get("engine", ""), search_model=search_step.get("model", ""), raw_candidates=raw_candidates, best_match=best_match, all_candidates=candidates, failures=failures, comparison_scores_path=comparison_scores_path, research_findings_path=findings_path).to_dict()
 
@@ -162,8 +169,9 @@ class VisualVerificationService:
         return result
 
     async def _infer_exact_game_identity(self, title: str, internal_imgs: List[str]) -> Dict[str, Any]:
+        image_parts = self._image_prompt_parts(internal_imgs)
         result = await self.ai.chat_completion(
-            messages=[{"role": "user", "content": [{"type": "text", "text": f"You are identifying the exact browser game shown in two internal reference images. Database title: {title}. Return ONLY valid JSON: {{\"exact_game_name\": \"string\", \"aliases\": [\"alias 1\"], \"distinguishing_features\": [\"feature 1\"], \"avoid_titles\": [\"wrong title 1\"], \"reasoning\": \"short explanation\"}}"}, {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{internal_imgs[0]}"}}, {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{internal_imgs[1]}"}}, ]}],
+            messages=[{"role": "user", "content": [{"type": "text", "text": f"You are identifying the exact browser game shown in the provided internal reference images. Database title: {title}. Return ONLY valid JSON: {{\"exact_game_name\": \"string\", \"aliases\": [\"alias 1\"], \"distinguishing_features\": [\"feature 1\"], \"avoid_titles\": [\"wrong title 1\"], \"reasoning\": \"short explanation\"}}"}, *image_parts]}],
             response_format={"type": "json_object"},
             fallback_data={"exact_game_name": title, "aliases": [], "distinguishing_features": [], "avoid_titles": [], "reasoning": "Exact identity inference unavailable."},
             metadata={"stage": "exact_game_identity_inference"},
@@ -172,8 +180,9 @@ class VisualVerificationService:
         return result
 
     async def _calculate_correlation(self, title: str, internal_imgs: List[str], external_img: str, url: str, metadata: Dict[str, Any]) -> Dict[str, Any]:
+        image_parts = self._image_prompt_parts(internal_imgs)
         result = await self.ai.chat_completion(
-            messages=[{"role": "user", "content": [{"type": "text", "text": f"Compare two internal game reference images against one external page screenshot. Game title: {title}. External URL: {url}. External metadata: {metadata}. Return ONLY valid JSON: {{\"confidence_score\": 0, \"visual_match_score\": 0, \"reasoning\": \"short explanation\", \"facts\": {{\"controls\": \"string\", \"rules\": \"string\", \"objective\": \"string\", \"original_developer\": \"string\"}}}}"}, {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{internal_imgs[0]}"}}, {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{internal_imgs[1]}"}}, {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{external_img}"}}]}],
+            messages=[{"role": "user", "content": [{"type": "text", "text": f"Compare the provided internal game reference images against one external page screenshot. Game title: {title}. External URL: {url}. External metadata: {metadata}. Return ONLY valid JSON: {{\"confidence_score\": 0, \"visual_match_score\": 0, \"reasoning\": \"short explanation\", \"facts\": {{\"controls\": \"string\", \"rules\": \"string\", \"objective\": \"string\", \"original_developer\": \"string\"}}}}"}, *image_parts, {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{external_img}"}}]}],
             response_format={"type": "json_object"},
             fallback_data={"confidence_score": 0, "visual_match_score": 0, "reasoning": f"Correlation unavailable for {urlparse(url).netloc}.", "facts": {}},
             metadata={"stage": "stage0_correlation"},

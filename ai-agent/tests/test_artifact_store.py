@@ -7,13 +7,13 @@ from app.domain.dto import CandidateCapture
 from app.infrastructure.storage.artifact_store import ArtifactStore
 
 
-class ArtifactStoreTests(unittest.TestCase):
-    def test_writes_manifest_and_findings(self) -> None:
+class ArtifactStoreTests(unittest.IsolatedAsyncioTestCase):
+    async def test_writes_manifest_and_findings(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             store = ArtifactStore(Path(temp_dir))
-            proposal_dir, _ = store.ensure_proposal_dirs("proposal-1")
-            manifest_path = store.write_manifest(proposal_dir, {"status": "ok"})
-            findings_path = store.write_research_findings(
+            proposal_dir, _ = await store.ensure_proposal_dirs("proposal-1")
+            manifest_path = await store.write_manifest(proposal_dir, {"status": "ok"})
+            findings_path = await store.write_research_findings(
                 proposal_id="proposal-1",
                 game_title="Game",
                 search_query="game query",

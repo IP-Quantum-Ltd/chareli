@@ -1,13 +1,12 @@
 from typing import Any, Dict, TypedDict
 
-from app.domain.dto import PipelineState, ProposalContext
 
-
-class AgentState(TypedDict):
+class AgentState(TypedDict, total=False):
     proposal_id: str
     game_id: str
     game_title: str
     proposal_snapshot: Dict[str, Any]
+    submit_review: bool
     internal_capture_metadata: Dict[str, Any]
     internal_imgs_base64: list[str]
     internal_imgs_paths: list[str]
@@ -29,9 +28,37 @@ class AgentState(TypedDict):
     error_message: str
 
 
-def build_initial_state(context: ProposalContext, max_plan_revisions: int, max_draft_revisions: int) -> Dict[str, Any]:
-    return PipelineState.from_context(
-        context,
-        max_plan_revisions=max_plan_revisions,
-        max_draft_revisions=max_draft_revisions,
-    ).to_graph_state()
+def build_initial_state(
+    *,
+    proposal_id: str = "",
+    game_id: str = "",
+    submit_review: bool = False,
+    max_plan_revisions: int,
+    max_draft_revisions: int,
+) -> Dict[str, Any]:
+    return {
+        "proposal_id": proposal_id,
+        "game_id": game_id,
+        "game_title": "",
+        "proposal_snapshot": {},
+        "submit_review": submit_review,
+        "internal_capture_metadata": {},
+        "internal_imgs_base64": [],
+        "internal_imgs_paths": [],
+        "investigation": {},
+        "seo_blueprint": {},
+        "grounded_context": {},
+        "outline": {},
+        "content_plan_validation": {},
+        "article": "",
+        "audit_report": {},
+        "optimization": {},
+        "revision_history": [],
+        "plan_revision_count": 0,
+        "draft_revision_count": 0,
+        "max_plan_revisions": max_plan_revisions,
+        "max_draft_revisions": max_draft_revisions,
+        "accumulated_cost": 0.0,
+        "status": "starting",
+        "error_message": "",
+    }

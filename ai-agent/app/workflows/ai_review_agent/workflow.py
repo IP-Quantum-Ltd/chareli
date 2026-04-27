@@ -16,7 +16,6 @@ except ModuleNotFoundError:  # pragma: no cover - exercised in lightweight test 
 
         return decorator
 
-from app.domain.dto import ProposalContext
 from app.infrastructure.external.arcade_api_client import ArcadeApiClient
 from app.infrastructure.db.repositories.game_repository import GameRepository
 from app.workflows.ai_review_agent.context import AgentState, build_initial_state
@@ -25,6 +24,7 @@ from app.workflows.ai_review_agent.nodes.capture_internal_assets import CaptureI
 from app.workflows.ai_review_agent.nodes.critic_plan import CriticPlanNode
 from app.workflows.ai_review_agent.nodes.draft_content import DraftContentNode
 from app.workflows.ai_review_agent.nodes.grounded_retrieve import GroundedRetrieveNode
+from app.workflows.ai_review_agent.nodes.initialize_agent import InitializeAgentNode
 from app.workflows.ai_review_agent.nodes.optimize_content import OptimizeContentNode
 from app.workflows.ai_review_agent.nodes.plan_content import PlanContentNode
 from app.workflows.ai_review_agent.nodes.seo_analyze import SeoAnalyzeNode
@@ -42,6 +42,9 @@ class _SequentialCompiledGraph:
     async def ainvoke(self, state: dict[str, Any]) -> dict[str, Any]:
         current_state = state
         while True:
+            current_state = await self._workflow.initialize_node(current_state)
+            if current_state["status"] == "failed":
+                return current_state
             current_state = await self._workflow.capture_node(current_state)
             if current_state["status"] == "failed":
                 return current_state
@@ -83,6 +86,7 @@ class AiReviewAgentWorkflow:
         game_repository: GameRepository,
         proposal_context_builder: ProposalContextBuilder,
         review_mapper: ReviewMapper,
+        initialize_node: InitializeAgentNode,
         capture_node: CaptureInternalAssetsNode,
         visual_verify_node: VisualVerifyNode,
         seo_analyze_node: SeoAnalyzeNode,
@@ -99,6 +103,7 @@ class AiReviewAgentWorkflow:
         self.game_repository = game_repository
         self.proposal_context_builder = proposal_context_builder
         self.review_mapper = review_mapper
+        self.initialize_node = initialize_node
         self.capture_node = capture_node
         self.visual_verify_node = visual_verify_node
         self.seo_analyze_node = seo_analyze_node
@@ -119,6 +124,11 @@ class AiReviewAgentWorkflow:
             return "scribe"
         return END
 
+    def _route_after_initialize(self, state: dict[str, Any]) -> str:
+        if state.get("status") == "failed":
+            return END
+        return "capture"
+
     def _route_after_auditor(self, state: dict[str, Any]) -> str:
         if state["status"] == "draft_revise":
             return "scribe"
@@ -130,6 +140,7 @@ class AiReviewAgentWorkflow:
         if StateGraph is None:
             return _SequentialCompiledGraph(self)
         workflow = StateGraph(AgentState)
+        workflow.add_node("initialize", self.initialize_node)
         workflow.add_node("capture", self.capture_node)
         workflow.add_node("research", self.visual_verify_node)
         workflow.add_node("analyze", self.seo_analyze_node)
@@ -139,7 +150,8 @@ class AiReviewAgentWorkflow:
         workflow.add_node("scribe", self.draft_content_node)
         workflow.add_node("auditor", self.audit_content_node)
         workflow.add_node("optimizer", self.optimize_content_node)
-        workflow.set_entry_point("capture")
+        workflow.set_entry_point("initialize")
+        workflow.add_conditional_edges("initialize", self._route_after_initialize, {"capture": "capture", END: END})
         workflow.add_edge("capture", "research")
         workflow.add_edge("research", "analyze")
         workflow.add_edge("analyze", "librarian")
@@ -152,9 +164,11 @@ class AiReviewAgentWorkflow:
         return workflow.compile()
 
     @traceable(run_type="chain", name="ArcadeBox SEO Pipeline")
-    async def run_stages(self, context: ProposalContext):
+    async def run_stages(self, payload: dict[str, Any]):
         initial_state = build_initial_state(
-            context,
+            proposal_id=str(payload.get("proposal_id", "") or ""),
+            game_id=str(payload.get("game_id", "") or ""),
+            submit_review=bool(payload.get("submit_review", False)),
             max_plan_revisions=self.max_plan_revisions,
             max_draft_revisions=self.max_draft_revisions,
         )
@@ -182,14 +196,17 @@ class AiReviewAgentWorkflow:
             "revision_history": final_state.get("revision_history") or [],
         }
 
-    async def run_context(self, context: ProposalContext, submit_review: bool = False) -> dict[str, Any]:
-        final_state = await self.run_stages(context)
-        review = self.review_mapper.build_review_from_state(context.game_title, final_state)
-        if submit_review:
-            await self.arcade_client.submit_review(context.proposal_id, review.model_dump(exclude_none=True))
+    async def run_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
+        final_state = await self.run_stages(payload)
+        review = self.review_mapper.build_review_from_state(final_state.get("game_title", ""), final_state)
+        submit_review = bool(final_state.get("submit_review", payload.get("submit_review", False)))
+        proposal_id = str(final_state.get("proposal_id") or payload.get("proposal_id") or "")
+        game_id = str(final_state.get("game_id") or payload.get("game_id") or "")
+        if submit_review and proposal_id and proposal_id != game_id:
+            await self.arcade_client.submit_review(proposal_id, review.model_dump(exclude_none=True))
         logger.info(
             "[agent] Pipeline complete for context %s with recommendation '%s'",
-            context.proposal_id,
+            final_state.get("proposal_id") or final_state.get("game_id"),
             review.recommendation,
         )
         return self._build_result_payload(final_state, review)
@@ -197,13 +214,7 @@ class AiReviewAgentWorkflow:
     async def run_game(self, game_id: str, submit_review: bool = False) -> dict[str, Any]:
         logger.info("[agent] Starting pipeline for game %s", game_id)
         try:
-            game_record = await self.game_repository.get_game_record(game_id)
-            if not game_record:
-                raise ValueError(f"Game {game_id} was not found in the Postgres game table.")
-            game_title = self.proposal_context_builder.extract_game_title({"game": game_record, "gameId": game_id}, game_id)
-            proposal_snapshot = {"game": game_record, "gameId": game_id, "proposedData": {"title": game_title}}
-            context = self.proposal_context_builder.build(game_id, game_id, game_title, proposal_snapshot)
-            return await self.run_context(context, submit_review=submit_review)
+            return await self.run_payload({"game_id": game_id, "submit_review": submit_review})
         except Exception as exc:
             logger.error("[agent] Pipeline failed for game %s: %s", game_id, exc, exc_info=True)
             review = self.review_mapper.build_failure_review(
@@ -223,19 +234,7 @@ class AiReviewAgentWorkflow:
     async def run_proposal(self, proposal_id: str, submit_review: bool = True) -> dict[str, Any]:
         logger.info("[agent] Starting pipeline for proposal %s", proposal_id)
         try:
-            proposal = await self.arcade_client.get_proposal(proposal_id)
-            game_id = self.proposal_context_builder.extract_game_id(proposal)
-            if not game_id:
-                raise ValueError(
-                    f"Proposal {proposal_id} does not include a game id, so the canonical game table cannot be queried."
-                )
-            game_record = await self.game_repository.get_game_record(game_id)
-            if not game_record:
-                raise ValueError(f"Game {game_id} was not found in the Postgres game table.")
-            proposal_with_game = self.proposal_context_builder.merge_game_record_into_proposal(proposal, game_record)
-            game_title = self.proposal_context_builder.extract_game_title(proposal_with_game, proposal_id)
-            context = self.proposal_context_builder.build(proposal_id, game_id, game_title, proposal_with_game)
-            return await self.run_context(context, submit_review=submit_review)
+            return await self.run_payload({"proposal_id": proposal_id, "submit_review": submit_review})
         except Exception as exc:
             logger.error("[agent] Pipeline failed for proposal %s: %s", proposal_id, exc, exc_info=True)
             review = self.review_mapper.build_failure_review(

@@ -1,3 +1,4 @@
+import asyncio
 import json
 from pathlib import Path
 from typing import Any, Dict, List
@@ -12,13 +13,13 @@ class ArtifactStore:
     def proposal_dir(self, proposal_id: str) -> Path:
         return self._root / "stage0_artifacts" / proposal_id
 
-    def ensure_proposal_dirs(self, proposal_id: str) -> tuple[Path, Path]:
+    async def ensure_proposal_dirs(self, proposal_id: str) -> tuple[Path, Path]:
         proposal_dir = self.proposal_dir(proposal_id)
         external_dir = proposal_dir / "external"
-        external_dir.mkdir(parents=True, exist_ok=True)
+        await asyncio.to_thread(external_dir.mkdir, parents=True, exist_ok=True)
         return proposal_dir, external_dir
 
-    def write_research_findings(
+    async def write_research_findings(
         self,
         proposal_id: str,
         game_title: str,
@@ -52,10 +53,10 @@ class ArtifactStore:
             ],
             "failures": failures,
         }
-        findings_path.write_text(json.dumps(report, indent=4), encoding="utf-8")
+        await asyncio.to_thread(findings_path.write_text, json.dumps(report, indent=4), encoding="utf-8")
         return str(findings_path)
 
-    def write_comparison_scores(
+    async def write_comparison_scores(
         self,
         proposal_dir: Path,
         proposal_id: str,
@@ -86,10 +87,10 @@ class ArtifactStore:
             ],
             "failures": failures,
         }
-        comparison_scores_path.write_text(json.dumps(score_report, indent=2), encoding="utf-8")
+        await asyncio.to_thread(comparison_scores_path.write_text, json.dumps(score_report, indent=2), encoding="utf-8")
         return str(comparison_scores_path)
 
-    def write_manifest(self, proposal_dir: Path, payload: Dict[str, Any]) -> str:
+    async def write_manifest(self, proposal_dir: Path, payload: Dict[str, Any]) -> str:
         manifest_path = proposal_dir / "stage0_manifest.json"
-        manifest_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        await asyncio.to_thread(manifest_path.write_text, json.dumps(payload, indent=2), encoding="utf-8")
         return str(manifest_path)

@@ -12,6 +12,7 @@ class ProposalPipelineServiceTests(unittest.IsolatedAsyncioTestCase):
         game_repository = AsyncMock()
         review_mapper = ReviewMapper()
 
+        initialize_node = AsyncMock()
         capture_node = AsyncMock()
         visual_verify_node = AsyncMock()
         seo_analyze_node = AsyncMock()
@@ -35,6 +36,7 @@ class ProposalPipelineServiceTests(unittest.IsolatedAsyncioTestCase):
             game_repository=game_repository,
             proposal_context_builder=ProposalContextBuilder(),
             review_mapper=review_mapper,
+            initialize_node=initialize_node,
             capture_node=capture_node,
             visual_verify_node=visual_verify_node,
             seo_analyze_node=seo_analyze_node,

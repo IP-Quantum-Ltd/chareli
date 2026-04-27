@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import json
-from app.domain.dto import ProposalContext
 from app.runtime import get_runtime
 
 # Configure Logging
@@ -22,7 +21,7 @@ async def test_full_flow():
     try:
         runtime = get_runtime()
         final_state = await runtime.agent_workflow.run_stages(
-            ProposalContext(proposal_id=test_id, game_id=test_id, game_title=game_title, proposal_snapshot={})
+            {"game_id": test_id}
         )
         
         logger.info("=== TEST RUN COMPLETE ===")
