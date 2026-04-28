@@ -113,7 +113,7 @@ class GroundedGameplayOutput(BaseModel):
 class GroundedSeoSupportOutput(BaseModel):
     primary_keywords: List[str] = Field(default_factory=list)
     secondary_keywords: List[str] = Field(default_factory=list)
-    faq_opportunities: List[str] = Field(default_factory=list)
+    faq_opportunities: List[FaqOpportunityOutput] = Field(default_factory=list)
     content_angles: List[str] = Field(default_factory=list)
 
 

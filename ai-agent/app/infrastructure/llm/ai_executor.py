@@ -11,6 +11,11 @@ from app.config import LlmConfig
 
 logger = logging.getLogger(__name__)
 
+try:
+    from langchain.output_parsers import OutputFixingParser  # type: ignore
+except ModuleNotFoundError:  # pragma: no cover - optional dependency
+    OutputFixingParser = None
+
 
 class AIExecutor:
     def __init__(self, llm_config: LlmConfig):
@@ -102,6 +107,13 @@ class AIExecutor:
                         return self._parse_structured_text(content, parser, pydantic_schema)
                     except Exception as exc:
                         logger.warning("JSON parsing failed on attempt %s: %s", attempt_index, exc)
+                        if parser is not None and pydantic_schema is not None:
+                            try:
+                                repaired = await self._repair_structured_output(content, parser, pydantic_schema)
+                                logger.info("Structured output repaired after attempt %s.", attempt_index)
+                                return repaired
+                            except Exception as repair_exc:
+                                logger.warning("Structured output repair failed on attempt %s: %s", attempt_index, repair_exc)
                         continue
 
                 return content
@@ -194,6 +206,47 @@ class AIExecutor:
                 return pydantic_schema.model_validate(parsed).model_dump()
             return parsed
         return self._parse_json_text(raw_text)
+
+    async def _repair_structured_output(
+        self,
+        raw_text: str,
+        parser: Optional[JsonOutputParser],
+        pydantic_schema: Optional[Type[BaseModel]],
+    ) -> Any:
+        if parser is None:
+            raise ValueError("Repair requires a structured parser.")
+
+        if OutputFixingParser is not None:
+            fixing_parser = OutputFixingParser.from_llm(parser=parser, llm=self._llm)
+            fixed = await fixing_parser.aparse(raw_text)
+            if pydantic_schema is not None:
+                return pydantic_schema.model_validate(fixed).model_dump()
+            return fixed
+
+        format_instructions = parser.get_format_instructions()
+        repair_messages = [
+            {
+                "role": "system",
+                "content": (
+                    "Repair the following invalid structured output. Return only valid JSON and preserve the intended meaning."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"Schema instructions:\n{format_instructions}\n\n"
+                    f"Invalid output:\n{raw_text}"
+                ),
+            },
+        ]
+        repaired = await self.chat_completion(
+            messages=repair_messages,
+            response_format={"type": "json_object"},
+            pydantic_schema=pydantic_schema,
+            fallback_data=None,
+            metadata={"stage": "structured_output_repair"},
+        )
+        return repaired
 
     def _normalize_fallback_data(
         self,

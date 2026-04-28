@@ -1,8 +1,11 @@
+import asyncio
 import unittest
+from unittest.mock import AsyncMock
 
 from pydantic import BaseModel
 
 from app.config import LlmConfig
+from app.domain.schemas.llm_outputs import GroundedContextOutput
 from app.infrastructure.llm.ai_executor import AIExecutor
 
 
@@ -60,3 +63,42 @@ class AIExecutorParsingTests(unittest.TestCase):
 
         normalized = self.executor._normalize_fallback_data({"value": 3}, StructuredPayload)
         self.assertEqual(normalized, {"value": 3, "note": ""})
+
+    def test_grounded_context_schema_accepts_faq_objects(self) -> None:
+        normalized = GroundedContextOutput.model_validate(
+            {
+                "seo_support": {
+                    "primary_keywords": ["pinball"],
+                    "secondary_keywords": [],
+                    "faq_opportunities": [
+                        {
+                            "question": "How do you play?",
+                            "source_signal": "faq",
+                            "answer_angle": "Use the controls section.",
+                        }
+                    ],
+                    "content_angles": ["guide"],
+                }
+            }
+        ).model_dump()
+
+        self.assertEqual(
+            normalized["seo_support"]["faq_opportunities"][0]["question"],
+            "How do you play?",
+        )
+
+    def test_repair_structured_output_uses_repaired_payload(self) -> None:
+        class StructuredPayload(BaseModel):
+            value: int
+
+        self.executor._repair_structured_output = AsyncMock(return_value={"value": 9})  # type: ignore[method-assign]
+
+        repaired = asyncio.run(
+            self.executor._repair_structured_output(  # type: ignore[misc]
+                '{"value":"bad"}',
+                self.executor._build_json_parser(StructuredPayload),
+                StructuredPayload,
+            )
+        )
+
+        self.assertEqual(repaired, {"value": 9})
