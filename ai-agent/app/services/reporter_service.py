@@ -124,34 +124,66 @@ class ReporterService:
 
     def generate_article_pdf(self, game_title: str, article_markdown: str, output_path: str):
         """
-        Converts the Scribe's markdown article into a clean PDF.
+        Converts the Scribe's markdown article into a professional PDF with basic formatting.
         """
         try:
             pdf = FPDF()
             pdf.set_auto_page_break(auto=True, margin=15)
             pdf.add_page()
             
-            # Title
-            pdf.set_font("Arial", "B", 20)
+            # Professional Header
+            pdf.set_font("Arial", "B", 22)
             pdf.set_text_color(44, 62, 80)
-            pdf.multi_cell(190, 15, f"SEO Article: {game_title}", align="C")
+            pdf.multi_cell(190, 15, game_title, align="C")
+            pdf.ln(5)
+            pdf.set_draw_color(44, 62, 80)
+            pdf.line(20, pdf.get_y(), 190, pdf.get_y())
             pdf.ln(10)
             
-            # Content
-            pdf.set_font("Arial", "", 11)
-            pdf.set_text_color(0, 0, 0)
-            
-            # Simple Markdown cleanup for PDF (stripping bold markers)
-            clean_content = article_markdown.replace("**", "").replace("__", "").replace("#", "")
-            
-            pdf.multi_cell(190, 7, clean_content)
+            # Content Parsing Logic
+            lines = article_markdown.split('\n')
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    pdf.ln(5)
+                    continue
+                
+                # Header Parsing
+                if line.startswith('###'):
+                    pdf.set_font("Arial", "B", 13)
+                    pdf.set_text_color(52, 73, 94)
+                    pdf.multi_cell(190, 10, line.replace('###', '').strip())
+                    pdf.ln(2)
+                elif line.startswith('##'):
+                    pdf.set_font("Arial", "B", 15)
+                    pdf.set_text_color(44, 62, 80)
+                    pdf.multi_cell(190, 12, line.replace('##', '').strip())
+                    pdf.ln(3)
+                elif line.startswith('#'):
+                    pdf.set_font("Arial", "B", 18)
+                    pdf.set_text_color(44, 62, 80)
+                    pdf.multi_cell(190, 15, line.replace('#', '').strip())
+                    pdf.ln(4)
+                else:
+                    # Regular Paragraph with Bold Support
+                    pdf.set_font("Arial", "", 11)
+                    pdf.set_text_color(0, 0, 0)
+                    
+                    # Basic Bold detection (wraps line in bold if it's a bullet or specific marker)
+                    clean_line = line.replace('**', '').replace('__', '').strip()
+                    if line.startswith('* ') or line.startswith('- '):
+                        pdf.set_font("Arial", "B", 11)
+                        pdf.multi_cell(190, 7, f"• {clean_line[2:]}")
+                    else:
+                        pdf.multi_cell(190, 7, clean_line)
+                    pdf.ln(2)
             
             # Finalize
             output_dir = os.path.dirname(output_path)
             if output_dir: os.makedirs(output_dir, exist_ok=True)
             pdf.output(output_path)
             
-            logger.info(f"Article PDF generated: {output_path}")
+            logger.info(f"Professional Article PDF generated: {output_path}")
             return output_path
         except Exception as e:
             logger.error(f"Article PDF Generation failed: {e}")
