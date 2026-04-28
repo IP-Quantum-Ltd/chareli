@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from app.config.runtime_config import LlmConfig, MongoConfig
 from app.infrastructure.llm.ai_executor import AIExecutor
 from app.services.json_utils import json_dumps_safe, sanitize_for_json
+from app.services.prompt_compaction import compact_for_llm
 from app.workflows.ai_review_agent.services.grounded_retrieval_service import GroundedRetrievalService
 
 
@@ -72,3 +73,23 @@ class GroundedRetrievalServiceTests(unittest.TestCase):
 
         self.assertIn("2026-04-28T12:00:00+00:00", serialized)
         self.assertIn("\"items\"", serialized)
+
+    def test_compact_for_llm_omits_embedding_and_truncates_large_payloads(self) -> None:
+        compacted = compact_for_llm(
+            {
+                "document": {
+                    "content": "x " * 500,
+                    "embedding": [0.1] * 20,
+                    "nested": [{"value": "y" * 800}] * 10,
+                }
+            },
+            max_list_items=3,
+            max_string_length=50,
+        )
+
+        self.assertEqual(
+            compacted["document"]["embedding"],
+            "<omitted embedding with 20 items>",
+        )
+        self.assertIn("...", compacted["document"]["content"])
+        self.assertEqual(compacted["document"]["nested"][-1], "<truncated 7 more items>")

@@ -12,6 +12,7 @@ from app.infrastructure.db.mongo_provider import MongoProvider
 from app.infrastructure.db.postgres_provider import PostgresProvider
 from app.infrastructure.llm.ai_executor import AIExecutor
 from app.services.json_utils import json_dumps_safe, sanitize_for_json
+from app.services.prompt_compaction import compact_for_llm
 
 logger = logging.getLogger(__name__)
 
@@ -288,7 +289,8 @@ class GroundedRetrievalService:
                     ]).to_list(length=5)
                     for doc in vector_results:
                         snippet = self._trim_text(doc.get("content", ""), 500)
-                        results.append({"collection": self.mongo_config.rag_collection, "score": round(float(doc.get("score", 0.0) or 0.0), 4), "snippet": snippet, "document": doc, "retrieval_mode": "vector"})
+                        compact_doc = compact_for_llm(doc, max_depth=4, max_list_items=6, max_dict_items=16, max_string_length=220)
+                        results.append({"collection": self.mongo_config.rag_collection, "score": round(float(doc.get("score", 0.0) or 0.0), 4), "snippet": snippet, "document": compact_doc, "retrieval_mode": "vector"})
                 except Exception as exc:
                     logger.warning("Stage 2 Mongo vector search unavailable, falling back to text search: %s", exc)
         for collection_name in prioritized_collections[:8]:
@@ -309,10 +311,11 @@ class GroundedRetrievalService:
                 logger.warning("Stage 2 Mongo search skipped collection %s: %s", collection_name, exc)
                 continue
             for doc in docs:
-                normalized_doc = {key: value for key, value in doc.items() if key != "_id"}
+                normalized_doc = {key: value for key, value in doc.items() if key not in {"_id", "embedding"}}
                 snippet = self._mongo_doc_to_text(normalized_doc)
                 score = self._score_against_terms(snippet, queries)
-                results.append({"collection": collection_name, "score": score, "snippet": snippet, "document": normalized_doc, "retrieval_mode": "text"})
+                compact_doc = compact_for_llm(normalized_doc, max_depth=4, max_list_items=6, max_dict_items=16, max_string_length=220)
+                results.append({"collection": collection_name, "score": score, "snippet": snippet, "document": compact_doc, "retrieval_mode": "text"})
         results.sort(key=lambda item: item.get("score", 0), reverse=True)
         return {"status": "success", "collections": prioritized_collections[:8], "results": results[:12]}
 
@@ -341,7 +344,13 @@ class GroundedRetrievalService:
             "postgres_results": postgres_context.get("results") or [],
             "mongo_results": mongo_context.get("results") or [],
         }
-        safe_evidence_bundle = sanitize_for_json(evidence_bundle)
+        safe_evidence_bundle = compact_for_llm(
+            sanitize_for_json(evidence_bundle),
+            max_depth=5,
+            max_list_items=5,
+            max_dict_items=18,
+            max_string_length=280,
+        )
         prompt = f"""Task: Stage 2 Librarian grounding for the ArcadeBox game '{game_title}'. Evidence bundle: {json_dumps_safe(safe_evidence_bundle, indent=2)} Return ONLY valid JSON: {{"canonical_identity": {{"game_title": "string", "source_url": "string", "source_domain": "string", "confidence_score": int}}, "grounded_gameplay": {{"controls": "string", "rules": "string", "objective": "string", "developer": "string", "publisher": "string", "how_to_play": "string", "features": ["string"]}}, "seo_support": {{"primary_keywords": ["string"], "secondary_keywords": ["string"], "faq_opportunities": ["string"], "content_angles": ["string"]}}, "faq_evidence": [{{"question": "string", "answer": "string"}}], "retrieval_queries": ["string"], "evidence_notes": ["string"]}}"""
         result = await self.ai.chat_completion(
             messages=[{"role": "system", "content": "You are the Stage 2 Librarian for ArcadeBox. Respond only with JSON."}, {"role": "user", "content": prompt}],

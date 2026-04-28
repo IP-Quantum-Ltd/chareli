@@ -7,6 +7,7 @@ from langsmith import traceable
 from app.domain.schemas.llm_outputs import SeoAnalysisOutput
 from app.infrastructure.llm.ai_executor import AIExecutor
 from app.services.json_utils import json_dumps_safe
+from app.services.prompt_compaction import compact_for_llm
 
 logger = logging.getLogger(__name__)
 
@@ -150,10 +151,17 @@ class SeoAnalysisService:
     async def analyze_seo_potential(self, game_title: str, investigation: Dict[str, Any]) -> Dict[str, Any]:
         self.logger.info("Analyst generating SEO intelligence for: %s", game_title)
         stage1_context = self._build_stage1_context(game_title, investigation)
+        compact_stage1_context = compact_for_llm(
+            stage1_context,
+            max_depth=5,
+            max_list_items=8,
+            max_dict_items=18,
+            max_string_length=260,
+        )
         prompt = f"""
         Task: Stage 1 SEO Strategic Intelligence for the ArcadeBox game '{game_title}'.
         Verified evidence:
-        {json_dumps_safe(stage1_context, indent=2)}
+        {json_dumps_safe(compact_stage1_context, indent=2)}
         Return ONLY valid JSON:
         {{
             "primary_keywords": ["kw1", "kw2"],

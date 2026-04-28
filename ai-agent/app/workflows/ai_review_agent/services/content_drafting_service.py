@@ -5,6 +5,7 @@ from langsmith import traceable
 
 from app.infrastructure.llm.ai_executor import AIExecutor
 from app.services.json_utils import json_dumps_safe
+from app.services.prompt_compaction import compact_for_llm
 
 logger = logging.getLogger(__name__)
 
@@ -18,10 +19,17 @@ class ContentDraftingService:
     @traceable(run_type="chain", name="Final Content Drafting")
     async def draft_from_facts(self, game_title: str, fact_sheet: Dict[str, Any]) -> str:
         self.logger.info("Scribe drafting article for: %s", game_title)
+        compact_fact_sheet = compact_for_llm(
+            fact_sheet,
+            max_depth=5,
+            max_list_items=8,
+            max_dict_items=18,
+            max_string_length=260,
+        )
         article = await self.ai.chat_completion(
             messages=[
                 {"role": "system", "content": "You are a professional Content Creator for ArcadeBox. Respond with high-quality Markdown."},
-                {"role": "user", "content": f"Task: Write a highly engaging, SEO-optimized guide for the game '{game_title}' on ArcadeBox.\n\nFact Sheet (The Ground Truth):\n{json_dumps_safe(fact_sheet, indent=2)}\n\nReturn the full Markdown article."},
+                {"role": "user", "content": f"Task: Write a highly engaging, SEO-optimized guide for the game '{game_title}' on ArcadeBox.\n\nFact Sheet (The Ground Truth):\n{json_dumps_safe(compact_fact_sheet, indent=2)}\n\nReturn the full Markdown article."},
             ],
             fallback_data=f"# {game_title} Guide\n\n[Drafting failed. Research data missing.]",
         )

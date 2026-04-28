@@ -6,6 +6,7 @@ from langsmith import traceable
 from app.domain.schemas.llm_outputs import AuditReportOutput
 from app.infrastructure.llm.ai_executor import AIExecutor
 from app.services.json_utils import json_dumps_safe
+from app.services.prompt_compaction import compact_for_llm
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +64,9 @@ class ContentAuditorService:
         outline: Dict[str, Any],
     ) -> Dict[str, Any]:
         fallback = self._fallback_audit(article, grounded_context, investigation)
+        compact_grounded_context = compact_for_llm(grounded_context, max_depth=5, max_list_items=6, max_dict_items=16, max_string_length=240)
+        compact_investigation = compact_for_llm(investigation, max_depth=5, max_list_items=6, max_dict_items=16, max_string_length=240)
+        compact_outline = compact_for_llm(outline, max_depth=4, max_list_items=10, max_dict_items=16, max_string_length=220)
         result = await self.ai.chat_completion(
             messages=[
                 {
@@ -75,9 +79,9 @@ class ContentAuditorService:
                     "role": "user",
                     "content": (
                         f"Task: Audit this draft for '{game_title}'.\n"
-                        f"Grounded context:\n{json_dumps_safe(grounded_context, indent=2)}\n"
-                        f"Investigation:\n{json_dumps_safe(investigation, indent=2)}\n"
-                        f"Outline:\n{json_dumps_safe(outline, indent=2)}\n"
+                        f"Grounded context:\n{json_dumps_safe(compact_grounded_context, indent=2)}\n"
+                        f"Investigation:\n{json_dumps_safe(compact_investigation, indent=2)}\n"
+                        f"Outline:\n{json_dumps_safe(compact_outline, indent=2)}\n"
                         f"Article:\n{article}\n\n"
                         "Return ONLY valid JSON with keys: approved, factual_accuracy_score, completeness_score, "
                         "unsupported_claims, verified_claims, revision_instructions, reasoning."

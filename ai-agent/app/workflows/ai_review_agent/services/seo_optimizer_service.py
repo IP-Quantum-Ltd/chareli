@@ -9,6 +9,7 @@ from app.domain.schemas.llm_outputs import SeoOptimizerOutput
 from app.infrastructure.db.mongo_provider import MongoProvider
 from app.infrastructure.llm.ai_executor import AIExecutor
 from app.services.json_utils import json_dumps_safe
+from app.services.prompt_compaction import compact_for_llm
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +70,9 @@ class SeoOptimizerService:
         audit_report: Dict[str, Any],
     ) -> Dict[str, Any]:
         fallback = self._fallback_output(game_title, seo_blueprint, audit_report)
+        compact_seo_blueprint = compact_for_llm(seo_blueprint, max_depth=4, max_list_items=6, max_dict_items=14, max_string_length=220)
+        compact_outline = compact_for_llm(outline, max_depth=4, max_list_items=10, max_dict_items=16, max_string_length=220)
+        compact_audit_report = compact_for_llm(audit_report, max_depth=4, max_list_items=10, max_dict_items=16, max_string_length=220)
         result = await self.ai.chat_completion(
             messages=[
                 {
@@ -77,11 +81,11 @@ class SeoOptimizerService:
                 },
                 {
                     "role": "user",
-                    "content": (
-                        f"Task: Optimize the verified article for '{game_title}'.\n"
-                        f"SEO blueprint:\n{json_dumps_safe(seo_blueprint, indent=2)}\n"
-                        f"Outline:\n{json_dumps_safe(outline, indent=2)}\n"
-                        f"Audit report:\n{json_dumps_safe(audit_report, indent=2)}\n"
+                        "content": (
+                            f"Task: Optimize the verified article for '{game_title}'.\n"
+                        f"SEO blueprint:\n{json_dumps_safe(compact_seo_blueprint, indent=2)}\n"
+                        f"Outline:\n{json_dumps_safe(compact_outline, indent=2)}\n"
+                        f"Audit report:\n{json_dumps_safe(compact_audit_report, indent=2)}\n"
                         f"Article:\n{article}\n\n"
                         "Return ONLY valid JSON with keys: meta_title, meta_description, primary_h1, faq_schema, "
                         "heading_audit, evaluation."

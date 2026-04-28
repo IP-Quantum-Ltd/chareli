@@ -6,6 +6,7 @@ from langsmith import traceable
 from app.domain.schemas.llm_outputs import ContentPlanValidationOutput
 from app.infrastructure.llm.ai_executor import AIExecutor
 from app.services.json_utils import json_dumps_safe
+from app.services.prompt_compaction import compact_for_llm
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,9 @@ class ContentCriticService:
         seo_blueprint: Dict[str, Any],
     ) -> Dict[str, Any]:
         fallback = self._fallback_validation(outline, grounded_context, seo_blueprint)
+        compact_seo_blueprint = compact_for_llm(seo_blueprint, max_depth=4, max_list_items=6, max_dict_items=14, max_string_length=240)
+        compact_grounded_context = compact_for_llm(grounded_context, max_depth=5, max_list_items=6, max_dict_items=16, max_string_length=240)
+        compact_outline = compact_for_llm(outline, max_depth=4, max_list_items=10, max_dict_items=16, max_string_length=220)
         result = await self.ai.chat_completion(
             messages=[
                 {
@@ -74,9 +78,9 @@ class ContentCriticService:
                     "role": "user",
                     "content": (
                         f"Task: Validate this content plan for '{game_title}'.\n"
-                        f"SEO blueprint:\n{json_dumps_safe(seo_blueprint, indent=2)}\n"
-                        f"Grounded context:\n{json_dumps_safe(grounded_context, indent=2)}\n"
-                        f"Outline:\n{json_dumps_safe(outline, indent=2)}\n"
+                        f"SEO blueprint:\n{json_dumps_safe(compact_seo_blueprint, indent=2)}\n"
+                        f"Grounded context:\n{json_dumps_safe(compact_grounded_context, indent=2)}\n"
+                        f"Outline:\n{json_dumps_safe(compact_outline, indent=2)}\n"
                         "Return ONLY valid JSON with keys: approved, coverage_score, missing_facts, missing_entities, "
                         "revision_instructions, reasoning."
                     ),

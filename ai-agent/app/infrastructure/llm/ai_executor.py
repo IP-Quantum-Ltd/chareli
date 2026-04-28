@@ -20,10 +20,15 @@ except ModuleNotFoundError:  # pragma: no cover - optional dependency
 class AIExecutor:
     def __init__(self, llm_config: LlmConfig):
         self._llm_config = llm_config
+        self._model_max_output_tokens = self._resolve_model_max_output_tokens(llm_config.primary_model)
+        llm_kwargs: Dict[str, Any] = {}
+        if self._model_max_output_tokens is not None:
+            llm_kwargs["max_tokens"] = self._model_max_output_tokens
         self._llm = ChatOpenAI(
             model=llm_config.primary_model,
             api_key=llm_config.openai_api_key,
             stream_usage=True,
+            **llm_kwargs,
         )
         self._embeddings = OpenAIEmbeddings(
             model=llm_config.embedding_model,
@@ -288,3 +293,15 @@ class AIExecutor:
         input_tokens = usage.get("input_tokens", 0)
         output_tokens = usage.get("output_tokens", 0)
         return ((input_tokens / 1_000_000) * 5.00) + ((output_tokens / 1_000_000) * 15.00)
+
+    def _resolve_model_max_output_tokens(self, model_name: str) -> Optional[int]:
+        normalized = (model_name or "").strip().lower()
+        if not normalized:
+            return None
+        if normalized.startswith("gpt-5"):
+            return 128000
+        if normalized.startswith("gpt-4o") or normalized.startswith("chatgpt-4o"):
+            return 16384
+        if normalized.startswith("gpt-4"):
+            return 8192
+        return None

@@ -64,6 +64,13 @@ class AIExecutorParsingTests(unittest.TestCase):
         normalized = self.executor._normalize_fallback_data({"value": 3}, StructuredPayload)
         self.assertEqual(normalized, {"value": 3, "note": ""})
 
+    def test_resolve_model_max_output_tokens_uses_known_openai_limits(self) -> None:
+        self.assertEqual(self.executor._resolve_model_max_output_tokens("gpt-4o"), 16384)
+        self.assertEqual(self.executor._resolve_model_max_output_tokens("chatgpt-4o-latest"), 16384)
+        self.assertEqual(self.executor._resolve_model_max_output_tokens("gpt-5"), 128000)
+        self.assertEqual(self.executor._resolve_model_max_output_tokens("gpt-4"), 8192)
+        self.assertIsNone(self.executor._resolve_model_max_output_tokens("custom-model"))
+
     def test_grounded_context_schema_accepts_faq_objects(self) -> None:
         normalized = GroundedContextOutput.model_validate(
             {
