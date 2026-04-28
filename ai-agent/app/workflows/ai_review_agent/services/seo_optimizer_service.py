@@ -1,4 +1,3 @@
-import json
 import logging
 from datetime import datetime, timezone
 from typing import Any, Dict
@@ -9,6 +8,7 @@ from app.config import MongoConfig
 from app.domain.schemas.llm_outputs import SeoOptimizerOutput
 from app.infrastructure.db.mongo_provider import MongoProvider
 from app.infrastructure.llm.ai_executor import AIExecutor
+from app.services.json_utils import json_dumps_safe
 
 logger = logging.getLogger(__name__)
 
@@ -79,9 +79,9 @@ class SeoOptimizerService:
                     "role": "user",
                     "content": (
                         f"Task: Optimize the verified article for '{game_title}'.\n"
-                        f"SEO blueprint:\n{json.dumps(seo_blueprint, indent=2)}\n"
-                        f"Outline:\n{json.dumps(outline, indent=2)}\n"
-                        f"Audit report:\n{json.dumps(audit_report, indent=2)}\n"
+                        f"SEO blueprint:\n{json_dumps_safe(seo_blueprint, indent=2)}\n"
+                        f"Outline:\n{json_dumps_safe(outline, indent=2)}\n"
+                        f"Audit report:\n{json_dumps_safe(audit_report, indent=2)}\n"
                         f"Article:\n{article}\n\n"
                         "Return ONLY valid JSON with keys: meta_title, meta_description, primary_h1, faq_schema, "
                         "heading_audit, evaluation."

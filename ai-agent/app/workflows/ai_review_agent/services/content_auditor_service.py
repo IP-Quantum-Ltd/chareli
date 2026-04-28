@@ -1,4 +1,3 @@
-import json
 import logging
 from typing import Any, Dict, List
 
@@ -6,6 +5,7 @@ from langsmith import traceable
 
 from app.domain.schemas.llm_outputs import AuditReportOutput
 from app.infrastructure.llm.ai_executor import AIExecutor
+from app.services.json_utils import json_dumps_safe
 
 logger = logging.getLogger(__name__)
 
@@ -75,9 +75,9 @@ class ContentAuditorService:
                     "role": "user",
                     "content": (
                         f"Task: Audit this draft for '{game_title}'.\n"
-                        f"Grounded context:\n{json.dumps(grounded_context, indent=2)}\n"
-                        f"Investigation:\n{json.dumps(investigation, indent=2)}\n"
-                        f"Outline:\n{json.dumps(outline, indent=2)}\n"
+                        f"Grounded context:\n{json_dumps_safe(grounded_context, indent=2)}\n"
+                        f"Investigation:\n{json_dumps_safe(investigation, indent=2)}\n"
+                        f"Outline:\n{json_dumps_safe(outline, indent=2)}\n"
                         f"Article:\n{article}\n\n"
                         "Return ONLY valid JSON with keys: approved, factual_accuracy_score, completeness_score, "
                         "unsupported_claims, verified_claims, revision_instructions, reasoning."

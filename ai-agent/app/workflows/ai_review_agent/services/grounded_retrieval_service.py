@@ -1,7 +1,6 @@
-import json
 import logging
 import re
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Tuple
 from urllib.parse import urlparse
 
@@ -12,6 +11,7 @@ from app.domain.schemas.llm_outputs import GroundedContextOutput
 from app.infrastructure.db.mongo_provider import MongoProvider
 from app.infrastructure.db.postgres_provider import PostgresProvider
 from app.infrastructure.llm.ai_executor import AIExecutor
+from app.services.json_utils import json_dumps_safe, sanitize_for_json
 
 logger = logging.getLogger(__name__)
 
@@ -34,19 +34,6 @@ class GroundedRetrievalService:
     def _trim_text(self, value: Any, limit: int = 600) -> str:
         text = " ".join(str(value or "").split())
         return text if len(text) <= limit else text[:limit].rstrip() + "..."
-
-    def _sanitize_for_json(self, value: Any) -> Any:
-        if isinstance(value, dict):
-            return {str(key): self._sanitize_for_json(item) for key, item in value.items()}
-        if isinstance(value, list):
-            return [self._sanitize_for_json(item) for item in value]
-        if isinstance(value, tuple):
-            return [self._sanitize_for_json(item) for item in value]
-        if isinstance(value, (datetime, date)):
-            return value.isoformat()
-        if isinstance(value, (str, int, float, bool)) or value is None:
-            return value
-        return str(value)
 
     def _limit_unique(self, values: List[Any], count: int, text_limit: int = 180) -> List[str]:
         unique_values = []
@@ -354,8 +341,8 @@ class GroundedRetrievalService:
             "postgres_results": postgres_context.get("results") or [],
             "mongo_results": mongo_context.get("results") or [],
         }
-        safe_evidence_bundle = self._sanitize_for_json(evidence_bundle)
-        prompt = f"""Task: Stage 2 Librarian grounding for the ArcadeBox game '{game_title}'. Evidence bundle: {json.dumps(safe_evidence_bundle, indent=2)} Return ONLY valid JSON: {{"canonical_identity": {{"game_title": "string", "source_url": "string", "source_domain": "string", "confidence_score": int}}, "grounded_gameplay": {{"controls": "string", "rules": "string", "objective": "string", "developer": "string", "publisher": "string", "how_to_play": "string", "features": ["string"]}}, "seo_support": {{"primary_keywords": ["string"], "secondary_keywords": ["string"], "faq_opportunities": ["string"], "content_angles": ["string"]}}, "faq_evidence": [{{"question": "string", "answer": "string"}}], "retrieval_queries": ["string"], "evidence_notes": ["string"]}}"""
+        safe_evidence_bundle = sanitize_for_json(evidence_bundle)
+        prompt = f"""Task: Stage 2 Librarian grounding for the ArcadeBox game '{game_title}'. Evidence bundle: {json_dumps_safe(safe_evidence_bundle, indent=2)} Return ONLY valid JSON: {{"canonical_identity": {{"game_title": "string", "source_url": "string", "source_domain": "string", "confidence_score": int}}, "grounded_gameplay": {{"controls": "string", "rules": "string", "objective": "string", "developer": "string", "publisher": "string", "how_to_play": "string", "features": ["string"]}}, "seo_support": {{"primary_keywords": ["string"], "secondary_keywords": ["string"], "faq_opportunities": ["string"], "content_angles": ["string"]}}, "faq_evidence": [{{"question": "string", "answer": "string"}}], "retrieval_queries": ["string"], "evidence_notes": ["string"]}}"""
         result = await self.ai.chat_completion(
             messages=[{"role": "system", "content": "You are the Stage 2 Librarian for ArcadeBox. Respond only with JSON."}, {"role": "user", "content": prompt}],
             response_format={"type": "json_object"},

@@ -1,4 +1,3 @@
-import json
 import logging
 from typing import Any, Dict, List
 
@@ -6,6 +5,7 @@ from langsmith import traceable
 
 from app.domain.schemas.llm_outputs import ContentPlanValidationOutput
 from app.infrastructure.llm.ai_executor import AIExecutor
+from app.services.json_utils import json_dumps_safe
 
 logger = logging.getLogger(__name__)
 
@@ -74,9 +74,9 @@ class ContentCriticService:
                     "role": "user",
                     "content": (
                         f"Task: Validate this content plan for '{game_title}'.\n"
-                        f"SEO blueprint:\n{json.dumps(seo_blueprint, indent=2)}\n"
-                        f"Grounded context:\n{json.dumps(grounded_context, indent=2)}\n"
-                        f"Outline:\n{json.dumps(outline, indent=2)}\n"
+                        f"SEO blueprint:\n{json_dumps_safe(seo_blueprint, indent=2)}\n"
+                        f"Grounded context:\n{json_dumps_safe(grounded_context, indent=2)}\n"
+                        f"Outline:\n{json_dumps_safe(outline, indent=2)}\n"
                         "Return ONLY valid JSON with keys: approved, coverage_score, missing_facts, missing_entities, "
                         "revision_instructions, reasoning."
                     ),

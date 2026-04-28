@@ -1,10 +1,10 @@
-import json
 import logging
 from typing import Any, Dict
 
 from langsmith import traceable
 
 from app.infrastructure.llm.ai_executor import AIExecutor
+from app.services.json_utils import json_dumps_safe
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +21,7 @@ class ContentDraftingService:
         article = await self.ai.chat_completion(
             messages=[
                 {"role": "system", "content": "You are a professional Content Creator for ArcadeBox. Respond with high-quality Markdown."},
-                {"role": "user", "content": f"Task: Write a highly engaging, SEO-optimized guide for the game '{game_title}' on ArcadeBox.\n\nFact Sheet (The Ground Truth):\n{json.dumps(fact_sheet, indent=2)}\n\nReturn the full Markdown article."},
+                {"role": "user", "content": f"Task: Write a highly engaging, SEO-optimized guide for the game '{game_title}' on ArcadeBox.\n\nFact Sheet (The Ground Truth):\n{json_dumps_safe(fact_sheet, indent=2)}\n\nReturn the full Markdown article."},
             ],
             fallback_data=f"# {game_title} Guide\n\n[Drafting failed. Research data missing.]",
         )

@@ -1,8 +1,9 @@
 import unittest
 from datetime import datetime, timezone
 
-from app.config.runtime_config import LlmConfig, MongoConfig, PostgresConfig
+from app.config.runtime_config import LlmConfig, MongoConfig
 from app.infrastructure.llm.ai_executor import AIExecutor
+from app.services.json_utils import json_dumps_safe, sanitize_for_json
 from app.workflows.ai_review_agent.services.grounded_retrieval_service import GroundedRetrievalService
 
 
@@ -53,9 +54,21 @@ class GroundedRetrievalServiceTests(unittest.TestCase):
             ]
         }
 
-        sanitized = self.service._sanitize_for_json(payload)
+        sanitized = sanitize_for_json(payload)
 
         self.assertEqual(
             sanitized["results"][0]["document"]["updated_at"],
             "2026-04-28T12:00:00+00:00",
         )
+
+    def test_json_dumps_safe_handles_datetime_payloads(self) -> None:
+        serialized = json_dumps_safe(
+            {
+                "updated_at": datetime(2026, 4, 28, 12, 0, tzinfo=timezone.utc),
+                "items": ("a", "b"),
+            },
+            indent=2,
+        )
+
+        self.assertIn("2026-04-28T12:00:00+00:00", serialized)
+        self.assertIn("\"items\"", serialized)

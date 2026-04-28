@@ -1,4 +1,3 @@
-import json
 import logging
 from typing import Any, Dict, List
 from urllib.parse import urlparse
@@ -7,6 +6,7 @@ from langsmith import traceable
 
 from app.domain.schemas.llm_outputs import SeoAnalysisOutput
 from app.infrastructure.llm.ai_executor import AIExecutor
+from app.services.json_utils import json_dumps_safe
 
 logger = logging.getLogger(__name__)
 
@@ -153,7 +153,7 @@ class SeoAnalysisService:
         prompt = f"""
         Task: Stage 1 SEO Strategic Intelligence for the ArcadeBox game '{game_title}'.
         Verified evidence:
-        {json.dumps(stage1_context, indent=2)}
+        {json_dumps_safe(stage1_context, indent=2)}
         Return ONLY valid JSON:
         {{
             "primary_keywords": ["kw1", "kw2"],
