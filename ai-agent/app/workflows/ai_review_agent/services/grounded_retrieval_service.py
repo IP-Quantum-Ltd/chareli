@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 from langsmith import traceable
 
 from app.config import MongoConfig
+from app.domain.schemas.llm_outputs import GroundedContextOutput
 from app.infrastructure.db.mongo_provider import MongoProvider
 from app.infrastructure.db.postgres_provider import PostgresProvider
 from app.infrastructure.llm.ai_executor import AIExecutor
@@ -337,6 +338,7 @@ class GroundedRetrievalService:
         result = await self.ai.chat_completion(
             messages=[{"role": "system", "content": "You are the Stage 2 Librarian for ArcadeBox. Respond only with JSON."}, {"role": "user", "content": prompt}],
             response_format={"type": "json_object"},
+            pydantic_schema=GroundedContextOutput,
             fallback_data=self._build_fallback_context(game_title, investigation, seo_blueprint, retrieval_queries, postgres_context, mongo_context),
             metadata={"stage": "librarian_grounding"},
         )
@@ -350,4 +352,19 @@ class GroundedRetrievalService:
         postgres_context = await self._fetch_postgres_context(retrieval_queries)
         mongo_context = await self._fetch_mongo_context(retrieval_queries)
         grounded_packet = await self._synthesize_context(game_title, investigation, seo_blueprint, retrieval_queries, postgres_context, mongo_context)
-        return {"status": "success", "retrieval_queries": retrieval_queries, "postgres": postgres_context, "mongo": mongo_context, "mongo_persistence": mongo_persistence, "grounded_packet": grounded_packet}
+        warnings: List[str] = []
+        if postgres_context.get("status") not in {"success", "disabled"}:
+            warnings.append(f"Postgres grounding degraded: {postgres_context.get('reason', 'unknown issue')}")
+        if mongo_context.get("status") not in {"success", "disabled"}:
+            warnings.append(f"Mongo grounding degraded: {mongo_context.get('reason', 'unknown issue')}")
+        if mongo_persistence.get("status") not in {"success", "disabled"}:
+            warnings.append(f"Mongo persistence degraded: {mongo_persistence.get('reason', 'unknown issue')}")
+        return {
+            "status": "success",
+            "retrieval_queries": retrieval_queries,
+            "postgres": postgres_context,
+            "mongo": mongo_context,
+            "mongo_persistence": mongo_persistence,
+            "grounded_packet": grounded_packet,
+            "warnings": warnings,
+        }

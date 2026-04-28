@@ -14,14 +14,21 @@ class ReviewMapper:
         pipeline_status = final_state.get("status", "failed")
         screenshot_available = bool(final_state.get("internal_imgs_paths"))
         audit_approved = bool(audit_report.get("approved"))
+        factual_score = int(audit_report.get("factual_accuracy_score") or 0)
+        completeness_score = int(audit_report.get("completeness_score") or 0)
+        warning_count = len(final_state.get("warnings") or [])
+        optimizer_ready = bool((optimization.get("evaluation") or {}).get("overall_ready"))
+        quality_threshold_met = audit_approved or (factual_score >= 75 and completeness_score >= 70)
 
-        if pipeline_status == "complete" and visual_confidence >= 70 and audit_approved:
+        if pipeline_status == "complete" and visual_confidence >= 70 and (quality_threshold_met or optimizer_ready):
             recommendation = "accept"
             reasoning = (
                 f"The agent visually verified '{game_title}' with {visual_confidence}% confidence, "
-                f"approved the plan and draft, and completed SEO optimization using grounded evidence "
+                f"completed the plan, draft, and SEO optimization using grounded evidence "
                 f"from {best_match.get('url', 'an external source')}."
             )
+            if warning_count:
+                reasoning += f" The run completed with {warning_count} warning(s), so the output should be reviewed with those caveats."
         elif best_match:
             recommendation = "decline"
             reasoning = (
@@ -66,6 +73,7 @@ class ReviewMapper:
                 "factual_accuracy_score": audit_report.get("factual_accuracy_score"),
                 "completeness_score": audit_report.get("completeness_score"),
                 "optimizer_ready": ((optimization.get("evaluation") or {}).get("overall_ready")),
+                "warning_count": warning_count,
                 "total_cost_usd": round(float(final_state.get("accumulated_cost") or 0.0), 4),
             },
             confidence_score=review_confidence,

@@ -62,9 +62,15 @@ def build_runtime_config(app_settings: AppSettings) -> RuntimeConfig:
             max_plan_revisions=app_settings.MAX_PLAN_REVISIONS,
             max_draft_revisions=app_settings.MAX_DRAFT_REVISIONS,
             job_retention_hours=app_settings.JOB_RETENTION_HOURS,
+            critic_min_coverage_score=app_settings.CRITIC_MIN_COVERAGE_SCORE,
+            auditor_min_factual_score=app_settings.AUDITOR_MIN_FACTUAL_SCORE,
+            auditor_min_completeness_score=app_settings.AUDITOR_MIN_COMPLETENESS_SCORE,
             stage0_required_candidates=max(1, app_settings.STAGE0_REQUIRED_CANDIDATES),
+            stage0_min_candidates=max(1, min(app_settings.STAGE0_MIN_CANDIDATES, app_settings.STAGE0_REQUIRED_CANDIDATES)),
             stage0_max_search_results=max(1, app_settings.STAGE0_MAX_SEARCH_RESULTS),
             stage0_candidate_capture_timeout_seconds=max(5, app_settings.STAGE0_CANDIDATE_CAPTURE_TIMEOUT_SECONDS),
+            stage0_medium_confidence_threshold=max(0, min(app_settings.STAGE0_MEDIUM_CONFIDENCE_THRESHOLD, 100)),
+            stage0_high_confidence_threshold=max(0, min(app_settings.STAGE0_HIGH_CONFIDENCE_THRESHOLD, 100)),
         ),
     )
 

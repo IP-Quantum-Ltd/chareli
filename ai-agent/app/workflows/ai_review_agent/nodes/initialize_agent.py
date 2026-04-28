@@ -1,6 +1,6 @@
 import logging
 
-from app.workflows.ai_review_agent.context import ensure_state_defaults
+from app.workflows.ai_review_agent.context import ensure_state_defaults, record_stage
 
 logger = logging.getLogger(__name__)
 
@@ -51,8 +51,10 @@ class InitializeAgentNode:
                 state["submit_review"] = False
             state["status"] = "initialized"
             state["error_message"] = ""
+            record_stage(state, "initialize", "completed", f"Initialized context for {state['game_title']}")
         except Exception as exc:
             logger.error("Initialization Failed: %s", exc)
             state["status"] = "failed"
             state["error_message"] = f"CRITICAL: Agent initialization failed. Detail: {exc}"
+            record_stage(state, "initialize", "failed", state["error_message"])
         return state

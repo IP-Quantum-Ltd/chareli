@@ -22,6 +22,7 @@ class ProposalPipelineServiceTests(unittest.IsolatedAsyncioTestCase):
         critic_plan_node = AsyncMock()
         audit_content_node = AsyncMock()
         optimize_content_node = AsyncMock()
+        finalize_result_node = AsyncMock()
 
         arcade_client.get_proposal.return_value = {
             "id": "proposal-1",
@@ -46,6 +47,7 @@ class ProposalPipelineServiceTests(unittest.IsolatedAsyncioTestCase):
             critic_plan_node=critic_plan_node,
             audit_content_node=audit_content_node,
             optimize_content_node=optimize_content_node,
+            finalize_result_node=finalize_result_node,
         )
         workflow.run_stages = AsyncMock(
             return_value={
@@ -69,3 +71,4 @@ class ProposalPipelineServiceTests(unittest.IsolatedAsyncioTestCase):
 
         arcade_client.submit_review.assert_awaited_once()
         self.assertEqual(result["status"], "complete")
+        self.assertEqual(result["final_article"], "# Article")

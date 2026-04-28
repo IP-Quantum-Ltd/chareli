@@ -6,6 +6,7 @@ from typing import Any, Dict
 from langsmith import traceable
 
 from app.config import MongoConfig
+from app.domain.schemas.llm_outputs import SeoOptimizerOutput
 from app.infrastructure.db.mongo_provider import MongoProvider
 from app.infrastructure.llm.ai_executor import AIExecutor
 
@@ -88,6 +89,7 @@ class SeoOptimizerService:
                 },
             ],
             response_format={"type": "json_object"},
+            pydantic_schema=SeoOptimizerOutput,
             fallback_data=fallback,
             metadata={"stage": "optimizer"},
         )

@@ -42,6 +42,7 @@ class ReviewMapperTests(unittest.TestCase):
         self.assertEqual(review.metrics["stage2_postgres_hits"], 1)
         self.assertEqual(review.metrics["stage2_mongo_hits"], 2)
         self.assertEqual(review.metrics["factual_accuracy_score"], 96)
+        self.assertEqual(review.metrics["warning_count"], 0)
         self.assertTrue(review.screenshot_available)
 
     def test_maps_failure_state(self) -> None:

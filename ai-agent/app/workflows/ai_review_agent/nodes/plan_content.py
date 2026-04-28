@@ -1,3 +1,6 @@
+from app.workflows.ai_review_agent.context import record_stage
+
+
 class PlanContentNode:
     def __init__(self, content_planning_service):
         self.architect = content_planning_service
@@ -22,4 +25,5 @@ class PlanContentNode:
         state["accumulated_cost"] = float(state.get("accumulated_cost") or 0.0) + self.architect.last_cost
         state["outline"] = outline
         state["status"] = "architected"
+        record_stage(state, "architect", "completed", "Structured content plan generated.")
         return state

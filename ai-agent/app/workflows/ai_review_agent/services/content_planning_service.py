@@ -3,6 +3,7 @@ from typing import Any, Dict
 
 from langsmith import traceable
 
+from app.domain.schemas.llm_outputs import ContentPlanOutput
 from app.infrastructure.llm.ai_executor import AIExecutor
 
 logger = logging.getLogger(__name__)
@@ -25,6 +26,7 @@ Return ONLY valid JSON:
 {{"sections": [{{"title": "Overview", "goals": ["string"]}}, {{"title": "Controls", "goals": ["string"]}}, {{"title": "Strategy", "goals": ["string"]}}, {{"title": "FAQ", "goals": ["string"]}}], "estimated_word_count": int, "formatting_requirements": ["list"]}}"""},
             ],
             response_format={"type": "json_object"},
+            pydantic_schema=ContentPlanOutput,
             fallback_data={"sections": [{"title": "Introduction", "goals": ["Engage user"]}], "estimated_word_count": 500, "formatting_requirements": ["Use H2 headers"]},
         )
         self.last_cost = self.ai.last_cost

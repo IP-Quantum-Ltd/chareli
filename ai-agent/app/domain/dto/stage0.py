@@ -35,6 +35,7 @@ class CandidateCapture:
 @dataclass
 class Stage0Investigation:
     status: str
+    confidence_tier: str = ""
     search_query: str = ""
     search_plan: Dict[str, Any] = field(default_factory=dict)
     exact_identity: Dict[str, Any] = field(default_factory=dict)
@@ -47,6 +48,7 @@ class Stage0Investigation:
     comparison_scores_path: str = ""
     research_findings_path: str = ""
     reason: str = ""
+    warnings: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

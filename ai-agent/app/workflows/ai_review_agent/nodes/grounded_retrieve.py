@@ -1,5 +1,7 @@
 import logging
 
+from app.workflows.ai_review_agent.context import record_stage
+
 logger = logging.getLogger(__name__)
 
 
@@ -19,8 +21,14 @@ class GroundedRetrieveNode:
             state["accumulated_cost"] = float(state.get("accumulated_cost") or 0.0) + self.librarian.last_cost
             state["grounded_context"] = grounded_context
             state["status"] = "grounded"
+            warnings = grounded_context.get("warnings") or []
+            if warnings:
+                state.setdefault("warnings", []).extend(warnings)
+            stage_status = "completed_with_warnings" if warnings else "completed"
+            record_stage(state, "librarian", stage_status, "Grounded context packet built.")
         except Exception as exc:
             logger.error("Librarian Stage Failed: %s", exc)
             state["status"] = "failed"
             state["error_message"] = f"CRITICAL: Stage 2 grounded retrieval failed. Detail: {exc}"
+            record_stage(state, "librarian", "failed", state["error_message"])
         return state

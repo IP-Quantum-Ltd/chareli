@@ -24,6 +24,11 @@ class AgentState(TypedDict, total=False):
     max_plan_revisions: int
     max_draft_revisions: int
     accumulated_cost: float
+    current_stage: str
+    stage_trace: list[Dict[str, Any]]
+    review: Dict[str, Any]
+    result_payload: Dict[str, Any]
+    warnings: list[str]
     status: str
     error_message: str
 
@@ -59,6 +64,11 @@ def build_initial_state(
         "max_plan_revisions": max_plan_revisions,
         "max_draft_revisions": max_draft_revisions,
         "accumulated_cost": 0.0,
+        "current_stage": "starting",
+        "stage_trace": [],
+        "review": {},
+        "result_payload": {},
+        "warnings": [],
         "status": "starting",
         "error_message": "",
     }
@@ -87,6 +97,22 @@ def ensure_state_defaults(state: Dict[str, Any]) -> Dict[str, Any]:
     state.setdefault("max_plan_revisions", 2)
     state.setdefault("max_draft_revisions", 2)
     state.setdefault("accumulated_cost", 0.0)
+    state.setdefault("current_stage", "starting")
+    state.setdefault("stage_trace", [])
+    state.setdefault("review", {})
+    state.setdefault("result_payload", {})
+    state.setdefault("warnings", [])
     state.setdefault("status", "starting")
     state.setdefault("error_message", "")
     return state
+
+
+def record_stage(state: Dict[str, Any], stage: str, status: str, detail: str = "") -> None:
+    state["current_stage"] = stage
+    state.setdefault("stage_trace", []).append(
+        {
+            "stage": stage,
+            "status": status,
+            "detail": detail,
+        }
+    )

@@ -67,9 +67,15 @@ class QueueConfig:
     max_plan_revisions: int
     max_draft_revisions: int
     job_retention_hours: int
+    critic_min_coverage_score: int
+    auditor_min_factual_score: int
+    auditor_min_completeness_score: int
     stage0_required_candidates: int
+    stage0_min_candidates: int
     stage0_max_search_results: int
     stage0_candidate_capture_timeout_seconds: int
+    stage0_medium_confidence_threshold: int
+    stage0_high_confidence_threshold: int
 
 
 @dataclass(frozen=True)

@@ -1,3 +1,6 @@
+from app.workflows.ai_review_agent.context import record_stage
+
+
 class VisualVerifyNode:
     def __init__(self, visual_verification_service):
         self.visual_librarian = visual_verification_service
@@ -14,7 +17,17 @@ class VisualVerifyNode:
         if result["status"] == "failed":
             state["status"] = "failed"
             state["error_message"] = result.get("reason", "Stage 0 failed.")
+            record_stage(state, "research", "failed", state["error_message"])
         else:
             state["investigation"] = result
+            warnings = result.get("warnings") or []
+            if warnings:
+                state.setdefault("warnings", []).extend(warnings)
             state["status"] = "researched"
+            best_match = (result.get("best_match") or {}).get("url", "")
+            tier = result.get("confidence_tier", "")
+            detail = f"Best match: {best_match}"
+            if tier:
+                detail += f" | confidence tier: {tier}"
+            record_stage(state, "research", "completed", detail)
         return state

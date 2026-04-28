@@ -19,6 +19,11 @@ class ExternalCaptureService:
         self._config = config
         self._browser_factory = browser_factory
 
+    async def _write_metadata(self, output_path: str, metadata: Dict[str, Any]) -> str:
+        metadata_path = str(Path(output_path).with_suffix(".json"))
+        await asyncio.to_thread(Path(metadata_path).write_text, json.dumps(metadata, indent=2), encoding="utf-8")
+        return metadata_path
+
     async def capture_external_page(self, url: str, output_path: str) -> Optional[Dict[str, Any]]:
         playwright, browser = await self._browser_factory.launch()
         context = await self._browser_factory.new_external_context(browser)
@@ -28,21 +33,33 @@ class ExternalCaptureService:
             await page.wait_for_timeout(3000)
             await dismiss_common_overlays(page)
             await click_start_controls(page)
+            metadata = await extract_external_page_metadata(page, url)
             game_element = await locate_external_game_surface(page)
             if game_element is None:
-                return None
-            await game_element.scroll_into_view_if_needed(timeout=5000)
-            await page.wait_for_timeout(1200)
-            await dismiss_common_overlays(page)
-            tag_name = await game_element.evaluate("el => el.tagName.toLowerCase()")
-            if tag_name == "iframe":
-                await wait_for_iframe_render(page, game_element)
-            else:
-                await page.wait_for_timeout(5000)
-            await game_element.screenshot(path=output_path)
-            metadata_path = str(Path(output_path).with_suffix(".json"))
-            metadata = await extract_external_page_metadata(page, url)
-            await asyncio.to_thread(Path(metadata_path).write_text, json.dumps(metadata, indent=2), encoding="utf-8")
+                metadata["capture_mode"] = "page_fallback"
+                await page.screenshot(path=output_path, full_page=False)
+                metadata_path = await self._write_metadata(output_path, metadata)
+                return {
+                    "screenshot_path": output_path,
+                    "metadata_path": metadata_path,
+                    "metadata": metadata,
+                }
+            try:
+                await game_element.scroll_into_view_if_needed(timeout=5000)
+                await page.wait_for_timeout(1200)
+                await dismiss_common_overlays(page)
+                tag_name = await game_element.evaluate("el => el.tagName.toLowerCase()")
+                metadata["capture_mode"] = "element"
+                metadata["capture_tag"] = tag_name
+                if tag_name == "iframe":
+                    await wait_for_iframe_render(page, game_element)
+                else:
+                    await page.wait_for_timeout(5000)
+                await game_element.screenshot(path=output_path)
+            except Exception:
+                metadata["capture_mode"] = "page_fallback_after_surface_error"
+                await page.screenshot(path=output_path, full_page=False)
+            metadata_path = await self._write_metadata(output_path, metadata)
             return {
                 "screenshot_path": output_path,
                 "metadata_path": metadata_path,

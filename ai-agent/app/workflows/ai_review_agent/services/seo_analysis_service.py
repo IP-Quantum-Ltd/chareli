@@ -5,6 +5,7 @@ from urllib.parse import urlparse
 
 from langsmith import traceable
 
+from app.domain.schemas.llm_outputs import SeoAnalysisOutput
 from app.infrastructure.llm.ai_executor import AIExecutor
 
 logger = logging.getLogger(__name__)
@@ -178,6 +179,7 @@ class SeoAnalysisService:
                 {"role": "user", "content": prompt},
             ],
             response_format={"type": "json_object"},
+            pydantic_schema=SeoAnalysisOutput,
             fallback_data={
                 "primary_keywords": fallback_keywords[:2],
                 "secondary_keywords": [f"{game_title} online", f"{game_title} browser game"],

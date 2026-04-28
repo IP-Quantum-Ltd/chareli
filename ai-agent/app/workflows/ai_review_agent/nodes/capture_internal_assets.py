@@ -3,6 +3,8 @@ import base64
 import logging
 from pathlib import Path
 
+from app.workflows.ai_review_agent.context import record_stage
+
 logger = logging.getLogger(__name__)
 
 
@@ -33,9 +35,11 @@ class CaptureInternalAssetsNode:
                 file_bytes = await asyncio.to_thread(Path(path).read_bytes)
                 state["internal_imgs_base64"].append(base64.b64encode(file_bytes).decode("utf-8"))
             state["status"] = "captured"
+            record_stage(state, "capture", "completed", f"Captured {len(capture_result.paths)} internal reference images.")
         except Exception as exc:
             detail = str(exc).strip() or repr(exc)
             logger.error("Capture Integrity Failed: %s", detail)
             state["status"] = "failed"
             state["error_message"] = f"CRITICAL: Internal capture failed. Pipeline terminated. Detail: {detail}"
+            record_stage(state, "capture", "failed", state["error_message"])
         return state

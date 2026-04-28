@@ -1,3 +1,6 @@
+from app.workflows.ai_review_agent.context import record_stage
+
+
 class OptimizeContentNode:
     def __init__(self, seo_optimizer_service):
         self.optimizer = seo_optimizer_service
@@ -16,4 +19,5 @@ class OptimizeContentNode:
         state["accumulated_cost"] = float(state.get("accumulated_cost") or 0.0) + self.optimizer.last_cost
         state["optimization"] = optimization
         state["status"] = "complete"
+        record_stage(state, "optimizer", "completed", "SEO optimization and evaluation completed.")
         return state

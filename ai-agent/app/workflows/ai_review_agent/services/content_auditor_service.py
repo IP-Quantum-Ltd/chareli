@@ -4,6 +4,7 @@ from typing import Any, Dict, List
 
 from langsmith import traceable
 
+from app.domain.schemas.llm_outputs import AuditReportOutput
 from app.infrastructure.llm.ai_executor import AIExecutor
 
 logger = logging.getLogger(__name__)
@@ -84,6 +85,7 @@ class ContentAuditorService:
                 },
             ],
             response_format={"type": "json_object"},
+            pydantic_schema=AuditReportOutput,
             fallback_data=fallback,
             metadata={"stage": "auditor"},
         )

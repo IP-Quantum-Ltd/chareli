@@ -4,6 +4,7 @@ from typing import Any, Dict, List
 
 from langsmith import traceable
 
+from app.domain.schemas.llm_outputs import ContentPlanValidationOutput
 from app.infrastructure.llm.ai_executor import AIExecutor
 
 logger = logging.getLogger(__name__)
@@ -82,6 +83,7 @@ class ContentCriticService:
                 },
             ],
             response_format={"type": "json_object"},
+            pydantic_schema=ContentPlanValidationOutput,
             fallback_data=fallback,
             metadata={"stage": "critic"},
         )

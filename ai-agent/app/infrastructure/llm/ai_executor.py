@@ -1,9 +1,11 @@
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Type
 
+from langchain_core.output_parsers import JsonOutputParser
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from openai import AsyncOpenAI
+from pydantic import BaseModel
 
 from app.config import LlmConfig
 
@@ -51,50 +53,120 @@ class AIExecutor:
         self,
         messages: List[Dict[str, Any]],
         response_format: Optional[Dict[str, Any]] = None,
+        pydantic_schema: Optional[Type[BaseModel]] = None,
         fallback_data: Optional[Any] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> Any:
         try:
             from langchain_core.messages import HumanMessage, SystemMessage
 
-            formatted_messages = []
-            for message in messages:
-                if message["role"] == "system":
-                    formatted_messages.append(SystemMessage(content=message["content"]))
-                else:
-                    formatted_messages.append(HumanMessage(content=message["content"]))
-
             config: Dict[str, Any] = {}
             if metadata:
                 config = {"metadata": metadata, "tags": [str(value) for value in metadata.values()]}
 
-            llm = self._llm
-            if response_format and response_format.get("type") == "json_object":
-                llm = self._llm.bind(response_format={"type": "json_object"})
+            parser = self._build_json_parser(pydantic_schema)
+            json_mode = bool(parser or (response_format and response_format.get("type") == "json_object"))
+            prepared_messages = self._prepare_messages(messages, parser)
+            attempts = [
+                prepared_messages,
+                [
+                    *prepared_messages,
+                    {
+                        "role": "user",
+                        "content": "Return only valid JSON. Do not include commentary, markdown fences, or any leading text.",
+                    },
+                ],
+            ] if json_mode else [prepared_messages]
 
-            response = await llm.ainvoke(formatted_messages, config=config)
-            usage = getattr(response, "usage_metadata", {}) or {}
-            self.last_cost = self._calculate_langchain_cost(usage)
-            content = response.content
+            last_content = ""
+            for attempt_index, attempt_messages in enumerate(attempts, start=1):
+                formatted_messages = []
+                for message in attempt_messages:
+                    if message["role"] == "system":
+                        formatted_messages.append(SystemMessage(content=message["content"]))
+                    else:
+                        formatted_messages.append(HumanMessage(content=message["content"]))
 
-            if response_format and response_format.get("type") == "json_object":
-                try:
-                    return self._parse_json_text(str(content))
-                except Exception as exc:
-                    logger.error("JSON parsing failed: %s", exc)
-                    if fallback_data is not None:
-                        return fallback_data
-                    return {"error": "JSON parse failed", "raw": content}
+                llm = self._llm
+                if json_mode:
+                    llm = self._llm.bind(response_format={"type": "json_object"})
 
-            return content
+                response = await llm.ainvoke(formatted_messages, config=config)
+                usage = getattr(response, "usage_metadata", {}) or {}
+                self.last_cost = self._calculate_langchain_cost(usage)
+                content = self._normalize_response_content(response.content)
+                last_content = content
+
+                if json_mode:
+                    try:
+                        return self._parse_structured_text(content, parser, pydantic_schema)
+                    except Exception as exc:
+                        logger.warning("JSON parsing failed on attempt %s: %s", attempt_index, exc)
+                        continue
+
+                return content
+
+            if json_mode:
+                if fallback_data is not None:
+                    return self._normalize_fallback_data(fallback_data, pydantic_schema)
+                return {"error": "JSON parse failed", "raw": last_content}
         except Exception as exc:
             logger.error("Execution failed: %s", exc)
             if fallback_data is not None:
-                return fallback_data
+                return self._normalize_fallback_data(fallback_data, pydantic_schema)
             raise
+
+    def _prepare_messages(
+        self,
+        messages: List[Dict[str, Any]],
+        parser: Optional[JsonOutputParser],
+    ) -> List[Dict[str, Any]]:
+        if parser is None:
+            return messages
+        prepared_messages = [dict(message) for message in messages]
+        format_instructions = parser.get_format_instructions()
+        format_message = {
+            "role": "system",
+            "content": (
+                "Return only valid JSON that matches these instructions exactly:\n"
+                f"{format_instructions}"
+            ),
+        }
+        if prepared_messages and prepared_messages[0].get("role") == "system":
+            first = dict(prepared_messages[0])
+            first["content"] = f"{first['content']}\n\n{format_message['content']}"
+            prepared_messages[0] = first
+            return prepared_messages
+        return [format_message, *prepared_messages]
+
+    def _build_json_parser(
+        self,
+        pydantic_schema: Optional[Type[BaseModel]],
+    ) -> Optional[JsonOutputParser]:
+        if pydantic_schema is None:
+            return None
+        return JsonOutputParser(pydantic_object=pydantic_schema)
+
+    def _normalize_response_content(self, content: Any) -> str:
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            text_parts: List[str] = []
+            for item in content:
+                if isinstance(item, str):
+                    text_parts.append(item)
+                elif isinstance(item, dict):
+                    text_value = item.get("text") or item.get("content")
+                    if isinstance(text_value, str):
+                        text_parts.append(text_value)
+            if text_parts:
+                return "\n".join(text_parts).strip()
+        return str(content)
 
     def _parse_json_text(self, raw_text: str) -> Dict[str, Any]:
         cleaned = raw_text.strip()
+        if not cleaned:
+            raise ValueError("Model returned empty content.")
         if cleaned.startswith("```"):
             lines = cleaned.splitlines()
             if lines and lines[0].startswith("```"):
@@ -102,7 +174,62 @@ class AIExecutor:
             if lines and lines[-1].startswith("```"):
                 lines = lines[:-1]
             cleaned = "\n".join(lines).strip()
-        return json.loads(cleaned)
+        try:
+            return json.loads(cleaned)
+        except json.JSONDecodeError:
+            extracted = self._extract_json_object(cleaned)
+            if extracted is None:
+                raise
+            return json.loads(extracted)
+
+    def _parse_structured_text(
+        self,
+        raw_text: str,
+        parser: Optional[JsonOutputParser],
+        pydantic_schema: Optional[Type[BaseModel]],
+    ) -> Any:
+        if parser is not None:
+            parsed = parser.parse(raw_text)
+            if pydantic_schema is not None:
+                return pydantic_schema.model_validate(parsed).model_dump()
+            return parsed
+        return self._parse_json_text(raw_text)
+
+    def _normalize_fallback_data(
+        self,
+        fallback_data: Any,
+        pydantic_schema: Optional[Type[BaseModel]],
+    ) -> Any:
+        if pydantic_schema is None:
+            return fallback_data
+        return pydantic_schema.model_validate(fallback_data).model_dump()
+
+    def _extract_json_object(self, raw_text: str) -> Optional[str]:
+        start = raw_text.find("{")
+        if start == -1:
+            return None
+        depth = 0
+        in_string = False
+        escaped = False
+        for index in range(start, len(raw_text)):
+            char = raw_text[index]
+            if in_string:
+                if escaped:
+                    escaped = False
+                elif char == "\\":
+                    escaped = True
+                elif char == "\"":
+                    in_string = False
+                continue
+            if char == "\"":
+                in_string = True
+            elif char == "{":
+                depth += 1
+            elif char == "}":
+                depth -= 1
+                if depth == 0:
+                    return raw_text[start : index + 1]
+        return None
 
     def _calculate_langchain_cost(self, usage: Dict[str, Any]) -> float:
         input_tokens = usage.get("input_tokens", 0)

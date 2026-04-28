@@ -17,6 +17,7 @@ from app.workflows.ai_review_agent.nodes.audit_content import AuditContentNode
 from app.workflows.ai_review_agent.nodes.capture_internal_assets import CaptureInternalAssetsNode
 from app.workflows.ai_review_agent.nodes.critic_plan import CriticPlanNode
 from app.workflows.ai_review_agent.nodes.draft_content import DraftContentNode
+from app.workflows.ai_review_agent.nodes.finalize_result import FinalizeResultNode
 from app.workflows.ai_review_agent.nodes.grounded_retrieve import GroundedRetrieveNode
 from app.workflows.ai_review_agent.nodes.initialize_agent import InitializeAgentNode
 from app.workflows.ai_review_agent.nodes.optimize_content import OptimizeContentNode
@@ -61,9 +62,12 @@ class ApplicationRuntime:
             correlation_service=self.visual_correlation,
             external_capture_service=self.external_capture,
             artifact_store=self.artifact_store,
+            min_candidates=config.queue.stage0_min_candidates,
             required_candidates=config.queue.stage0_required_candidates,
             max_search_results=config.queue.stage0_max_search_results,
             candidate_capture_timeout_seconds=config.queue.stage0_candidate_capture_timeout_seconds,
+            medium_confidence_threshold=config.queue.stage0_medium_confidence_threshold,
+            high_confidence_threshold=config.queue.stage0_high_confidence_threshold,
         )
         self.analyst = SeoAnalysisService(self.ai_factory.create_executor())
         self.librarian = GroundedRetrievalService(
@@ -98,9 +102,17 @@ class ApplicationRuntime:
             grounded_retrieve_node=GroundedRetrieveNode(self.librarian),
             plan_content_node=PlanContentNode(self.architect),
             draft_content_node=DraftContentNode(self.scribe),
-            critic_plan_node=CriticPlanNode(self.critic),
-            audit_content_node=AuditContentNode(self.auditor),
+            critic_plan_node=CriticPlanNode(
+                self.critic,
+                min_coverage_score=config.queue.critic_min_coverage_score,
+            ),
+            audit_content_node=AuditContentNode(
+                self.auditor,
+                min_factual_score=config.queue.auditor_min_factual_score,
+                min_completeness_score=config.queue.auditor_min_completeness_score,
+            ),
             optimize_content_node=OptimizeContentNode(self.optimizer),
+            finalize_result_node=FinalizeResultNode(ReviewMapper()),
             max_plan_revisions=config.queue.max_plan_revisions,
             max_draft_revisions=config.queue.max_draft_revisions,
         )

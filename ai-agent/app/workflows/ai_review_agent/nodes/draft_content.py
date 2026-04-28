@@ -1,3 +1,6 @@
+from app.workflows.ai_review_agent.context import record_stage
+
+
 class DraftContentNode:
     def __init__(self, content_drafting_service):
         self.scribe = content_drafting_service
@@ -22,4 +25,5 @@ class DraftContentNode:
         state["accumulated_cost"] = float(state.get("accumulated_cost") or 0.0) + self.scribe.last_cost
         state["article"] = article
         state["status"] = "complete"
+        record_stage(state, "scribe", "completed", "Draft article generated.")
         return state

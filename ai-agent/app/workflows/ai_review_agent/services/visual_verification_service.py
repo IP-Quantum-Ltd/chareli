@@ -9,6 +9,12 @@ from urllib.parse import urlparse
 from langsmith import get_current_run_tree, traceable
 
 from app.domain.dto import CandidateCapture, Stage0Investigation
+from app.domain.schemas.llm_outputs import (
+    CorrelationOutput,
+    DeepContentOutput,
+    ExactGameIdentityOutput,
+    SearchPlanOutput,
+)
 from app.infrastructure.browser.external_capture import ExternalCaptureService
 from app.infrastructure.llm.ai_executor import AIExecutor
 from app.infrastructure.storage.artifact_store import ArtifactStore
@@ -26,19 +32,43 @@ class VisualVerificationService:
         correlation_service: VisualCorrelationService,
         external_capture_service: ExternalCaptureService,
         artifact_store: ArtifactStore,
+        min_candidates: int = 3,
         required_candidates: int = 5,
         max_search_results: int = 5,
         candidate_capture_timeout_seconds: int = 30,
+        medium_confidence_threshold: int = 75,
+        high_confidence_threshold: int = 90,
     ):
         self.ai = ai
         self.search_service = search_service
         self.correlation_service = correlation_service
         self.external_capture_service = external_capture_service
         self.artifact_store = artifact_store
+        self.min_candidates = max(1, min(min_candidates, required_candidates))
         self.required_candidates = max(1, required_candidates)
         self.max_search_results = max(self.required_candidates, max_search_results)
         self.candidate_capture_timeout_seconds = max(5, candidate_capture_timeout_seconds)
+        self.medium_confidence_threshold = max(0, min(medium_confidence_threshold, 100))
+        self.high_confidence_threshold = max(self.medium_confidence_threshold, min(high_confidence_threshold, 100))
         self.last_cost = 0.0
+
+    def _determine_confidence_tier(self, confidence_score: int) -> str:
+        if confidence_score >= self.high_confidence_threshold:
+            return "high"
+        if confidence_score >= self.medium_confidence_threshold:
+            return "medium"
+        return "low"
+
+    def _has_confident_consensus(self, candidates: List[CandidateCapture]) -> bool:
+        if len(candidates) < self.min_candidates:
+            return False
+        confident = [candidate for candidate in candidates if int(candidate.confidence_score or 0) >= self.medium_confidence_threshold]
+        if len(confident) < self.min_candidates:
+            return False
+        top_two = sorted(confident, key=lambda item: int(item.confidence_score or 0), reverse=True)[:2]
+        if len(top_two) < 2:
+            return False
+        return abs(int(top_two[0].confidence_score or 0) - int(top_two[1].confidence_score or 0)) <= 10
 
     def _image_prompt_parts(self, images_b64: List[str]) -> List[Dict[str, Any]]:
         return [
@@ -108,12 +138,12 @@ class VisualVerificationService:
             for candidate in raw_candidates[: self.max_search_results]
             if isinstance(candidate, dict) and isinstance(candidate.get("url"), str) and candidate.get("url")
         ]
-        if len(search_results) < self.required_candidates:
+        if len(search_results) < self.min_candidates:
             return Stage0Investigation(
                 status="failed",
                 reason=(
                     f"OpenAI web search returned only {len(search_results)} usable URLs; "
-                    f"Stage 0 requires {self.required_candidates}."
+                    f"Stage 0 requires at least {self.min_candidates}."
                 ),
                 search_query=search_query,
                 raw_candidates=raw_candidates,
@@ -144,7 +174,9 @@ class VisualVerificationService:
             scoring = self.correlation_service.score_candidate(correlation, seo_intelligence)
             candidates.append(CandidateCapture(rank=index, url=url, search_query=search_query, screenshot_path=capture_result["screenshot_path"], metadata_path=capture_result["metadata_path"], metadata=capture_result["metadata"], correlation=correlation, seo_intelligence=seo_intelligence, scoring=scoring, confidence_score=scoring["confidence_score"], reasoning=correlation.get("reasoning", "Unknown"), extracted_facts=correlation.get("facts", {}), comparison_triplet={"reference_thumbnail": "internal_screenshots[0]", "internal_gameplay": "internal_screenshots[1]" if len(internal_screenshots) > 1 else "", "external_render_path": capture_result["screenshot_path"], "external_metadata_path": capture_result["metadata_path"]}))
             logger.info("Research candidate scored | proposal=%s rank=%s url=%s confidence=%s", proposal_id, index, url, scoring["confidence_score"])
-            if len(candidates) == self.required_candidates:
+            if len(candidates) >= self.required_candidates:
+                break
+            if self._has_confident_consensus(candidates):
                 break
 
         comparison_scores_path = await self.artifact_store.write_comparison_scores(proposal_dir, proposal_id, game_title, search_query, candidates, failures)
@@ -157,13 +189,13 @@ class VisualVerificationService:
         )
         await self._attach_artifacts_to_trace({"stage0_manifest_json": manifest_path})
 
-        if len(candidates) != self.required_candidates:
+        if len(candidates) < self.min_candidates:
             findings_path = await self.artifact_store.write_research_findings(proposal_id, game_title, search_query, candidates, failures, self.last_cost)
             return Stage0Investigation(
                 status="failed",
                 reason=(
                     f"Stage 0 captured {len(candidates)} playable external renders after trying "
-                    f"{len(search_results)} ranked search results; {self.required_candidates} are required."
+                    f"{len(search_results)} ranked search results; at least {self.min_candidates} are required."
                 ),
                 search_query=search_query,
                 failures=failures,
@@ -173,7 +205,18 @@ class VisualVerificationService:
             ).to_dict()
 
         best_match = max(candidates, key=lambda item: item.confidence_score)
-        if best_match.confidence_score > 80:
+        confidence_tier = self._determine_confidence_tier(int(best_match.confidence_score or 0))
+        warnings: List[str] = []
+        if len(candidates) < self.required_candidates:
+            warnings.append(
+                f"Stage 0 reached confident consensus with {len(candidates)} candidates; ideal target is {self.required_candidates}."
+            )
+        if confidence_tier == "medium":
+            warnings.append("Visual verification confidence is moderate; downstream stages should remain conservative.")
+        if confidence_tier == "low":
+            warnings.append("Visual verification confidence is low; downstream output should be treated as provisional.")
+
+        if best_match.confidence_score >= self.medium_confidence_threshold:
             deep_info = await self._extract_deep_content(best_match.url)
             if isinstance(deep_info, dict):
                 best_match.deep_research_results = deep_info
@@ -182,7 +225,22 @@ class VisualVerificationService:
         findings_path = await self.artifact_store.write_research_findings(proposal_id, game_title, search_query, candidates, failures, self.last_cost, best_match.to_dict())
         await self._attach_artifacts_to_trace({"research_findings_json": findings_path})
         logger.info("Research success | proposal=%s candidates=%s best=%s", proposal_id, len(candidates), best_match.url)
-        return Stage0Investigation(status="success", search_query=search_query, search_plan=search_plan, exact_identity=exact_identity, search_engine=search_step.get("engine", ""), search_model=search_step.get("model", ""), raw_candidates=raw_candidates, best_match=best_match, all_candidates=candidates, failures=failures, comparison_scores_path=comparison_scores_path, research_findings_path=findings_path).to_dict()
+        return Stage0Investigation(
+            status="success",
+            confidence_tier=confidence_tier,
+            search_query=search_query,
+            search_plan=search_plan,
+            exact_identity=exact_identity,
+            search_engine=search_step.get("engine", ""),
+            search_model=search_step.get("model", ""),
+            raw_candidates=raw_candidates,
+            best_match=best_match,
+            all_candidates=candidates,
+            failures=failures,
+            comparison_scores_path=comparison_scores_path,
+            research_findings_path=findings_path,
+            warnings=warnings,
+        ).to_dict()
 
     def _compose_search_query(self, title: str, search_plan: Dict[str, Any], exact_identity: Dict[str, Any]) -> str:
         visual_cues = search_plan.get("visual_cues") or []
@@ -214,6 +272,7 @@ class VisualVerificationService:
         result = await self.ai.chat_completion(
             messages=[{"role": "user", "content": [{"type": "text", "text": f"You are planning a web search query for the exact browser game '{title}'. Return ONLY valid JSON: {{\"search_terms\": [\"term 1\"], \"visual_cues\": [\"cue 1\"], \"reasoning\": \"short explanation\"}}"}, {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{thumbnail_b64}"}}]}],
             response_format={"type": "json_object"},
+            pydantic_schema=SearchPlanOutput,
             fallback_data={"search_terms": [title], "visual_cues": [], "reasoning": "Fallback search plan."},
             metadata={"stage": "stage0_search_plan"},
         )
@@ -225,6 +284,7 @@ class VisualVerificationService:
         result = await self.ai.chat_completion(
             messages=[{"role": "user", "content": [{"type": "text", "text": f"You are identifying the exact browser game shown in the provided internal reference images. Database title: {title}. Return ONLY valid JSON: {{\"exact_game_name\": \"string\", \"aliases\": [\"alias 1\"], \"distinguishing_features\": [\"feature 1\"], \"avoid_titles\": [\"wrong title 1\"], \"reasoning\": \"short explanation\"}}"}, *image_parts]}],
             response_format={"type": "json_object"},
+            pydantic_schema=ExactGameIdentityOutput,
             fallback_data={"exact_game_name": title, "aliases": [], "distinguishing_features": [], "avoid_titles": [], "reasoning": "Exact identity inference unavailable."},
             metadata={"stage": "exact_game_identity_inference"},
         )
@@ -236,6 +296,7 @@ class VisualVerificationService:
         result = await self.ai.chat_completion(
             messages=[{"role": "user", "content": [{"type": "text", "text": f"Compare the provided internal game reference images against one external page screenshot. Game title: {title}. External URL: {url}. External metadata: {metadata}. Return ONLY valid JSON: {{\"confidence_score\": 0, \"visual_match_score\": 0, \"reasoning\": \"short explanation\", \"facts\": {{\"controls\": \"string\", \"rules\": \"string\", \"objective\": \"string\", \"original_developer\": \"string\"}}}}"}, *image_parts, {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{external_img}"}}]}],
             response_format={"type": "json_object"},
+            pydantic_schema=CorrelationOutput,
             fallback_data={"confidence_score": 0, "visual_match_score": 0, "reasoning": f"Correlation unavailable for {urlparse(url).netloc}.", "facts": {}},
             metadata={"stage": "stage0_correlation"},
         )
@@ -246,6 +307,7 @@ class VisualVerificationService:
         result = await self.ai.chat_completion(
             messages=[{"role": "system", "content": "Respond only with JSON and do not guess unknown facts."}, {"role": "user", "content": f"Extract only grounded, concise game facts from this URL: {url}. Return ONLY valid JSON: {{\"objective\": \"string\", \"controls\": \"string\", \"rules\": \"string\", \"original_developer\": \"string\"}}"}],
             response_format={"type": "json_object"},
+            pydantic_schema=DeepContentOutput,
             fallback_data={},
             metadata={"stage": "stage0_deep_extract"},
         )
