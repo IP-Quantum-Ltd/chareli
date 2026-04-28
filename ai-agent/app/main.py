@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from app.config import settings
 from app.db.mongo import close_mongodb
 from app.db.postgres import close_postgres_pool
-from app.routers import health, webhook, review
+from app.routers import health, review
 from app.services import task_queue as queue, agent
 from app.services.arcade_client import get_game
 
@@ -32,6 +32,5 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="ArcadeBox AI Game Review Agent", lifespan=lifespan)
 
-app.include_router(health.router)
-app.include_router(webhook.router)
-app.include_router(review.router)
+app.include_router(health.router, prefix="/api/v1/health", tags=["Health"])
+app.include_router(review.router, prefix="/api/v1/review", tags=["Review Management"])

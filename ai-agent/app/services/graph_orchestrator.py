@@ -125,7 +125,7 @@ async def librarian_node(state: AgentState) -> AgentState:
             state["seo_blueprint"],
         )
         state["accumulated_cost"] += librarian.last_cost
-        state["grounded_context"] = grounded_context
+        state["grounded_context"] = grounded_context.get("grounded_packet", {})
         state["status"] = "grounded"
     except Exception as e:
         logger.error(f"Librarian Stage Failed: {e}")
@@ -138,13 +138,8 @@ async def architect_node(state: AgentState) -> AgentState:
     logger.info("Node: Architect (Stage 3)")
     
     architect = ArchitectAgent()
-    best_match = state["investigation"]["best_match"]
     outline = await architect.build_outline(state["game_title"], {
-        "visual_description": best_match["reasoning"],
-        "canonical_url": best_match["url"],
-        "verified_facts": best_match.get("extracted_facts") or {},
-        "seo_blueprint": state["seo_blueprint"],
-        "grounded_context": state["grounded_context"],
+        "grounded_context": state.get("grounded_context", {}),
     })
     state["accumulated_cost"] += architect.last_cost
     state["outline"] = outline
@@ -160,9 +155,13 @@ async def scribe_node(state: AgentState) -> AgentState:
     article = await scribe.draft_from_facts(state["game_title"], {
         "source_url": best_match["url"],
         "facts": best_match.get("extracted_facts") or {},
-        "seo": state["seo_blueprint"],
-        "grounded_context": state["grounded_context"],
-        "content_plan": state["outline"],
+        "seo": {
+            "primary_keywords": state["seo_blueprint"].get("primary_keywords", []),
+            "secondary_keywords": state["seo_blueprint"].get("secondary_keywords", []),
+            "content_angles": state["seo_blueprint"].get("content_angles", []),
+        },
+        "grounded_context": state.get("grounded_context", {}),
+        "content_plan": state.get("outline", ""),
     })
     state["accumulated_cost"] += scribe.last_cost
     state["article"] = article
