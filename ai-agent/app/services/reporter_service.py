@@ -121,3 +121,38 @@ class ReporterService:
         except Exception as e:
             logger.error(f"PDF Generation failed: {e}", exc_info=True)
             return None
+
+    def generate_article_pdf(self, game_title: str, article_markdown: str, output_path: str):
+        """
+        Converts the Scribe's markdown article into a clean PDF.
+        """
+        try:
+            pdf = FPDF()
+            pdf.set_auto_page_break(auto=True, margin=15)
+            pdf.add_page()
+            
+            # Title
+            pdf.set_font("Arial", "B", 20)
+            pdf.set_text_color(44, 62, 80)
+            pdf.multi_cell(190, 15, f"SEO Article: {game_title}", align="C")
+            pdf.ln(10)
+            
+            # Content
+            pdf.set_font("Arial", "", 11)
+            pdf.set_text_color(0, 0, 0)
+            
+            # Simple Markdown cleanup for PDF (stripping bold markers)
+            clean_content = article_markdown.replace("**", "").replace("__", "").replace("#", "")
+            
+            pdf.multi_cell(190, 7, clean_content)
+            
+            # Finalize
+            output_dir = os.path.dirname(output_path)
+            if output_dir: os.makedirs(output_dir, exist_ok=True)
+            pdf.output(output_path)
+            
+            logger.info(f"Article PDF generated: {output_path}")
+            return output_path
+        except Exception as e:
+            logger.error(f"Article PDF Generation failed: {e}")
+            return None

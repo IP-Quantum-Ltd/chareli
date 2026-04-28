@@ -171,16 +171,16 @@ async def scribe_node(state: AgentState) -> AgentState:
 
 async def reporter_node(state: AgentState) -> AgentState:
     if state["status"] == "failed": return state
-    logger.info("Node: Reporter (Final Audit)")
+    logger.info("Node: Reporter (Final Audit & Article)")
     
     from app.services.reporter_service import ReporterService
     reporter = ReporterService()
     
-    # Use the final frame as the target baseline
-    ref_img = state["internal_imgs_paths"][-1] if state.get("internal_imgs_paths") else None
+    # 1. Visual Audit Report
     report_path = f"stage0_artifacts/{state['game_id']}/audit_report_{state['game_id']}.pdf"
+    ref_img = state["internal_imgs_paths"][-1] if state.get("internal_imgs_paths") else None
     
-    path = reporter.generate_audit_report(
+    reporter.generate_audit_report(
         state["game_id"],
         state["game_title"],
         state["investigation"],
@@ -188,7 +188,16 @@ async def reporter_node(state: AgentState) -> AgentState:
         reference_image_path=ref_img
     )
     
-    state["report_path"] = path
+    # 2. Final Scribe Article PDF
+    if state.get("article"):
+        article_path = f"stage0_artifacts/{state['game_id']}/seo_article_{state['game_id']}.pdf"
+        reporter.generate_article_pdf(
+            state["game_title"],
+            state["article"],
+            article_path
+        )
+    
+    state["report_path"] = report_path
     return state
 
 # --- Build the Graph ---
@@ -205,7 +214,11 @@ workflow.add_node("reporter", reporter_node)
 
 workflow.set_entry_point("capture")
 workflow.add_edge("capture", "research")
-workflow.add_edge("research", "reporter")
+workflow.add_edge("research", "analyze")
+workflow.add_edge("analyze", "librarian")
+workflow.add_edge("librarian", "architect")
+workflow.add_edge("architect", "scribe")
+workflow.add_edge("scribe", "reporter")
 workflow.add_edge("reporter", END)
 
 # Compile
