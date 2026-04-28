@@ -16,6 +16,7 @@ import { AdminExclusionService } from '../services/adminExclusion.service';
 import {
   getPeriodBoundaries,
   parseCustomDayBoundary,
+  rollingDayBoundaries,
 } from '../utils/timezonePeriod';
 
 const userRepository = AppDataSource.getRepository(User);
@@ -62,8 +63,15 @@ export const getDashboardAnalytics = async (
       ? [country as string]
       : [];
 
-    // Check cache first (TTL: 3 minutes) - include timezone in cache key
-    const cacheKey = `${period || 'last24hours'}:${countries.sort().join(',')}:${userTimezone}`;
+    // Check cache first (TTL: 3 minutes). Timezone is included only when it
+    // affects the result. last24hours is a rolling now-24h window — timezone-
+    // independent — so we omit userTimezone from its key to share the cache
+    // entry across all timezones. Calendar-based periods (last7days, last30days,
+    // custom) anchor on user-tz midnight, so they keep timezone in the key.
+    const periodKey = period || 'last24hours';
+    const cacheKey = periodKey === 'last24hours'
+      ? `${periodKey}:${countries.sort().join(',')}`
+      : `${periodKey}:${countries.sort().join(',')}:${userTimezone}`;
     const cached = await cacheService.getAnalytics('dashboard', cacheKey);
     if (cached) {
       logger.debug(`[CACHE HIT] Dashboard analytics for ${cacheKey}`);
@@ -113,15 +121,15 @@ export const getDashboardAnalytics = async (
           // For custom range, the "end" boundary of the current window is the user-picked end.
           now = customEndDate;
         } else {
-          // Fallback to last 24 hours if custom dates are invalid
-          const boundaries = getTimezoneAwarePeriodBoundaries(1, 2);
+          // Fallback to last 24 hours if custom dates are invalid.
+          const boundaries = rollingDayBoundaries(nowUtc);
           currentPeriodStart = boundaries.currentStart;
           previousPeriodStart = boundaries.prevStart;
           previousPeriodEnd = boundaries.prevEnd;
         }
         break;
-      default: { // 'last24hours' or no period specified
-        const boundaries = getTimezoneAwarePeriodBoundaries(1, 2);
+      default: { // 'last24hours' or no period specified — see rollingDayBoundaries.
+        const boundaries = rollingDayBoundaries(nowUtc);
         currentPeriodStart = boundaries.currentStart;
         previousPeriodStart = boundaries.prevStart;
         previousPeriodEnd = boundaries.prevEnd;
@@ -2162,14 +2170,14 @@ export const getGamesPopularityMetrics = async (
           previousPeriodEnd = currentPeriodStart;
           now = customEndDate;
         } else {
-          const boundaries = getTimezoneAwarePeriodBoundaries(1, 2);
+          const boundaries = rollingDayBoundaries(nowUtc);
           currentPeriodStart = boundaries.currentStart;
           previousPeriodStart = boundaries.prevStart;
           previousPeriodEnd = boundaries.prevEnd;
         }
         break;
-      default: { // last24hours
-        const boundaries = getTimezoneAwarePeriodBoundaries(1, 2);
+      default: { // last24hours — see rollingDayBoundaries.
+        const boundaries = rollingDayBoundaries(nowUtc);
         currentPeriodStart = boundaries.currentStart;
         previousPeriodStart = boundaries.prevStart;
         previousPeriodEnd = boundaries.prevEnd;
