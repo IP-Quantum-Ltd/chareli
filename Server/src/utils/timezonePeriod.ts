@@ -74,6 +74,17 @@ export function getPeriodBoundaries(
   return { currentStart, prevStart, prevEnd };
 }
 
+// Rolling 24h window ending at `nowUtc`. Timezone-independent: the dashboard's
+// "Last 24 hours" filter means a true rolling window matching GA4 semantics,
+// not "since user-tz midnight today." Calendar-day anchoring lives in
+// getPeriodBoundaries and applies to longer periods (7d, 30d, custom).
+export function rollingDayBoundaries(nowUtc: Date): PeriodBoundaries {
+  const ms24h = 24 * 60 * 60 * 1000;
+  const currentStart = new Date(nowUtc.getTime() - ms24h);
+  const prevStart = new Date(nowUtc.getTime() - 2 * ms24h);
+  return { currentStart, prevStart, prevEnd: currentStart };
+}
+
 // Interpret user-supplied start/end dates as calendar days in the user's
 // timezone rather than UTC. A Nicosia user picking "2026-04-20" as start
 // means "Apr 20 00:00 in Nicosia" (= 2026-04-19T21:00Z), not UTC midnight.
