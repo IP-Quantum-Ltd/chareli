@@ -1,4 +1,18 @@
-FROM python:3.12-slim
+# ── builder: compile wheels for all dependencies ──────────────────────────────
+FROM python:3.12-slim AS builder
+
+WORKDIR /build
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip wheel --no-cache-dir --wheel-dir /wheels -r requirements.txt
+
+
+# ── runtime: lean image with pre-built wheels + Playwright ────────────────────
+FROM python:3.12-slim AS runtime
 
 WORKDIR /app
 
@@ -6,10 +20,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY --from=builder /wheels /wheels
+RUN pip install --no-cache-dir --no-index --find-links /wheels /wheels/*.whl \
+    && rm -rf /wheels
 
-# Install Playwright browsers (needed by Agent 1)
 RUN playwright install --with-deps chromium
 
 COPY . .
