@@ -18,6 +18,7 @@ interface DashboardTimeFilterProps {
 
 const timeRangeOptions = [
   { value: 'last24hours', label: '24 hours' },
+  { value: 'yesterday', label: 'Yesterday' },
   { value: 'last7days', label: '7 days' },
   { value: 'last30days', label: '30 days' },
   { value: 'custom', label: 'Custom range' },
