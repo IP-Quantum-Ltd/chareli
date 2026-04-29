@@ -35,8 +35,6 @@
     "@aws-sdk/cloudfront-signer": "^3.813.0",
     "@aws-sdk/s3-request-presigner": "^3.859.0",
     "@sendgrid/mail": "^8.1.6",
-    "@sentry/node": "^9.18.0",
-    "@sentry/profiling-node": "^9.18.0",
     "@socket.io/redis-adapter": "^8.3.0",
     "@types/adm-zip": "^0.5.7",
     "@types/bull": "^3.15.9",

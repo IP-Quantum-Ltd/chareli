@@ -14,6 +14,30 @@ import { extractClientIP } from '../utils/ipUtils';
 const analyticsRepository = AppDataSource.getRepository(Analytics);
 const userRepository = AppDataSource.getRepository(User);
 
+const ALLOWED_ACTIVITY_TYPES = new Set<string>([
+  'game_session',
+  'homepage_visit',
+  'Signed up',
+  'Signed up from invitation',
+  'Logged in',
+]);
+
+const MAX_CLOCK_SKEW_MS = 60_000;
+// Reject timestamps older than this — protects historical aggregations from
+// clients with broken clocks, fixed test fixtures in production, or tampered
+// dev tools. 24h gives ample headroom for legitimate background-tab sessions
+// while bounding the blast radius of a single bad client.
+const MAX_PAST_TIMESTAMP_MS = 24 * 60 * 60 * 1000;
+
+const isFutureTimestamp = (ts: Date): boolean =>
+  ts.getTime() - Date.now() > MAX_CLOCK_SKEW_MS;
+
+const isAncientTimestamp = (ts: Date): boolean =>
+  Date.now() - ts.getTime() > MAX_PAST_TIMESTAMP_MS;
+
+const isInvalidTimestamp = (ts: Date): boolean =>
+  isNaN(ts.getTime()) || isFutureTimestamp(ts) || isAncientTimestamp(ts);
+
 /**
  * @swagger
  * /analytics:
@@ -83,6 +107,24 @@ export const createAnalytics = async (
       );
     }
 
+    if (!activityType || !ALLOWED_ACTIVITY_TYPES.has(activityType)) {
+      return next(
+        ApiError.badRequest(
+          `Invalid activityType. Allowed: ${[...ALLOWED_ACTIVITY_TYPES].join(', ')}`
+        )
+      );
+    }
+
+    const parsedStartTime = new Date(startTime);
+    if (isInvalidTimestamp(parsedStartTime)) {
+      return next(ApiError.badRequest('Invalid or future startTime'));
+    }
+
+    const parsedEndTime = endTime ? new Date(endTime) : undefined;
+    if (parsedEndTime && isInvalidTimestamp(parsedEndTime)) {
+      return next(ApiError.badRequest('Invalid endTime'));
+    }
+
     // Extract IP address from request
     const ipAddress = extractClientIP(
       req.headers['x-forwarded-for'],
@@ -95,8 +137,8 @@ export const createAnalytics = async (
       sessionId: sessionId || null,
       gameId: gameId || null,
       activityType,
-      startTime: new Date(startTime),
-      endTime: endTime ? new Date(endTime) : undefined,
+      startTime: parsedStartTime,
+      endTime: parsedEndTime,
       sessionCount,
       ipAddress,
     });
@@ -403,6 +445,26 @@ export const updateAnalytics = async (
       return next(ApiError.notFound(`Analytics entry with id ${id} not found`));
     }
 
+    if (analytics.userId) {
+      const shouldTrack = await AdminExclusionService.shouldTrack(analytics.userId);
+      if (!shouldTrack) {
+        await analyticsRepository.remove(analytics);
+        res.status(200).json({
+          success: true,
+          message: 'Analytics entry removed (admin activity excluded)',
+          data: null,
+        });
+        return;
+      }
+    }
+
+    if (endTime !== undefined && endTime) {
+      const parsedEndTime = new Date(endTime);
+      if (isInvalidTimestamp(parsedEndTime)) {
+        return next(ApiError.badRequest('Invalid endTime'));
+      }
+    }
+
     // Always update lastSeenAt on any update
     analytics.lastSeenAt = new Date();
 
@@ -432,15 +494,19 @@ export const updateAnalytics = async (
       // Part 3: Explicitly assign duration (provides clarity + redundancy with entity hook)
       analytics.duration = duration;
 
-      // For game sessions, only save if duration >= 30 seconds
+      // For game sessions under 30 seconds, mark as discarded instead of deleting.
+      // The row is preserved for product analysis (quick-bounce rate, broken games)
+      // but excluded from dashboard aggregations by the duration >= 30 filter that
+      // every dashboard query already enforces.
       if (analytics.gameId && duration < 30) {
-        // Delete the analytics record if it's a game session with duration < 30 seconds
-        await analyticsRepository.remove(analytics);
+        analytics.isDiscarded = true;
+        await analyticsRepository.save(analytics);
+        await cacheService.invalidateDashboard();
 
         res.status(200).json({
           success: true,
           message:
-            'Analytics entry removed due to insufficient duration (< 30 seconds)',
+            'Analytics entry marked as discarded due to insufficient duration (< 30 seconds)',
           data: null,
         });
         return;
@@ -461,6 +527,7 @@ export const updateAnalytics = async (
     }
 
     await analyticsRepository.save(analytics);
+    await cacheService.invalidateDashboard();
 
     res.status(200).json({
       success: true,
@@ -490,8 +557,8 @@ export const updateAnalytics = async (
  *     responses:
  *       204:
  *         description: Heartbeat received
- *       404:
- *         description: Analytics entry not found
+ *       410:
+ *         description: Analytics entry no longer exists (e.g. discarded short session). Client should stop heartbeating.
  *       500:
  *         description: Internal server error
  */
@@ -503,19 +570,16 @@ export const heartbeatAnalytics = async (
   try {
     const { id } = req.params;
 
-    // Use update for efficiency (avoid fetch if possible, but typeorm update won't check existance/ownership strictly unless we check result)
-    // For simplicity and correctness with entities, fetch then save
-    // Or simpler: update directly
     const result = await analyticsRepository.update(id, {
       lastSeenAt: new Date(),
     });
 
+    // 410 Gone signals to the client that the row is permanently absent (typically
+    // because a short game session was discarded on /end). The client uses this to
+    // stop the heartbeat interval instead of pinging a dead row forever.
     if (result.affected === 0) {
-       // Optional: return 404 if we want strict checking, but usually for heartbeat
-       // we can just return 204.
-       // However, if the ID doesn't exist, we probably shouldn't return 204 success.
-       // But the plan says "Lightweight endpoint", so maybe just ignore.
-       // Let's stick to 204.
+      res.status(410).send();
+      return;
     }
 
     res.status(204).send();
@@ -586,15 +650,19 @@ export const updateAnalyticsEndTime = async (
       // Part 3: Explicitly assign duration (provides clarity + redundancy with entity hook)
       analytics.duration = duration;
 
-      // For game sessions, only save if duration >= 30 seconds
+      // For game sessions under 30 seconds, mark as discarded instead of deleting.
+      // The row is preserved for product analysis (quick-bounce rate, broken games)
+      // but excluded from dashboard aggregations by the duration >= 30 filter that
+      // every dashboard query already enforces.
       if (analytics.gameId && duration < 30) {
-        // Delete the analytics record if it's a game session with duration < 30 seconds
-        await analyticsRepository.remove(analytics);
+        analytics.isDiscarded = true;
+        await analyticsRepository.save(analytics);
+        await cacheService.invalidateDashboard();
 
         res.status(200).json({
           success: true,
           message:
-            'Analytics entry removed due to insufficient duration (< 30 seconds)',
+            'Analytics entry marked as discarded due to insufficient duration (< 30 seconds)',
           data: null,
         });
         return;
@@ -602,6 +670,7 @@ export const updateAnalyticsEndTime = async (
     }
 
     await analyticsRepository.save(analytics);
+    await cacheService.invalidateDashboard();
 
     res.status(200).json({
       success: true,
@@ -655,6 +724,7 @@ export const deleteAnalytics = async (
     }
 
     await analyticsRepository.remove(analytics);
+    await cacheService.invalidateDashboard();
 
     res.status(200).json({
       success: true,

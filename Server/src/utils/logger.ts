@@ -1,6 +1,7 @@
 import winston from 'winston';
 import path from 'path';
 import config from '../config/config';
+import { requestContext } from '../middlewares/requestId';
 
 // Define log levels
 const levels = {
@@ -10,6 +11,18 @@ const levels = {
   http: 3,
   debug: 4,
 };
+
+// Pull the active request context (reqId, userId) from AsyncLocalStorage and
+// merge it into every log entry. Downstream call sites get correlation for
+// free — no need to thread req through services and workers.
+const requestContextFormat = winston.format((info) => {
+  const store = requestContext.getStore();
+  if (store) {
+    if (store.reqId && !info.reqId) info.reqId = store.reqId;
+    if (store.userId && !info.userId) info.userId = store.userId;
+  }
+  return info;
+});
 
 // Define level based on environment
 const level = () => {
@@ -31,15 +44,18 @@ winston.addColors(colors);
 
 // Define the format for console output
 const consoleFormat = winston.format.combine(
+  requestContextFormat(),
   winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss:ms' }),
   winston.format.colorize({ all: true }),
-  winston.format.printf(
-    (info) => `${info.timestamp} ${info.level}: ${info.message}`
-  )
+  winston.format.printf((info) => {
+    const reqId = info.reqId ? ` [${info.reqId}]` : '';
+    return `${info.timestamp} ${info.level}:${reqId} ${info.message}`;
+  })
 );
 
 // Define JSON format for console (when LOG_FORMAT=json)
 const jsonConsoleFormat = winston.format.combine(
+  requestContextFormat(),
   winston.format.timestamp(),
   winston.format.errors({ stack: true }),
   winston.format.json()
@@ -47,6 +63,7 @@ const jsonConsoleFormat = winston.format.combine(
 
 // Define the format for file output
 const fileFormat = winston.format.combine(
+  requestContextFormat(),
   winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss:ms' }),
   winston.format.json()
 );

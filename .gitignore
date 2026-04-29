@@ -172,3 +172,7 @@ ai-agent/stage0_artifacts/4852d6a0-6db9-4eb6-b385-200bbe2f53b4/search/search_res
 ai-agent/stage0_artifacts/4852d6a0-6db9-4eb6-b385-200bbe2f53b4/search/search_results_google.png
 ai-agent/stage0_artifacts/e2e_4852d6a0-6db9-4eb6-b385-200bbe2f53b4/e2e_stage0_result.json
 ai-agent/stage0_artifacts/e2e_4852d6a0-6db9-4eb6-b385-200bbe2f53b4/internal_gameplay.png
+
+# Claude Code local state and Playwright MCP session artifacts
+.claude/
+.playwright-mcp/

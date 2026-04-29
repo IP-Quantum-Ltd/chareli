@@ -1,5 +1,5 @@
 import { AppDataSource } from '../config/database';
-import { Game, GameStatus } from '../entities/Games';
+import { Game, GameStatus, GameProcessingStatus } from '../entities/Games';
 import { Category } from '../entities/Category';
 import { GameLike } from '../entities/GameLike';
 import { SystemConfig } from '../entities/SystemConfig';
@@ -10,7 +10,11 @@ import { redisService } from './redis.service';
 import logger from '../utils/logger';
 import config from '../config/config';
 import { In } from 'typeorm';
-import { calculateLikeCount } from '../utils/gameUtils';
+import {
+  calculateLikeCount,
+  isGamePubliclyVisible,
+  publiclyVisibleGameFilter,
+} from '../utils/gameUtils';
 
 interface JsonCdnConfig {
   enabled: boolean;
@@ -28,11 +32,16 @@ interface JsonMetadata {
  * Service to generate static JSON files for CDN caching
  * Reduces database load by serving pre-generated JSON from R2/CDN
  */
+// Redis key holding the authoritative CDN version timestamp shared across all
+// ECS tasks / PM2 workers. In-memory `lastVersion` is a local cache that
+// mirrors the Redis value; never rely on it for cross-worker agreement.
+const CDN_VERSION_REDIS_KEY = 'cdn:lastVersion';
+
 class JsonCdnService {
   private config: JsonCdnConfig;
   private isGenerating = false;
   private r2Adapter: R2StorageAdapter;
-  private lastVersion: number = Date.now(); // Version timestamp for cache-busting
+  private lastVersion: number = Date.now(); // Local fallback cache of the Redis value
   private metrics = {
     generationCount: 0,
     lastGenerationDuration: 0,
@@ -81,6 +90,10 @@ class JsonCdnService {
       const duration = Date.now() - startTime;
       this.metrics.generationCount++;
       this.metrics.lastGenerationDuration = duration;
+
+      // Bump version so Client cache-buster (?v=) changes, forcing browsers
+      // past their max-age window to pick up the new content on reload.
+      await this.bumpVersion();
 
       logger.info(`JSON CDN generation completed in ${duration}ms`);
     } catch (error) {
@@ -167,7 +180,7 @@ class JsonCdnService {
       const gameRepository = AppDataSource.getRepository(Game);
 
       const games = await gameRepository.find({
-        where: { status: GameStatus.ACTIVE },
+        where: { ...publiclyVisibleGameFilter },
         relations: ['category', 'createdBy', 'thumbnailFile', 'gameFile'],
         order: { createdAt: 'DESC' },
         select: {
@@ -302,7 +315,7 @@ class JsonCdnService {
         const games = await gameRepository.find({
           where: {
             id: In(gameIds),
-            status: GameStatus.ACTIVE,
+            ...publiclyVisibleGameFilter,
           },
           relations: ['category', 'createdBy', 'thumbnailFile', 'gameFile'],
           select: {
@@ -414,7 +427,7 @@ class JsonCdnService {
       const games = await gameRepository.find({
         where: {
           id: In(gameIds),
-          status: GameStatus.ACTIVE,
+          ...publiclyVisibleGameFilter,
         },
         relations: ['category', 'createdBy', 'thumbnailFile', 'gameFile'],
         select: {
@@ -513,7 +526,7 @@ class JsonCdnService {
 
       // Fetch all active games
       const games = await gameRepository.find({
-        where: { status: GameStatus.ACTIVE },
+        where: { ...publiclyVisibleGameFilter },
         select: ['slug', 'updatedAt'],
         order: { updatedAt: 'DESC' },
       });
@@ -641,13 +654,16 @@ Disallow: /
   }
 
   /**
-   * Generate games_all.json (all games regardless of status)
+   * Generate games_all.json. Historically included every row; this file is
+   * publicly served via the CDN, so we filter to the public-safe set to avoid
+   * leaking drafts or still-processing games.
    */
   private async generateAllGamesJson(): Promise<void> {
     try {
       const gameRepository = AppDataSource.getRepository(Game);
 
       const games = await gameRepository.find({
+        where: { ...publiclyVisibleGameFilter },
         relations: ['category', 'createdBy', 'thumbnailFile', 'gameFile'],
         order: { createdAt: 'DESC' },
         select: {
@@ -736,7 +752,7 @@ Disallow: /
       const gameRepository = AppDataSource.getRepository(Game);
 
       const games = await gameRepository.find({
-        where: { status: GameStatus.ACTIVE },
+        where: { ...publiclyVisibleGameFilter },
         select: {
           id: true,
           slug: true,
@@ -772,7 +788,16 @@ Disallow: /
       });
 
       if (!game) {
-        logger.warn(`Game ${gameId} not found, skipping JSON generation`);
+        logger.warn(`Game ${gameId} not found, removing stale CDN detail file`);
+        await this.deleteGameDetailJson(slug);
+        return;
+      }
+
+      // If the game is not publicly visible (draft / unpublished / still
+      // processing), remove any previously-published detail file so the CDN
+      // cannot serve draft data to crawlers.
+      if (!isGamePubliclyVisible(game)) {
+        await this.deleteGameDetailJson(slug);
         return;
       }
 
@@ -811,6 +836,25 @@ Disallow: /
   }
 
   /**
+   * Delete a game detail JSON from the CDN and purge the Cloudflare edge.
+   * Safe to call when the file does not exist.
+   */
+  private async deleteGameDetailJson(slug: string): Promise<void> {
+    const relativePath = `games/${slug}.json`;
+    const fullKey = `cdn/${relativePath}`;
+    try {
+      await this.r2Adapter.deleteFile(fullKey);
+      await cloudflareCacheService.purgeCdnJsonFiles([relativePath]);
+      logger.info(`Removed CDN detail file for unpublished game: ${fullKey}`);
+    } catch (error) {
+      logger.error(
+        `Error deleting CDN detail file ${fullKey}:`,
+        error
+      );
+    }
+  }
+
+  /**
    * Upload JSON to R2 with CDN cache headers and ETag support
    * Uses conditional upload to skip unnecessary uploads when content hasn't changed
    * This dramatically reduces R2 write operations and bandwidth costs
@@ -832,7 +876,12 @@ Disallow: /
           generatedAt: new Date().toISOString(),
           size: buffer.length.toString(),
         },
-        'public, max-age=300, must-revalidate' // 5 minutes, allows conditional requests
+        // Edge (Cloudflare) caches for 5 minutes via s-maxage; browsers set
+        // max-age=0 so they ALWAYS revalidate with Cloudflare. We bump
+        // lastVersion on every write, so the Client's `?v=` cache-buster
+        // also changes — but this header is a belt-and-suspenders guarantee
+        // that browsers won't serve stale data from their own HTTP cache.
+        'public, s-maxage=300, max-age=0, must-revalidate'
       );
 
       // Store ETag in Redis for 1 hour (regardless of whether uploaded or skipped)
@@ -900,8 +949,9 @@ Disallow: /
         }
       }
 
-      // Update version timestamp for cache-busting
-      this.lastVersion = Date.now();
+      // Update version timestamp for cache-busting (shared via Redis so
+      // other workers see it too).
+      await this.bumpVersion();
 
       // Purge Cloudflare cache for regenerated files
       if (regeneratedPaths.length > 0) {
@@ -934,11 +984,44 @@ Disallow: /
   }
 
   /**
-   * Get latest CDN version timestamp for cache-busting
-   * Frontend uses this to append ?v=<version> to CDN URLs
+   * Get latest CDN version timestamp for cache-busting. Reads from Redis so
+   * every ECS task / PM2 worker returns the same value even though only one
+   * worker actually ran the regen that bumped it. Falls back to the in-memory
+   * cache if Redis is unavailable.
    */
-  getVersion(): number {
+  async getVersion(): Promise<number> {
+    try {
+      const stored = await redisService.get<number | string>(
+        CDN_VERSION_REDIS_KEY
+      );
+      if (stored !== null && stored !== undefined) {
+        const parsed = typeof stored === 'number' ? stored : parseInt(stored, 10);
+        if (!Number.isNaN(parsed)) {
+          this.lastVersion = parsed;
+          return parsed;
+        }
+      }
+    } catch (err) {
+      logger.warn('[CDN] Failed to read lastVersion from Redis, using local cache:', err);
+    }
     return this.lastVersion;
+  }
+
+  /**
+   * Bump `lastVersion` in Redis (authoritative) and update the local cache.
+   * Call this once per completed write path (full regen, incremental batch,
+   * invalidateCache). Never just assign `this.lastVersion` directly — other
+   * workers won't see it.
+   */
+  private async bumpVersion(): Promise<number> {
+    const now = Date.now();
+    this.lastVersion = now;
+    try {
+      await redisService.set(CDN_VERSION_REDIS_KEY, now);
+    } catch (err) {
+      logger.warn('[CDN] Failed to persist lastVersion to Redis:', err);
+    }
+    return now;
   }
 
   /**
@@ -1007,10 +1090,32 @@ Disallow: /
     logger.info(`[BATCH UPDATE] Processing ${gameIds.length} games`);
 
     try {
-      // Process all updates in parallel
+      // Per-game incremental patches for games_active / games_all / detail.
       await Promise.all(
         gameIds.map(gameId => this.updateSingleGameInLists(gameId))
       );
+
+      // games_popular.json is order-dependent (and in auto-mode aggregates
+      // analytics across many games), so patching is unsafe. Regenerate once
+      // per batch instead of per game. Same for the sitemap — crawlers rely
+      // on fresh lastmod signals after publish/unpublish.
+      await Promise.all([
+        this.generatePopularGamesJson().catch((err) =>
+          logger.error('[BATCH UPDATE] popular regen failed:', err)
+        ),
+        this.generateSitemap().catch((err) =>
+          logger.error('[BATCH UPDATE] sitemap regen failed:', err)
+        ),
+      ]);
+      await cloudflareCacheService.purgeCdnJsonFiles([
+        'games_popular.json',
+        'sitemap.xml',
+      ]);
+
+      // Bump version so the Client's `?v=` cache-buster changes. Without
+      // this, browsers serve stale CDN JSON from their HTTP cache for up to
+      // max-age seconds even though R2 and the edge have fresh content.
+      await this.bumpVersion();
 
       logger.info(`✅ [BATCH UPDATE] Completed ${gameIds.length} games`);
     } catch (error) {
@@ -1056,16 +1161,17 @@ Disallow: /
         } : null,
       };
 
-      // Update games_active.json (only if game is active)
-      if (game.status === GameStatus.ACTIVE) {
+      // games_active.json and games_all.json are both publicly served and both
+      // filter via isGamePubliclyVisible during full regen. The incremental
+      // path must match that filter exactly, otherwise draft or still-
+      // processing games leak back in between full regens.
+      if (isGamePubliclyVisible(game)) {
         await this.patchGameInJson('games_active.json', gameData);
+        await this.patchGameInJson('games_all.json', gameData);
       } else {
-        // If game is no longer active, remove it from games_active.json
         await this.removeGameFromJson('games_active.json', gameId);
+        await this.removeGameFromJson('games_all.json', gameId);
       }
-
-      // Update games_all.json
-      await this.patchGameInJson('games_all.json', gameData);
 
       // Update individual game detail file
       await this.generateGameDetailJson(gameId, game.slug);

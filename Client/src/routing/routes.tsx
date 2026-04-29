@@ -25,10 +25,12 @@ const AdminHome = lazy(() => import('../pages/Admin/Home/Home'));
 const GameManagement = lazy(
   () => import('../pages/Admin/Management/GameManagement')
 );
+const GameLibrary = lazy(
+  () => import('../pages/Admin/GameLibrary/GameLibrary')
+);
 const UserManagement = lazy(
   () => import('../pages/Admin/UserManagement/UserManagement')
 );
-const Analytics = lazy(() => import('../pages/Admin/Analytics/Analytics'));
 const Configuration = lazy(
   () => import('../pages/Admin/Configuration/Configuration')
 );
@@ -112,6 +114,7 @@ export const routes = [
             children: [
               { index: true, element: <SuspenseWrapper><AdminHome /></SuspenseWrapper> },
               { path: 'game-management', element: <SuspenseWrapper><GameManagement /></SuspenseWrapper> },
+              { path: 'game-library', element: <SuspenseWrapper><GameLibrary /></SuspenseWrapper> },
               { path: 'categories', element: <SuspenseWrapper><GameCategories /></SuspenseWrapper> },
               { path: 'categories/:categoryId', element: <SuspenseWrapper><CategoryDetail /></SuspenseWrapper> },
               { path: 'management', element: <SuspenseWrapper><UserManagement /></SuspenseWrapper> },
@@ -120,7 +123,6 @@ export const routes = [
               { path: 'my-proposals', element: <SuspenseWrapper><MyProposals /></SuspenseWrapper> },
               { path: 'proposals', element: <SuspenseWrapper><AdminProposals /></SuspenseWrapper> },
               { path: 'proposals/:id/review', element: <SuspenseWrapper><ProposalReview /></SuspenseWrapper> },
-              { path: 'analytics', element: <SuspenseWrapper><Analytics /></SuspenseWrapper> },
               { path: 'view-game/:gameId', element: <SuspenseWrapper><ViewGame /></SuspenseWrapper> },
               { path: 'create-game', element: <SuspenseWrapper><CreateGame /></SuspenseWrapper> },
               { path: 'edit-game/:gameId', element: <SuspenseWrapper><EditGame /></SuspenseWrapper> },

@@ -1,6 +1,22 @@
 import request from 'supertest'
 import express from 'express'
-import { 
+
+// Stub the storage layer so uploads don't hit real R2 / S3 during tests.
+// Without this, file upload cases (especially large-payload ones) flake and
+// time out on network latency. A 10s supertest timeout isn't enough for a
+// real multi-MB upload round-trip.
+jest.mock('../../services/storage.service', () => ({
+  storageService: {
+    uploadFile: jest.fn().mockImplementation(async (_buffer, filename, _mime, type) => ({
+      key: `${type}/mock-${filename}`,
+      url: `https://mock-cdn.test/${type}/${filename}`,
+    })),
+    deleteFile: jest.fn().mockResolvedValue(true),
+    getPublicUrl: jest.fn().mockImplementation((key: string) => `https://mock-cdn.test/${key}`),
+  },
+}))
+
+import {
   getAllFiles,
   getFileById,
   createFile,

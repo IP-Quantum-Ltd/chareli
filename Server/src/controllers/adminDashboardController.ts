@@ -12,8 +12,14 @@ import { storageService } from '../services/storage.service';
 import { cacheService } from '../services/cache.service';
 import { PerformanceTimer } from '../utils/performance';
 import logger from '../utils/logger';
-import { toZonedTime } from 'date-fns-tz';
 import { AdminExclusionService } from '../services/adminExclusion.service';
+import {
+  getPeriodBoundaries,
+  parseCustomDayBoundary,
+  rollingDayBoundaries,
+  yesterdayBoundaries,
+  yesterdayDateInUserTz,
+} from '../utils/timezonePeriod';
 
 const userRepository = AppDataSource.getRepository(User);
 const gameRepository = AppDataSource.getRepository(Game);
@@ -59,8 +65,23 @@ export const getDashboardAnalytics = async (
       ? [country as string]
       : [];
 
-    // Check cache first (TTL: 3 minutes) - include timezone in cache key
-    const cacheKey = `${period || 'last24hours'}:${countries.sort().join(',')}:${userTimezone}`;
+    const nowUtc = new Date();
+
+    // Check cache first (TTL: 3 minutes). Timezone is included only when it
+    // affects the result. last24hours is a rolling now-24h window — timezone-
+    // independent — so we omit userTimezone from its key to share the cache
+    // entry across all timezones. Calendar-based periods (last7days, last30days,
+    // custom, yesterday) anchor on user-tz midnight, so they keep timezone in
+    // the key. yesterday additionally stamps its calendar date so the entry
+    // doesn't survive the user-tz midnight rollover into the next day.
+    const periodKey = period || 'last24hours';
+    const base = `${periodKey}:${countries.sort().join(',')}`;
+    const cacheKey = (() => {
+      if (periodKey === 'last24hours') return base;
+      if (periodKey === 'custom') return `${base}:${userTimezone}:${startDate}:${endDate}`;
+      if (periodKey === 'yesterday') return `${base}:${userTimezone}:${yesterdayDateInUserTz(nowUtc, userTimezone)}`;
+      return `${base}:${userTimezone}`;
+    })();
     const cached = await cacheService.getAnalytics('dashboard', cacheKey);
     if (cached) {
       logger.debug(`[CACHE HIT] Dashboard analytics for ${cacheKey}`);
@@ -68,29 +89,8 @@ export const getDashboardAnalytics = async (
       return;
     }
 
-    // Get current time in the user's timezone for proper day boundaries
-    // This ensures "today" means "today in the user's timezone" (like Google Analytics)
-    const nowUtc = new Date();
-    const nowInUserTz = toZonedTime(nowUtc, userTimezone);
-
-    // Helper to calculate period boundaries in user's timezone
-    const getTimezoneAwarePeriodBoundaries = (daysBack: number, prevDaysBack: number) => {
-      // Calculate start of today in user's timezone
-      const startOfTodayInUserTz = new Date(nowInUserTz);
-      startOfTodayInUserTz.setHours(0, 0, 0, 0);
-
-      // Current period: from X days ago at midnight (user's TZ) to now
-      const currentStart = new Date(startOfTodayInUserTz);
-      currentStart.setDate(currentStart.getDate() - daysBack + 1); // +1 because we include today
-
-      // Previous period: from 2X days ago to X days ago
-      const prevStart = new Date(startOfTodayInUserTz);
-      prevStart.setDate(prevStart.getDate() - prevDaysBack + 1);
-
-      const prevEnd = new Date(currentStart);
-
-      return { currentStart, prevStart, prevEnd };
-    };
+    const getTimezoneAwarePeriodBoundaries = (daysBack: number, prevDaysBack: number) =>
+      getPeriodBoundaries(nowUtc, userTimezone, daysBack, prevDaysBack);
 
     let now = nowUtc;
     let currentPeriodStart: Date;
@@ -99,6 +99,14 @@ export const getDashboardAnalytics = async (
 
     // Determine time ranges based on the period parameter (timezone-aware)
     switch (period) {
+      case 'yesterday': {
+        const b = yesterdayBoundaries(nowUtc, userTimezone);
+        currentPeriodStart = b.currentStart;
+        now = b.currentEnd;
+        previousPeriodStart = b.prevStart;
+        previousPeriodEnd = b.prevEnd;
+        break;
+      }
       case 'last7days': {
         const boundaries = getTimezoneAwarePeriodBoundaries(7, 14);
         currentPeriodStart = boundaries.currentStart;
@@ -115,11 +123,8 @@ export const getDashboardAnalytics = async (
       }
       case 'custom':
         if (startDate && endDate) {
-          currentPeriodStart = new Date(startDate as string);
-          currentPeriodStart.setHours(0, 0, 0, 0); // Start of day
-
-          const customEndDate = new Date(endDate as string);
-          customEndDate.setHours(23, 59, 59, 999); // End of day
+          currentPeriodStart = parseCustomDayBoundary(startDate as string, userTimezone, 'start');
+          const customEndDate = parseCustomDayBoundary(endDate as string, userTimezone, 'end');
 
           const daysDiff = Math.ceil(
             (customEndDate.getTime() - currentPeriodStart.getTime()) /
@@ -130,18 +135,18 @@ export const getDashboardAnalytics = async (
           );
           previousPeriodEnd = currentPeriodStart;
 
-          // For custom range, we need to use the actual end date for current period queries
+          // For custom range, the "end" boundary of the current window is the user-picked end.
           now = customEndDate;
         } else {
-          // Fallback to last 24 hours if custom dates are invalid
-          const boundaries = getTimezoneAwarePeriodBoundaries(1, 2);
+          // Fallback to last 24 hours if custom dates are invalid.
+          const boundaries = rollingDayBoundaries(nowUtc);
           currentPeriodStart = boundaries.currentStart;
           previousPeriodStart = boundaries.prevStart;
           previousPeriodEnd = boundaries.prevEnd;
         }
         break;
-      default: { // 'last24hours' or no period specified
-        const boundaries = getTimezoneAwarePeriodBoundaries(1, 2);
+      default: { // 'last24hours' or no period specified — see rollingDayBoundaries.
+        const boundaries = rollingDayBoundaries(nowUtc);
         currentPeriodStart = boundaries.currentStart;
         previousPeriodStart = boundaries.prevStart;
         previousPeriodEnd = boundaries.prevEnd;
@@ -190,7 +195,10 @@ export const getDashboardAnalytics = async (
       .select('COUNT(DISTINCT COALESCE(CAST(a1.userId AS VARCHAR), a1.sessionId))', 'count')
       .leftJoin('a1.user', 'user1')
       .leftJoin('user1.role', 'role1')
-      .where('a1.createdAt > :twentyFourHoursAgo', { twentyFourHoursAgo })
+      .where('a1.createdAt BETWEEN :outerStart AND :outerEnd', {
+        outerStart: twentyFourHoursAgo,
+        outerEnd: now,
+      })
       .andWhere('a1.gameId IS NOT NULL')
       .andWhere('a1.startTime IS NOT NULL')
       .andWhere('a1.endTime IS NOT NULL')
@@ -227,6 +235,8 @@ export const getDashboardAnalytics = async (
 
     const yesterdayUsers = parseInt(yesterdayUsersResult?.count) || 0;
     const returningUsers = parseInt(returningUsersResult?.count) || 0;
+    // Retention = % of yesterday's active players who also played today.
+    // Uses rolling 24h windows (not calendar days), qualifying sessions only (duration >= 30s).
     const retentionRate =
       yesterdayUsers > 0
         ? Number(((returningUsers / yesterdayUsers) * 100).toFixed(2))
@@ -360,7 +370,7 @@ export const getDashboardAnalytics = async (
     // 3. Game Coverage - Percentage of total games that have been played
     // Track all users: authenticated (userId) + anonymous (sessionId)
     // Exclude admin users from analytics (only include players and anonymous users)
-    const totalGames = await gameRepository.count();
+    const totalGames = await gameRepository.count({ where: { status: GameStatus.ACTIVE } });
 
     // Get games played in current period
     let currentPlayedGamesQuery = analyticsRepository
@@ -563,7 +573,7 @@ export const getDashboardAnalytics = async (
       .andWhere('analytics.startTime IS NOT NULL')
       .andWhere('analytics.endTime IS NOT NULL')
       .andWhere('analytics.duration >= :minDuration', { minDuration: 30 })
-      .andWhere('analytics.startTime BETWEEN :start AND :end', {
+      .andWhere('analytics.createdAt BETWEEN :start AND :end', {
         start: twentyFourHoursAgo,
         end: now,
       })
@@ -578,7 +588,7 @@ export const getDashboardAnalytics = async (
       .andWhere('analytics.startTime IS NOT NULL')
       .andWhere('analytics.endTime IS NOT NULL')
       .andWhere('analytics.duration >= :minDuration', { minDuration: 30 })
-      .andWhere('analytics.startTime BETWEEN :start AND :end', {
+      .andWhere('analytics.createdAt BETWEEN :start AND :end', {
         start: fortyEightHoursAgo,
         end: twentyFourHoursAgo,
       })
@@ -690,8 +700,9 @@ export const getDashboardAnalytics = async (
             .andWhere('analytics.startTime IS NOT NULL')
             .andWhere('analytics.endTime IS NOT NULL')
             .andWhere('analytics.duration >= :minDuration', { minDuration: 30 })
-            .andWhere('analytics.createdAt > :twentyFourHoursAgo', {
-              twentyFourHoursAgo,
+            .andWhere('analytics.createdAt BETWEEN :start AND :end', {
+              start: twentyFourHoursAgo,
+              end: now,
             })
             .andWhere("(role.name NOT IN (:...excludedRoles) OR analytics.userId IS NULL)", { excludedRoles });
 
@@ -835,13 +846,15 @@ export const getDashboardAnalytics = async (
 
     // ==================== ANONYMOUS USER ANALYTICS ====================
 
-    // 1. Daily Anonymous Visitors (DAV) - Always 24 hours, unique sessionIds with 30+ second sessions
-    const dailyAnonymousVisitorsNow = new Date();
-    const dailyAnonymousVisitors24HoursAgo = new Date(
-      dailyAnonymousVisitorsNow.getTime() - 24 * 60 * 60 * 1000
+    // 1. Daily Anonymous Players (DAP) — anonymous sessions in the last 24 hours
+    // with a 30+ second game session. The gameId + duration filters are why
+    // this is "players" not "visitors".
+    const dailyAnonymousPlayersNow = new Date();
+    const dailyAnonymousPlayers24HoursAgo = new Date(
+      dailyAnonymousPlayersNow.getTime() - 24 * 60 * 60 * 1000
     );
 
-    const dailyAnonymousVisitorsQuery = analyticsRepository
+    const dailyAnonymousPlayersQuery = analyticsRepository
       .createQueryBuilder('analytics')
       .select('COUNT(DISTINCT analytics.sessionId)', 'count')
       .where('analytics.sessionId IS NOT NULL')
@@ -849,14 +862,14 @@ export const getDashboardAnalytics = async (
       .andWhere('analytics.gameId IS NOT NULL')
       .andWhere('analytics.duration >= :minDuration', { minDuration: 30 })
       .andWhere('analytics.createdAt BETWEEN :start AND :end', {
-        start: dailyAnonymousVisitors24HoursAgo,
-        end: dailyAnonymousVisitorsNow,
+        start: dailyAnonymousPlayers24HoursAgo,
+        end: dailyAnonymousPlayersNow,
       });
 
-    const dailyAnonymousVisitorsResult =
-      await dailyAnonymousVisitorsQuery.getRawOne();
-    const dailyAnonymousVisitors =
-      parseInt(dailyAnonymousVisitorsResult?.count) || 0;
+    const dailyAnonymousPlayersResult =
+      await dailyAnonymousPlayersQuery.getRawOne();
+    const dailyAnonymousPlayers =
+      parseInt(dailyAnonymousPlayersResult?.count) || 0;
 
     // 2. Total Visitors (Authenticated + Anonymous) for current and previous periods
     // Now includes both game sessions AND page visits to align with GA4
@@ -873,14 +886,13 @@ export const getDashboardAnalytics = async (
         '(analytics.gameId IS NOT NULL OR analytics.activityType = :pageVisit)',
         { pageVisit: 'homepage_visit' }
       )
+      // Exclude soft-deleted short sessions. Other dashboard queries get this for
+      // free via duration >= 30, but Total Visitors has no duration filter.
+      .andWhere('analytics.isDiscarded = false')
       .andWhere('analytics.createdAt BETWEEN :start AND :end', {
         start: twentyFourHoursAgo,
         end: now,
       })
-      .andWhere(
-        '(user.hasCompletedFirstLogin = :hasCompleted OR analytics.userId IS NULL)',
-        { hasCompleted: true }
-      )
       .andWhere("(role.name NOT IN (:...excludedRoles) OR analytics.userId IS NULL)", { excludedRoles });
 
     let previousTotalVisitorsQuery = analyticsRepository
@@ -895,25 +907,26 @@ export const getDashboardAnalytics = async (
         '(analytics.gameId IS NOT NULL OR analytics.activityType = :pageVisit)',
         { pageVisit: 'homepage_visit' }
       )
+      // Exclude soft-deleted short sessions. Other dashboard queries get this for
+      // free via duration >= 30, but Total Visitors has no duration filter.
+      .andWhere('analytics.isDiscarded = false')
       .andWhere('analytics.createdAt BETWEEN :start AND :end', {
         start: fortyEightHoursAgo,
         end: twentyFourHoursAgo,
       })
-      .andWhere(
-        '(user.hasCompletedFirstLogin = :hasCompleted OR analytics.userId IS NULL)',
-        { hasCompleted: true }
-      )
       .andWhere("(role.name NOT IN (:...excludedRoles) OR analytics.userId IS NULL)", { excludedRoles });
 
-    // Add country filter if provided (only applies to authenticated users with country data)
+    // Country filter must apply to anonymous traffic too via analytics.country (IP-resolved
+    // by the analytics worker). Otherwise selecting a country lets every anonymous user
+    // from every country pass through, since user_id is NULL for them.
     if (countries.length > 0) {
       currentTotalVisitorsQuery = currentTotalVisitorsQuery.andWhere(
-        '(user.country IN (:...countries) OR analytics.userId IS NULL)',
+        '(user.country IN (:...countries) OR analytics.country IN (:...countries))',
         { countries }
       );
 
       previousTotalVisitorsQuery = previousTotalVisitorsQuery.andWhere(
-        '(user.country IN (:...countries) OR analytics.userId IS NULL)',
+        '(user.country IN (:...countries) OR analytics.country IN (:...countries))',
         { countries }
       );
     }
@@ -968,6 +981,15 @@ export const getDashboardAnalytics = async (
         end: twentyFourHoursAgo,
       });
 
+    // Anonymous queries have no user join, so country must come from the IP-resolved
+    // analytics.country column written by the analytics worker.
+    if (countries.length > 0) {
+      currentAnonymousSessionsQuery = currentAnonymousSessionsQuery
+        .andWhere('analytics.country IN (:...countries)', { countries });
+      previousAnonymousSessionsQuery = previousAnonymousSessionsQuery
+        .andWhere('analytics.country IN (:...countries)', { countries });
+    }
+
     const [currentAnonymousSessions, previousAnonymousSessions] =
       await Promise.all([
         currentAnonymousSessionsQuery.getCount(),
@@ -997,7 +1019,7 @@ export const getDashboardAnalytics = async (
       .andWhere('analytics.startTime IS NOT NULL')
       .andWhere('analytics.endTime IS NOT NULL')
       .andWhere('analytics.duration >= :minDuration', { minDuration: 30 })
-      .andWhere('analytics.startTime BETWEEN :start AND :end', {
+      .andWhere('analytics.createdAt BETWEEN :start AND :end', {
         start: twentyFourHoursAgo,
         end: now,
       });
@@ -1011,10 +1033,17 @@ export const getDashboardAnalytics = async (
       .andWhere('analytics.startTime IS NOT NULL')
       .andWhere('analytics.endTime IS NOT NULL')
       .andWhere('analytics.duration >= :minDuration', { minDuration: 30 })
-      .andWhere('analytics.startTime BETWEEN :start AND :end', {
+      .andWhere('analytics.createdAt BETWEEN :start AND :end', {
         start: fortyEightHoursAgo,
         end: twentyFourHoursAgo,
       });
+
+    if (countries.length > 0) {
+      currentAnonymousTimePlayedQuery = currentAnonymousTimePlayedQuery
+        .andWhere('analytics.country IN (:...countries)', { countries });
+      previousAnonymousTimePlayedQuery = previousAnonymousTimePlayedQuery
+        .andWhere('analytics.country IN (:...countries)', { countries });
+    }
 
     const [
       currentAnonymousTimePlayedResult,
@@ -1056,25 +1085,21 @@ export const getDashboardAnalytics = async (
     const anonymousTime = currentAnonymousTimePlayed;
     const authenticatedTime = Math.max(0, totalTime - anonymousTime);
 
-    const authenticatedSessionsPercentage =
-      totalSessions > 0
-        ? Number(((authenticatedSessions / totalSessions) * 100).toFixed(2))
-        : 0;
-
+    // Compute one share and derive the other as 100 - share so the pie always sums to 100.
+    // Rounding both independently can drift to 100.01% / 99.99%.
     const anonymousSessionsPercentage =
       totalSessions > 0
         ? Number(((anonymousSessions / totalSessions) * 100).toFixed(2))
         : 0;
-
-    const authenticatedTimePercentage =
-      totalTime > 0
-        ? Number(((authenticatedTime / totalTime) * 100).toFixed(2))
-        : 0;
+    const authenticatedSessionsPercentage =
+      totalSessions > 0 ? Number((100 - anonymousSessionsPercentage).toFixed(2)) : 0;
 
     const anonymousTimePercentage =
       totalTime > 0
         ? Number(((anonymousTime / totalTime) * 100).toFixed(2))
         : 0;
+    const authenticatedTimePercentage =
+      totalTime > 0 ? Number((100 - anonymousTimePercentage).toFixed(2)) : 0;
 
     // Build response object
     const responseData = {
@@ -1084,8 +1109,8 @@ export const getDashboardAnalytics = async (
           current: dailyActiveUsers,
           // No percentage change since it's always 24 hours
         },
-        dailyAnonymousVisitors: {
-          current: dailyAnonymousVisitors,
+        dailyAnonymousPlayers: {
+          current: dailyAnonymousPlayers,
           // No percentage change since it's always 24 hours
         },
         totalVisitors: {
@@ -1156,8 +1181,10 @@ export const getDashboardAnalytics = async (
       },
     };
 
-    // Cache the response (TTL: 3 minutes = 180 seconds)
-    await cacheService.setAnalytics('dashboard', cacheKey, responseData, undefined, 180);
+    // Cache the response. TTL is the safety net — every analytics write that
+    // changes a dashboard number calls cacheService.invalidateDashboard(), so
+    // 60s is plenty of headroom while keeping stale-data debug-friction low.
+    await cacheService.setAnalytics('dashboard', cacheKey, responseData, undefined, 60);
     logger.debug(`[CACHE SET] Dashboard analytics for ${cacheKey}`);
 
     res.status(200).json(responseData);
@@ -2124,25 +2151,9 @@ export const getGamesPopularityMetrics = async (
     const { period, startDate, endDate, timezone } = req.query;
     const userTimezone = (timezone as string) || 'UTC';
 
-    // Get current time in the user's timezone for proper day boundaries
     const nowUtc = new Date();
-    const nowInUserTz = toZonedTime(nowUtc, userTimezone);
-
-    // Helper to calculate period boundaries in user's timezone
-    const getTimezoneAwarePeriodBoundaries = (daysBack: number, prevDaysBack: number) => {
-      const startOfTodayInUserTz = new Date(nowInUserTz);
-      startOfTodayInUserTz.setHours(0, 0, 0, 0);
-
-      const currentStart = new Date(startOfTodayInUserTz);
-      currentStart.setDate(currentStart.getDate() - daysBack + 1);
-
-      const prevStart = new Date(startOfTodayInUserTz);
-      prevStart.setDate(prevStart.getDate() - prevDaysBack + 1);
-
-      const prevEnd = new Date(currentStart);
-
-      return { currentStart, prevStart, prevEnd };
-    };
+    const getTimezoneAwarePeriodBoundaries = (daysBack: number, prevDaysBack: number) =>
+      getPeriodBoundaries(nowUtc, userTimezone, daysBack, prevDaysBack);
 
     let now = nowUtc;
     let currentPeriodStart: Date;
@@ -2151,6 +2162,14 @@ export const getGamesPopularityMetrics = async (
 
     // Determine time ranges based on the period parameter (timezone-aware)
     switch (period) {
+      case 'yesterday': {
+        const b = yesterdayBoundaries(nowUtc, userTimezone);
+        currentPeriodStart = b.currentStart;
+        now = b.currentEnd;
+        previousPeriodStart = b.prevStart;
+        previousPeriodEnd = b.prevEnd;
+        break;
+      }
       case 'last7days': {
         const boundaries = getTimezoneAwarePeriodBoundaries(7, 14);
         currentPeriodStart = boundaries.currentStart;
@@ -2167,10 +2186,8 @@ export const getGamesPopularityMetrics = async (
       }
       case 'custom':
         if (startDate && endDate) {
-          currentPeriodStart = new Date(startDate as string);
-          currentPeriodStart.setHours(0, 0, 0, 0);
-          const customEndDate = new Date(endDate as string);
-          customEndDate.setHours(23, 59, 59, 999);
+          currentPeriodStart = parseCustomDayBoundary(startDate as string, userTimezone, 'start');
+          const customEndDate = parseCustomDayBoundary(endDate as string, userTimezone, 'end');
           const daysDiff = Math.ceil(
             (customEndDate.getTime() - currentPeriodStart.getTime()) / (1000 * 60 * 60 * 24)
           );
@@ -2178,14 +2195,14 @@ export const getGamesPopularityMetrics = async (
           previousPeriodEnd = currentPeriodStart;
           now = customEndDate;
         } else {
-          const boundaries = getTimezoneAwarePeriodBoundaries(1, 2);
+          const boundaries = rollingDayBoundaries(nowUtc);
           currentPeriodStart = boundaries.currentStart;
           previousPeriodStart = boundaries.prevStart;
           previousPeriodEnd = boundaries.prevEnd;
         }
         break;
-      default: { // last24hours
-        const boundaries = getTimezoneAwarePeriodBoundaries(1, 2);
+      default: { // last24hours — see rollingDayBoundaries.
+        const boundaries = rollingDayBoundaries(nowUtc);
         currentPeriodStart = boundaries.currentStart;
         previousPeriodStart = boundaries.prevStart;
         previousPeriodEnd = boundaries.prevEnd;

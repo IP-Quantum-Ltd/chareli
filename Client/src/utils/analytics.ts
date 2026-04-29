@@ -2,15 +2,25 @@
 /**
  * Cloudflare Zaraz Analytics utility functions for tracking gameplay events
  */
+import { hasMarketingConsent } from "./consent";
 
 /**
- * Check if analytics is enabled and Zaraz is available
+ * Check if analytics is enabled and the user has granted marketing consent.
+ * Combines three gates:
+ *   1. Production domain (shouldLoadAnalytics is set by initAnalytics)
+ *   2. Zaraz SDK loaded
+ *   3. User has clicked Accept on the cookie banner
+ *
+ * Marketing consent is the load-bearing gate today — Cloudflare-side tool
+ * configuration may not yet require a consent purpose, so we block emission
+ * client-side rather than relying on Zaraz to drop the events.
  */
 export const isAnalyticsEnabled = (): boolean => {
   return (
     typeof window !== "undefined" &&
     (window as any).shouldLoadAnalytics === true &&
-    typeof (window as any).zaraz !== "undefined"
+    typeof (window as any).zaraz !== "undefined" &&
+    hasMarketingConsent()
   );
 };
 
@@ -129,6 +139,34 @@ export const trackGameplay = {
       event_category: "Engagement",
       event_label: `${gameTitle} - ${method}`,
     });
+  },
+};
+
+/**
+ * Track conversion events for ad platforms.
+ *
+ * Dual-emit: Zaraz → GA4 → Google Ads (via a Zaraz custom action on the
+ * Google Ads Conversion tool) AND Meta Pixel directly. Production-gated
+ * through the same `isAnalyticsEnabled` check as `trackEvent`; `fbq` is
+ * separately guarded since it loads async after `window.load`.
+ */
+export const trackConversion = {
+  /**
+   * Track successful account creation. Fire immediately after the server
+   * persists the new user — not on first-login OTP verification.
+   */
+  signUp: (method: 'email' | 'invitation') => {
+    trackEvent('sign_up', { method });
+    // No explicit consent check here — the Meta Pixel SDK's internal consent
+    // state (set on banner click and on Pixel load via syncConsentToVendors)
+    // drops the call when revoked. Trust the boundary; double-gating drifts.
+    if (typeof window !== 'undefined' && typeof (window as any).fbq === 'function') {
+      try {
+        (window as any).fbq('track', 'CompleteRegistration', { method });
+      } catch (error) {
+        console.error('Failed to track Meta CompleteRegistration:', error);
+      }
+    }
   },
 };
 

@@ -200,12 +200,21 @@ export const useDeleteAnalytics = () => {
 };
 
 // Admin Dashboard Types
+//
+// Field shape note: most metrics are wrapped as `{current, percentageChange}`
+// because they're period-bucketed and the dashboard renders both numbers.
+// `activeUsers`, `inactiveUsers`, `registeredButNeverLoggedIn`, `adultsCount`,
+// and `minorsCount` are bare numbers because they're already-final summary
+// values with no period delta. Don't unify the shape for consistency's sake —
+// wrapping them would force the API to invent a percentageChange field that
+// has no defined semantic, and unwrapping the others would lose the real
+// percentageChange data the dashboard depends on.
 interface DashboardAnalytics {
   dailyActiveUsers: {
     current: number;
     // No percentage change since it's always 24 hours
   };
-  dailyAnonymousVisitors: {
+  dailyAnonymousPlayers: {
     current: number;
     // No percentage change since it's always 24 hours
   };
@@ -342,7 +351,7 @@ interface UserActivityLog {
 
 // Dashboard time range filter types
 export interface DashboardTimeRange {
-  period?: 'last24hours' | 'last7days' | 'last30days' | 'custom';
+  period?: 'last24hours' | 'yesterday' | 'last7days' | 'last30days' | 'custom';
   startDate?: string;
   endDate?: string;
 }

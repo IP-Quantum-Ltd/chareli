@@ -7,6 +7,7 @@ import { storageService } from '../services/storage.service';
 import { zipService } from '../services/zip.service';
 import multer from 'multer';
 import logger from '../utils/logger';
+import { logUploadEvent, toErrorFields } from '../utils/uploadEvents';
 import * as path from 'path';
 
 const fileRepository = AppDataSource.getRepository(File);
@@ -213,14 +214,23 @@ export const createFile = async (
   res: Response,
   next: NextFunction
 ): Promise<void> => {
+  const started = Date.now();
   try {
     const { type } = req.body;
     const file = req.file;
-    
+
+    logUploadEvent('file.upload.start', {
+      userId: req.user?.userId,
+      mime: file?.mimetype,
+      fileSize: file?.size,
+      step: type,
+      filename: file?.originalname,
+    });
+
     if (!file) {
       return next(ApiError.badRequest('File is required'));
     }
-    
+
     if (!type) {
       return next(ApiError.badRequest('File type is required'));
     }
@@ -271,12 +281,29 @@ export const createFile = async (
     
     // Transform file to include storage URL
     const transformedFile = transformFileWithStorageUrl(fileRecord);
-    
+
+    logUploadEvent('file.upload.persisted', {
+      userId: req.user?.userId,
+      fileId: fileRecord.id,
+      fileKey: fileRecord.s3Key,
+      step: fileRecord.type,
+      durationMs: Date.now() - started,
+    });
+
     res.status(201).json({
       success: true,
       data: transformedFile,
     });
   } catch (error) {
+    logUploadEvent(
+      'file.upload.failed',
+      {
+        userId: req.user?.userId,
+        durationMs: Date.now() - started,
+        ...toErrorFields(error),
+      },
+      'error'
+    );
     next(error);
   }
 };

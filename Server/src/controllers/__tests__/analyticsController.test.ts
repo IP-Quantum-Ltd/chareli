@@ -43,42 +43,60 @@ describe('Analytics Controller', () => {
   })
 
   describe('POST /analytics', () => {
-    it('should handle request with missing required fields', async () => {
+    it('should reject request with missing activityType and startTime', async () => {
       const response = await request(app)
         .post('/analytics')
         .send({
           gameId: 'game-123'
-          // Missing activityType and startTime
         })
 
-      // API returns 500 due to missing database connection, which is expected in tests
-      expect(response.status).toBe(500)
+      expect(response.status).toBe(400)
     })
 
-    it('should handle request with missing activityType', async () => {
+    it('should reject request with missing activityType', async () => {
       const response = await request(app)
         .post('/analytics')
         .send({
           gameId: 'game-123',
           startTime: new Date().toISOString()
-          // Missing activityType
         })
 
-      // API returns 500 due to missing database connection, which is expected in tests
-      expect(response.status).toBe(500)
+      expect(response.status).toBe(400)
     })
 
-    it('should handle request with missing startTime', async () => {
+    it('should reject request with unknown activityType', async () => {
       const response = await request(app)
         .post('/analytics')
         .send({
           gameId: 'game-123',
-          activityType: 'Game Play'
-          // Missing startTime
+          activityType: 'bogus_type',
+          startTime: new Date().toISOString()
         })
 
-      // API returns 500 due to missing database connection, which is expected in tests
-      expect(response.status).toBe(500)
+      expect(response.status).toBe(400)
+    })
+
+    it('should reject request with missing startTime', async () => {
+      const response = await request(app)
+        .post('/analytics')
+        .send({
+          gameId: 'game-123',
+          activityType: 'game_session'
+        })
+
+      expect(response.status).toBe(400)
+    })
+
+    it('should reject request with future startTime', async () => {
+      const response = await request(app)
+        .post('/analytics')
+        .send({
+          gameId: 'game-123',
+          activityType: 'game_session',
+          startTime: new Date(Date.now() + 10 * 60_000).toISOString()
+        })
+
+      expect(response.status).toBe(400)
     })
 
     it('should handle valid analytics creation request', async () => {
@@ -86,7 +104,7 @@ describe('Analytics Controller', () => {
         .post('/analytics')
         .send({
           gameId: 'game-123',
-          activityType: 'Game Play',
+          activityType: 'game_session',
           startTime: new Date().toISOString(),
           sessionCount: 1
         })
@@ -100,7 +118,7 @@ describe('Analytics Controller', () => {
       const response = await request(app)
         .post('/analytics')
         .send({
-          activityType: 'Login',
+          activityType: 'Logged in',
           startTime: new Date().toISOString()
         })
 
@@ -117,7 +135,7 @@ describe('Analytics Controller', () => {
         .post('/analytics')
         .send({
           gameId: 'game-123',
-          activityType: 'Game Play',
+          activityType: 'game_session',
           startTime: startTime.toISOString(),
           endTime: endTime.toISOString(),
           sessionCount: 1

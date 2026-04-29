@@ -5,7 +5,7 @@ import { NavLink } from 'react-router-dom';
 import { usePermissions } from '../hooks/usePermissions';
 import { useProposals, useMyProposals } from '../backend/proposal.service';
 import { GameProposalStatus } from '../backend/types';
-import { Database, ImageIcon, Home, Gamepad2, Shapes, UserRound, Users2, Sliders, ChevronLeft, ChevronRight, FileText } from 'lucide-react';
+import { Database, ImageIcon, Home, Gamepad2, Shapes, UserRound, Users2, Sliders, ChevronLeft, ChevronRight, FileText, Library } from 'lucide-react';
 
 const allMenuItems = [
   {
@@ -18,6 +18,12 @@ const allMenuItems = [
     title: 'Game Management',
     icon: <Gamepad2 size={20} />,
     path: '/admin/game-management',
+    requiresConfig: false,
+  },
+  {
+    title: 'Game Library',
+    icon: <Library size={20} />,
+    path: '/admin/game-library',
     requiresConfig: false,
   },
   {
@@ -56,12 +62,6 @@ const allMenuItems = [
     path: '/admin/team',
     requiresConfig: false,
   },
-  // {
-  //   title: "Analytics",
-  //   icon: <FaChartLine size={20} />,
-  //   path: "/admin/analytics",
-  //   requiresConfig: false,
-  // },
   {
     title: 'Configuration',
     icon: <Sliders size={20} />,

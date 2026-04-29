@@ -14,6 +14,7 @@ import mime from 'mime-types';
 import { IStorageService, UploadResult } from './storage.interface';
 import config from '../config/config';
 import logger from '../utils/logger';
+import { instrumentStorage, logUploadEvent, toErrorFields } from '../utils/uploadEvents';
 
 /**
  * An adapter for the IStorageService interface that connects to AWS S3.
@@ -94,120 +95,128 @@ export class S3StorageAdapter implements IStorageService {
       .toLowerCase();
     const key = `${folder}/${fileId}-${filename}${extension}`;
 
-    const command = new PutObjectCommand({
-      Bucket: this.bucket,
-      Key: key,
-      Body: file,
-      ContentType: contentType,
-    });
-
-    await this.s3Client.send(command);
-    logger.info(`Successfully uploaded file to S3 with key: ${key}`);
-
-    return {
-      key,
-      publicUrl: this.getPublicUrl(key),
-    };
-  }
-
-  async uploadDirectory(localPath: string, remotePath: string): Promise<void> {
-    const files = await fs.readdir(localPath, { withFileTypes: true });
-    for (const file of files) {
-      const fullLocalPath = path.join(localPath, file.name);
-      const fullRemotePath = path
-        .join(remotePath, file.name)
-        .replace(/\\/g, '/');
-      if (file.isDirectory()) {
-        await this.uploadDirectory(fullLocalPath, fullRemotePath);
-      } else {
-        const fileContent = await fs.readFile(fullLocalPath);
-        const contentType =
-          mime.lookup(fullLocalPath) || 'application/octet-stream';
+    return instrumentStorage(
+      'storage.upload',
+      {
+        provider: 's3',
+        bucket: this.bucket,
+        fileKey: key,
+        fileSize: file.length,
+        mime: contentType,
+      },
+      async () => {
         const command = new PutObjectCommand({
           Bucket: this.bucket,
-          Key: fullRemotePath,
-          Body: fileContent,
+          Key: key,
+          Body: file,
           ContentType: contentType,
         });
         await this.s3Client.send(command);
+        return { key, publicUrl: this.getPublicUrl(key) };
       }
-    }
+    );
+  }
+
+  async uploadDirectory(localPath: string, remotePath: string): Promise<void> {
+    return instrumentStorage(
+      'storage.upload_directory',
+      { provider: 's3', bucket: this.bucket, fileKey: remotePath, localPath },
+      async () => {
+        const files = await fs.readdir(localPath, { withFileTypes: true });
+        for (const file of files) {
+          const fullLocalPath = path.join(localPath, file.name);
+          const fullRemotePath = path
+            .join(remotePath, file.name)
+            .replace(/\\/g, '/');
+          if (file.isDirectory()) {
+            await this.uploadDirectory(fullLocalPath, fullRemotePath);
+          } else {
+            const fileContent = await fs.readFile(fullLocalPath);
+            const contentType =
+              mime.lookup(fullLocalPath) || 'application/octet-stream';
+            const command = new PutObjectCommand({
+              Bucket: this.bucket,
+              Key: fullRemotePath,
+              Body: fileContent,
+              ContentType: contentType,
+            });
+            await this.s3Client.send(command);
+          }
+        }
+      }
+    );
   }
 
   async downloadFile(key: string): Promise<Buffer> {
-    try {
-      const command = new GetObjectCommand({
-        Bucket: this.bucket,
-        Key: key,
-      });
-
-      const response = await this.s3Client.send(command);
-      
-      if (!response.Body) {
-        throw new Error('No file content received');
+    return instrumentStorage(
+      'storage.download',
+      { provider: 's3', bucket: this.bucket, fileKey: key },
+      async () => {
+        const response = await this.s3Client.send(
+          new GetObjectCommand({ Bucket: this.bucket, Key: key })
+        );
+        if (!response.Body) {
+          throw new Error('No file content received');
+        }
+        return Buffer.from(await response.Body.transformToByteArray());
       }
-
-      const buffer = Buffer.from(await response.Body.transformToByteArray());
-      logger.info(`Successfully downloaded file from S3 with key: ${key}`);
-      return buffer;
-    } catch (error) {
-      logger.error('Error downloading file from S3:', { error, key });
-      throw new Error(
-        `Failed to download file from S3: ${(error as Error).message}`
-      );
-    }
+    );
   }
 
   async deleteFile(key: string): Promise<boolean> {
-    const command = new DeleteObjectCommand({ Bucket: this.bucket, Key: key });
+    const started = Date.now();
+    const ctx = { provider: 's3', bucket: this.bucket, fileKey: key };
+    logUploadEvent('storage.delete.start', ctx);
     try {
-      await this.s3Client.send(command);
+      await this.s3Client.send(
+        new DeleteObjectCommand({ Bucket: this.bucket, Key: key })
+      );
+      logUploadEvent('storage.delete.complete', {
+        ...ctx,
+        durationMs: Date.now() - started,
+      });
       return true;
     } catch (error) {
-      logger.error('Error deleting file from S3:', { error, key });
+      logUploadEvent(
+        'storage.delete.failed',
+        { ...ctx, durationMs: Date.now() - started, ...toErrorFields(error) },
+        'error'
+      );
       return false;
     }
   }
 
   async moveFile(sourceKey: string, destinationKey: string): Promise<string> {
-    try {
-      // First, get the source object to preserve metadata including content type
-      const getCommand = new GetObjectCommand({
-        Bucket: this.bucket,
-        Key: sourceKey,
-      });
-
-      const sourceObject = await this.s3Client.send(getCommand);
-      
-      if (!sourceObject.Body) {
-        throw new Error('Source file has no content');
+    return instrumentStorage(
+      'storage.move',
+      {
+        provider: 's3',
+        bucket: this.bucket,
+        fileKey: destinationKey,
+        sourceKey,
+      },
+      async () => {
+        const sourceObject = await this.s3Client.send(
+          new GetObjectCommand({ Bucket: this.bucket, Key: sourceKey })
+        );
+        if (!sourceObject.Body) {
+          throw new Error('Source file has no content');
+        }
+        const contentType = sourceObject.ContentType || 'application/octet-stream';
+        const buffer = Buffer.from(
+          await sourceObject.Body.transformToByteArray()
+        );
+        await this.s3Client.send(
+          new PutObjectCommand({
+            Bucket: this.bucket,
+            Key: destinationKey,
+            Body: buffer,
+            ContentType: contentType,
+          })
+        );
+        await this.deleteFile(sourceKey);
+        return destinationKey;
       }
-
-      // Get the content type from the source object
-      const contentType = sourceObject.ContentType || 'application/octet-stream';
-      
-      // Copy to destination with preserved content type
-      const buffer = Buffer.from(await sourceObject.Body.transformToByteArray());
-      
-      const putCommand = new PutObjectCommand({
-        Bucket: this.bucket,
-        Key: destinationKey,
-        Body: buffer,
-        ContentType: contentType,
-      });
-
-      await this.s3Client.send(putCommand);
-      
-      // Delete the source file
-      await this.deleteFile(sourceKey);
-      
-      logger.info(`Successfully moved file from ${sourceKey} to ${destinationKey} with content type: ${contentType}`);
-      return destinationKey;
-    } catch (error) {
-      logger.error('Error moving file in S3:', { error, sourceKey, destinationKey });
-      throw new Error(
-        `Failed to move file in S3: ${(error as Error).message}`
-      );
-    }
+    );
   }
 }

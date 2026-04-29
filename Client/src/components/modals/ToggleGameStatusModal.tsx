@@ -21,8 +21,8 @@ export function ToggleGameStatusModal({
   gameTitle = "this game",
 }: ToggleGameStatusModalProps) {
   const isActive = gameStatus === "active";
-  const action = isActive ? "disable" : "enable";
-  const actionCapitalized = isActive ? "Disable" : "Enable";
+  const action = isActive ? "unpublish" : "publish";
+  const actionCapitalized = isActive ? "Unpublish" : "Publish";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -49,8 +49,8 @@ export function ToggleGameStatusModal({
         {/* Description */}
         <div className="mb-6 sm:mb-8 text-[#121C2D] dark:text-[#CBD5E0] font-worksans text-sm sm:text-xl tracking-wider">
           {isActive
-            ? "Players will not be able to access this game until you enable it again."
-            : "Players will be able to access this game once enabled."}
+            ? "Players will not be able to access this game until you publish it again."
+            : "Players will be able to access this game once published."}
         </div>
 
         {/* Buttons */}
@@ -67,9 +67,7 @@ export function ToggleGameStatusModal({
             onClick={onConfirm}
             disabled={isToggling}
           >
-            {isToggling
-              ? `${actionCapitalized.slice(0, -1)}ing...`
-              : actionCapitalized}
+            {isToggling ? `${actionCapitalized}ing...` : actionCapitalized}
           </Button>
         </div>
       </CustomDialogContent>

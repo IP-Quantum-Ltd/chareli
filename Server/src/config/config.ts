@@ -54,12 +54,6 @@ interface Config {
     expiryMinutes: number;
     invitationExpiryDays: number;
   };
-  sentry: {
-    dsn: string;
-    environment: string;
-    tracesSampleRate: number;
-    enabled: boolean;
-  };
   resend: {
     apiKey: string;
     fromEmail: string;
@@ -194,14 +188,6 @@ const config: Config = {
       process.env.INVITATION_EXPIRY_DAYS || '7',
       10
     ),
-  },
-  sentry: {
-    dsn: process.env.SENTRY_DSN || '',
-    environment: process.env.NODE_ENV || 'development',
-    tracesSampleRate: parseFloat(
-      process.env.SENTRY_TRACES_SAMPLE_RATE || '0.2'
-    ),
-    enabled: false,
   },
   resend: {
     apiKey: process.env.RESEND_API_KEY || '',

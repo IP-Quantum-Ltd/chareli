@@ -1,10 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
 import logger from '../utils/logger';
-import config from '../config/config';
 
 interface AppError extends Error {
   statusCode?: number;
   errors?: Record<string, string>;
+  code?: string | number;
 }
 
 export const errorHandler = (
@@ -16,13 +16,21 @@ export const errorHandler = (
   const statusCode = err.statusCode || 500;
   const message = err.message || 'Internal Server Error';
 
-  // Log the error
+  const context = {
+    event: statusCode >= 500 ? 'request.error' : 'request.client_error',
+    method: req.method,
+    url: req.originalUrl,
+    ip: req.ip,
+    statusCode,
+    errorName: err.name,
+    errorMessage: message,
+    errorCode: err.code,
+  };
+
   if (statusCode >= 500) {
-    logger.error(`${statusCode} - ${message} - ${req.originalUrl} - ${req.method} - ${req.ip}`);
-    logger.error(err.stack || 'No stack trace available');
-    
+    logger.error('request.error', { ...context, stack: err.stack });
   } else {
-    logger.warn(`${statusCode} - ${message} - ${req.originalUrl} - ${req.method} - ${req.ip}`);
+    logger.warn('request.client_error', context);
   }
 
   res.status(statusCode).json({
@@ -60,6 +68,10 @@ export class ApiError extends Error {
 
   static forbidden(message = 'Forbidden') {
     return new ApiError(403, message);
+  }
+
+  static conflict(message = 'Conflict') {
+    return new ApiError(409, message);
   }
 
   static internal(message = 'Internal server error') {

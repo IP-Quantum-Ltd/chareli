@@ -11,6 +11,7 @@ import {
   confirmPasswordSchema,
 } from "../../validation/password";
 import LazyPhoneInput from "../../components/ui/LazyPhoneInput";
+import { trackConversion } from "../../utils/analytics";
 
 import "../../styles/phone-input.css";
 import { FaEye, FaEyeSlash } from "react-icons/fa";
@@ -69,7 +70,11 @@ export function RegisterForm({ email, token, onSuccess }: RegisterFormProps) {
         },
       },
       {
-        onSuccess,
+        onSuccess: () => {
+          // Fire signup conversion: GA4 sign_up via Zaraz + Meta CompleteRegistration.
+          trackConversion.signUp('invitation');
+          onSuccess();
+        },
       }
     );
   };
