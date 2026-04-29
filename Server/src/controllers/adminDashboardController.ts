@@ -17,6 +17,8 @@ import {
   getPeriodBoundaries,
   parseCustomDayBoundary,
   rollingDayBoundaries,
+  yesterdayBoundaries,
+  yesterdayDateInUserTz,
 } from '../utils/timezonePeriod';
 
 const userRepository = AppDataSource.getRepository(User);
@@ -63,15 +65,23 @@ export const getDashboardAnalytics = async (
       ? [country as string]
       : [];
 
+    const nowUtc = new Date();
+
     // Check cache first (TTL: 3 minutes). Timezone is included only when it
     // affects the result. last24hours is a rolling now-24h window — timezone-
     // independent — so we omit userTimezone from its key to share the cache
     // entry across all timezones. Calendar-based periods (last7days, last30days,
-    // custom) anchor on user-tz midnight, so they keep timezone in the key.
+    // custom, yesterday) anchor on user-tz midnight, so they keep timezone in
+    // the key. yesterday additionally stamps its calendar date so the entry
+    // doesn't survive the user-tz midnight rollover into the next day.
     const periodKey = period || 'last24hours';
-    const cacheKey = periodKey === 'last24hours'
-      ? `${periodKey}:${countries.sort().join(',')}`
-      : `${periodKey}:${countries.sort().join(',')}:${userTimezone}`;
+    const base = `${periodKey}:${countries.sort().join(',')}`;
+    const cacheKey = (() => {
+      if (periodKey === 'last24hours') return base;
+      if (periodKey === 'custom') return `${base}:${userTimezone}:${startDate}:${endDate}`;
+      if (periodKey === 'yesterday') return `${base}:${userTimezone}:${yesterdayDateInUserTz(nowUtc, userTimezone)}`;
+      return `${base}:${userTimezone}`;
+    })();
     const cached = await cacheService.getAnalytics('dashboard', cacheKey);
     if (cached) {
       logger.debug(`[CACHE HIT] Dashboard analytics for ${cacheKey}`);
@@ -79,7 +89,6 @@ export const getDashboardAnalytics = async (
       return;
     }
 
-    const nowUtc = new Date();
     const getTimezoneAwarePeriodBoundaries = (daysBack: number, prevDaysBack: number) =>
       getPeriodBoundaries(nowUtc, userTimezone, daysBack, prevDaysBack);
 
@@ -90,6 +99,14 @@ export const getDashboardAnalytics = async (
 
     // Determine time ranges based on the period parameter (timezone-aware)
     switch (period) {
+      case 'yesterday': {
+        const b = yesterdayBoundaries(nowUtc, userTimezone);
+        currentPeriodStart = b.currentStart;
+        now = b.currentEnd;
+        previousPeriodStart = b.prevStart;
+        previousPeriodEnd = b.prevEnd;
+        break;
+      }
       case 'last7days': {
         const boundaries = getTimezoneAwarePeriodBoundaries(7, 14);
         currentPeriodStart = boundaries.currentStart;
@@ -2145,6 +2162,14 @@ export const getGamesPopularityMetrics = async (
 
     // Determine time ranges based on the period parameter (timezone-aware)
     switch (period) {
+      case 'yesterday': {
+        const b = yesterdayBoundaries(nowUtc, userTimezone);
+        currentPeriodStart = b.currentStart;
+        now = b.currentEnd;
+        previousPeriodStart = b.prevStart;
+        previousPeriodEnd = b.prevEnd;
+        break;
+      }
       case 'last7days': {
         const boundaries = getTimezoneAwarePeriodBoundaries(7, 14);
         currentPeriodStart = boundaries.currentStart;

@@ -62,12 +62,6 @@ const allMenuItems = [
     path: '/admin/team',
     requiresConfig: false,
   },
-  // {
-  //   title: "Analytics",
-  //   icon: <FaChartLine size={20} />,
-  //   path: "/admin/analytics",
-  //   requiresConfig: false,
-  // },
   {
     title: 'Configuration',
     icon: <Sliders size={20} />,

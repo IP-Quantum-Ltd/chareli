@@ -77,3 +77,7 @@ supabase_*.sql
 # Local docker compose files
 compose.yml
 docker-compose.override.yml
+
+# Claude Code local state and Playwright MCP session artifacts
+.claude/
+.playwright-mcp/

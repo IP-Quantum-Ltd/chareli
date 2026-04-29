@@ -97,3 +97,38 @@ export function parseCustomDayBoundary(
   const time = which === 'start' ? '00:00:00' : '23:59:59.999';
   return fromZonedTime(`${dateOnly}T${time}`, userTimezone);
 }
+
+export interface YesterdayBoundaries extends PeriodBoundaries {
+  currentEnd: Date;
+}
+
+// The user-tz calendar date of "yesterday" (YYYY-MM-DD). Stamping this on the
+// dashboard cache key prevents a stale entry from before user-tz midnight from
+// being served as the next day's "yesterday" data.
+export function yesterdayDateInUserTz(nowUtc: Date, userTimezone: string): string {
+  return calendarDateDaysBefore(todayDateInUserTz(nowUtc, userTimezone), 1);
+}
+
+// Calendar-day window for "yesterday" in the user's timezone: start = yesterday
+// 00:00:00, end = yesterday 23:59:59.999. Comparison period is the day before
+// (a 1-day window immediately preceding), matching the shape of last7days /
+// last30days so the dashboard's percentageChange calculation works unchanged.
+export function yesterdayBoundaries(
+  nowUtc: Date,
+  userTimezone: string,
+): YesterdayBoundaries {
+  const today = todayDateInUserTz(nowUtc, userTimezone);
+  const yesterday = calendarDateDaysBefore(today, 1);
+  const dayBefore = calendarDateDaysBefore(today, 2);
+
+  const currentStart = zonedMidnight(yesterday, userTimezone);
+  const currentEnd = parseCustomDayBoundary(yesterday, userTimezone, 'end');
+  const prevStart = zonedMidnight(dayBefore, userTimezone);
+
+  return {
+    currentStart,
+    currentEnd,
+    prevStart,
+    prevEnd: currentStart,
+  };
+}
