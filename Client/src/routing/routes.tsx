@@ -31,7 +31,6 @@ const GameLibrary = lazy(
 const UserManagement = lazy(
   () => import('../pages/Admin/UserManagement/UserManagement')
 );
-const Analytics = lazy(() => import('../pages/Admin/Analytics/Analytics'));
 const Configuration = lazy(
   () => import('../pages/Admin/Configuration/Configuration')
 );
@@ -124,7 +123,6 @@ export const routes = [
               { path: 'my-proposals', element: <SuspenseWrapper><MyProposals /></SuspenseWrapper> },
               { path: 'proposals', element: <SuspenseWrapper><AdminProposals /></SuspenseWrapper> },
               { path: 'proposals/:id/review', element: <SuspenseWrapper><ProposalReview /></SuspenseWrapper> },
-              { path: 'analytics', element: <SuspenseWrapper><Analytics /></SuspenseWrapper> },
               { path: 'view-game/:gameId', element: <SuspenseWrapper><ViewGame /></SuspenseWrapper> },
               { path: 'create-game', element: <SuspenseWrapper><CreateGame /></SuspenseWrapper> },
               { path: 'edit-game/:gameId', element: <SuspenseWrapper><EditGame /></SuspenseWrapper> },

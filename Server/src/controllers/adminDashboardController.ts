@@ -69,9 +69,12 @@ export const getDashboardAnalytics = async (
     // entry across all timezones. Calendar-based periods (last7days, last30days,
     // custom) anchor on user-tz midnight, so they keep timezone in the key.
     const periodKey = period || 'last24hours';
-    const cacheKey = periodKey === 'last24hours'
-      ? `${periodKey}:${countries.sort().join(',')}`
-      : `${periodKey}:${countries.sort().join(',')}:${userTimezone}`;
+    const base = `${periodKey}:${countries.sort().join(',')}`;
+    const cacheKey = (() => {
+      if (periodKey === 'last24hours') return base;
+      if (periodKey === 'custom') return `${base}:${userTimezone}:${startDate}:${endDate}`;
+      return `${base}:${userTimezone}`;
+    })();
     const cached = await cacheService.getAnalytics('dashboard', cacheKey);
     if (cached) {
       logger.debug(`[CACHE HIT] Dashboard analytics for ${cacheKey}`);
