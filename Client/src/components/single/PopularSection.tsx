@@ -109,7 +109,13 @@ const PopularSection = ({
                   >
                     <div
                       className="relative h-full sm:h-[350px] sm:min-h-[350px] sm:max-h-[350px] rounded-[32px] border-4 border-transparent group-hover:border-[#64748A] transition-all duration-300 ease-in-out group-hover:scale-105 group-hover:shadow-[0_0_20px_rgba(100,116,138,0.3)] box-border overflow-hidden aspect-square sm:aspect-auto"
-                      onClick={() => handleGameClick(game.id, game.slug)}
+                      onClick={() =>
+                        handleGameClick(
+                          game.id,
+                          game.slug,
+                          game.category?.slug
+                        )
+                      }
                     >
                       <LazyImage
                         src={game.thumbnailFile?.s3Key || emptyGameImg}

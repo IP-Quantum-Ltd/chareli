@@ -19,6 +19,7 @@ import { formatTime } from "../../utils/main";
 import { usePermissions } from "../../hooks/usePermissions";
 import { GameBreadcrumb } from "../../components/single/GameBreadcrumb";
 import { GameInfoSection } from "../../components/single/GameInfoSection";
+import { gameplayUrl } from "../../utils/gameUrl";
 import { LuGamepad2 } from "react-icons/lu";
 import { TbCalendarClock } from "react-icons/tb";
 
@@ -179,20 +180,16 @@ export default function ViewGame() {
                 Gameplay URL
               </h3>
               {(() => {
-                const slug = game?.slug;
-                // Construct the public gameplay URL
-                const gameplayUrl = slug
-                  ? `${window.location.origin}/gameplay/${slug}`
-                  : null;
+                const url = game?.slug ? gameplayUrl(game) : null;
                 return (
                   <a
-                    href={gameplayUrl || "#"}
+                    href={url || "#"}
                     className="text-[#475568] underline dark:text-white font-dmmono tracking-wider text-sm break-all overflow-wrap-anywhere block"
                     target="_blank"
                     rel="noopener noreferrer"
-                    title={gameplayUrl || "#"}
+                    title={url || "#"}
                   >
-                    {gameplayUrl || "-"}
+                    {url || "-"}
                   </a>
                 );
               })()}

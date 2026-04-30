@@ -129,6 +129,8 @@ export interface GameFile {
 
 export interface SimilarGame {
   id: string;
+  slug: string;
+  category?: { slug: string; name: string };
   title: string;
   description: string;
   thumbnailFile?: GameFile;
