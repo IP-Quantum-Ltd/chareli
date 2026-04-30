@@ -185,9 +185,8 @@ export default function Categories() {
                           }
                         `}
                         onClick={() => {
-                          setSelectedCategory(cat.id);
-                          setSelectedSecondary(null);
                           setShowMobileCategories(false);
+                          navigate(`/categories/${cat.slug}`);
                         }}
                         title={cat.name.length > 25 ? cat.name : undefined}
                       >
@@ -273,10 +272,7 @@ export default function Categories() {
                               : 'text-[#121C2D] hover:bg-[#E5E7EB] hover:text-[#6A7282] dark:text-white tracking-wider dark:hover:text-[#6A7282]'
                           }
                         `}
-                        onClick={() => {
-                          setSelectedCategory(cat.id);
-                          setSelectedSecondary(null);
-                        }}
+                        onClick={() => navigate(`/categories/${cat.slug}`)}
                         title={cat.name.length > 16 ? cat.name : undefined}
                       >
                         <h3 className="block truncate m-0 font-worksans">
