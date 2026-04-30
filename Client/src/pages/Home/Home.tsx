@@ -2,6 +2,7 @@ import { useState, Suspense, lazy, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { useSystemConfigByKey } from "../../backend/configuration.service";
+import { useDocumentMeta } from "../../hooks/useDocumentMeta";
 
 const PopularSection = lazy(
   () => import("../../components/single/PopularSection")
@@ -41,6 +42,10 @@ const SectionFallback = ({ title, count = 9 }: { title: string; count?: number }
 );
 
 function Home() {
+  useDocumentMeta(
+    'Arcadesbox — Free Online Games',
+    'Play free online games at Arcadesbox. Browse popular categories, discover new releases, and jump straight into the fun in your browser.'
+  );
   const [isSignUpModalOpen, setIsSignUpModalOpen] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();

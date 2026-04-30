@@ -15,6 +15,9 @@ const RegisterInvitationPage = lazy(() =>
 const MainLayout = lazy(() => import('../layout/MainLayout'));
 const GamePlay = lazy(() => import('../pages/GamePlay/GamePlay'));
 const Categories = lazy(() => import('../pages/Categories/Categories'));
+const CategoryLanding = lazy(
+  () => import('../pages/Categories/CategoryLanding')
+);
 const ResetPasswordPage = lazy(() =>
   import('../pages/ResetPassword/ResetPasswordPage').then((module) => ({
     default: module.ResetPasswordPage,
@@ -76,6 +79,7 @@ export const routes = [
           { index: true, element: <SuspenseWrapper><Home /></SuspenseWrapper> },
           { path: 'about', element: <SuspenseWrapper><About /></SuspenseWrapper> },
           { path: 'categories', element: <SuspenseWrapper><Categories /></SuspenseWrapper> },
+          { path: 'categories/:slug', element: <SuspenseWrapper><CategoryLanding /></SuspenseWrapper> },
           { path: 'gameplay/:gameId', element: <SuspenseWrapper><GamePlay /></SuspenseWrapper> },
           { path: 'terms', element: <SuspenseWrapper><Terms /></SuspenseWrapper> },
           { path: 'privacy', element: <SuspenseWrapper><Privacy /></SuspenseWrapper> },

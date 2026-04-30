@@ -12,6 +12,7 @@ import {
   isGamePubliclyVisible,
   publiclyVisibleGameFilter,
 } from '../utils/gameUtils';
+import { generateUniqueCategorySlug } from '../utils/slugify';
 import logger from '../utils/logger';
 
 // Extend File type to include url
@@ -553,15 +554,110 @@ export const getCategoryById = async (
  *       500:
  *         description: Internal server error
  */
+/**
+ * @swagger
+ * /categories/slug/{slug}:
+ *   get:
+ *     summary: Get a public category by slug
+ *     description: Lean public response for landing pages. Returns category metadata, intro/FAQ content, and paginated publicly visible games. Does not run analytics queries.
+ *     tags: [Categories]
+ *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema: { type: string }
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, minimum: 1 }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, minimum: 1, maximum: 100 }
+ *     responses:
+ *       200: { description: Category landing payload }
+ *       404: { description: Category not found }
+ */
+export const getCategoryBySlug = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { slug } = req.params;
+    const { page = 1, limit = 24 } = req.query;
+    const pageNumber = Number.parseInt(page as string, 10);
+    const limitNumber = Number.parseInt(limit as string, 10);
+
+    const category = await categoryRepository.findOne({ where: { slug } });
+
+    if (!category) {
+      return next(ApiError.notFound(`Category with slug "${slug}" not found`));
+    }
+
+    const gameRepository = AppDataSource.getRepository(Game);
+    const [games, totalGames] = await gameRepository.findAndCount({
+      where: {
+        categoryId: category.id,
+        ...publiclyVisibleGameFilter,
+      },
+      relations: ['thumbnailFile', 'gameFile'],
+      order: { createdAt: 'DESC' },
+      skip: (pageNumber - 1) * limitNumber,
+      take: limitNumber,
+    });
+
+    const transformedGames = games.map((game) => {
+      const out: any = { ...game };
+      if (game.thumbnailFile?.s3Key) {
+        out.thumbnailFile = {
+          ...game.thumbnailFile,
+          url: storageService.getPublicUrl(game.thumbnailFile.s3Key),
+        } as FileWithUrl;
+      }
+      if (game.gameFile?.s3Key) {
+        out.gameFile = {
+          ...game.gameFile,
+          url: storageService.getPublicUrl(game.gameFile.s3Key),
+        } as FileWithUrl;
+      }
+      return out;
+    });
+
+    const totalPages = Math.ceil(totalGames / limitNumber);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        id: category.id,
+        name: category.name,
+        slug: category.slug,
+        description: category.description,
+        introText: category.introText,
+        faqAnswers: category.faqAnswers,
+        isDefault: category.isDefault,
+        games: transformedGames,
+        pagination: {
+          currentPage: pageNumber,
+          totalPages,
+          totalItems: totalGames,
+          itemsPerPage: limitNumber,
+          hasNextPage: pageNumber < totalPages,
+          hasPrevPage: pageNumber > 1,
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const createCategory = async (
   req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { name, description } = req.body;
+    const { name, description, introText, faqAnswers } = req.body;
 
-    // Check if category with the same name already exists
     const existingCategory = await categoryRepository.findOne({
       where: { name },
     });
@@ -572,15 +668,18 @@ export const createCategory = async (
       );
     }
 
-    // Create new category
+    const slug = await generateUniqueCategorySlug(name);
+
     const category = categoryRepository.create({
       name,
+      slug,
       description,
+      introText: introText ?? null,
+      faqAnswers: faqAnswers ?? null,
     });
 
     await categoryRepository.save(category);
 
-    // Invalidate categories cache
     await cacheInvalidationService.invalidateCategoryUpdate(category.id);
 
     res.status(201).json({
@@ -641,7 +740,7 @@ export const updateCategory = async (
 ): Promise<void> => {
   try {
     const { id } = req.params;
-    const { name, description } = req.body;
+    const { name, description, introText, faqAnswers } = req.body;
 
     const category = await categoryRepository.findOne({
       where: { id },
@@ -651,7 +750,6 @@ export const updateCategory = async (
       return next(ApiError.notFound(`Category with id ${id} not found`));
     }
 
-    // Check if name is being updated and if it already exists
     if (name && name !== category.name) {
       const existingCategory = await categoryRepository.findOne({
         where: { name },
@@ -664,16 +762,23 @@ export const updateCategory = async (
       }
 
       category.name = name;
+      category.slug = await generateUniqueCategorySlug(name, id);
     }
 
-    // Update description if provided
     if (description !== undefined) {
       category.description = description;
     }
 
+    if (introText !== undefined) {
+      category.introText = introText;
+    }
+
+    if (faqAnswers !== undefined) {
+      category.faqAnswers = faqAnswers;
+    }
+
     await categoryRepository.save(category);
 
-    // Invalidate categories cache
     await cacheInvalidationService.invalidateCategoryUpdate(id);
 
     res.status(200).json({

@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useCategories } from '../../backend/category.service';
 import { useGames } from '../../backend/games.service';
 import { useGameClickHandler } from '../../hooks/useGameClickHandler';
@@ -22,20 +22,27 @@ export default function Categories() {
     'mobile'
   );
   const [searchParams] = useSearchParams();
-
-  // Initialize selectedCategory from URL query param if present
-  useEffect(() => {
-    const categoryId = searchParams.get('category');
-    if (categoryId) {
-      setSelectedCategory(categoryId);
-    }
-  }, [searchParams]);
+  const navigate = useNavigate();
 
   const {
     data: categoriesData,
     isLoading: categoriesLoading,
     error: categoriesError,
   } = useCategories();
+
+  // Legacy /categories?category=<id> redirects to /categories/<slug>.
+  useEffect(() => {
+    const categoryId = searchParams.get('category');
+    if (!categoryId) return;
+    const list = categoriesData || [];
+    const match = list.find((c) => c.id === categoryId);
+    if (match?.slug) {
+      navigate(`/categories/${match.slug}`, { replace: true });
+    } else if (list.length > 0) {
+      // Loaded but no match — preserve old in-page filter behavior.
+      setSelectedCategory(categoryId);
+    }
+  }, [searchParams, categoriesData, navigate]);
   const {
     data: gamesData,
     isLoading: gamesLoading,

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { FiShare2 } from 'react-icons/fi';
 import { FaWhatsapp, FaFacebookF } from 'react-icons/fa';
 import { LuPenLine } from 'react-icons/lu';
@@ -274,19 +274,18 @@ export function GameInfoSection({ game, likeCount, hideEditButton = false }: Gam
         />
       </section>
 
-      {/* Tags - Clickable links to categories */}
+      {/* Tags */}
       {(() => {
         const tags = ensureArray(metadata?.tags);
         return tags.length > 0 ? (
           <div className="flex flex-wrap gap-2">
             {tags.map((tag, index) => (
-              <Link
+              <span
                 key={index}
-                to={`/category/${encodeURIComponent(tag.toLowerCase())}`}
-                className="px-2.5 py-1 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-md text-xs font-medium font-worksans transition-colors"
+                className="px-2.5 py-1 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-md text-xs font-medium font-worksans"
               >
                 {tag}
-              </Link>
+              </span>
             ))}
           </div>
         ) : null;

@@ -292,7 +292,7 @@ export default function EditGame() {
       <div className="mb-6">
         <GameBreadcrumb
           categoryName={currentCategory?.name || (gameId ? game?.category?.name : '')}
-          categoryId={currentCategory?.id || (gameId ? game?.category?.id : '')}
+          categorySlug={currentCategory?.slug || (gameId ? game?.category?.slug : '')}
           gameTitle={effectiveData?.title || (gameId ? game?.title : '')}
           overrideLink={proposalId ? `/admin/my-proposals` : `/admin/view-game/${gameId}`}
           overrideText={proposalId ? "My Proposals" : "Game Detail"}

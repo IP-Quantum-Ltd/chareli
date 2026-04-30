@@ -274,7 +274,7 @@ export default function ViewGame() {
           <div className="mb-8">
             <GameBreadcrumb
               categoryName={game?.category?.name}
-              categoryId={game?.category?.id}
+              categorySlug={game?.category?.slug}
               gameTitle={game?.title}
             />
           </div>
