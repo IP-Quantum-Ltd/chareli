@@ -53,6 +53,10 @@ export default function StatsCard({ filters }: StatsCardProps) {
   const getTimeRangeDescription = () => {
     const timeRange = filters?.timeRange;
     switch (timeRange?.period) {
+      case 'today':
+        return 'Today';
+      case 'yesterday':
+        return 'Yesterday';
       case 'last7days':
         return 'Over the last 7 days';
       case 'last30days':
@@ -69,7 +73,7 @@ export default function StatsCard({ filters }: StatsCardProps) {
         }
         return 'Custom date range';
       default:
-        return 'Over the last 24 hours';
+        return 'Today';
     }
   };
 
@@ -112,13 +116,11 @@ export default function StatsCard({ filters }: StatsCardProps) {
       title: 'Daily Active Players',
       value: data.dailyActiveUsers.current,
       icon: <Users size={32} />,
-      change: '24h only',
-      changeType: 'up',
-      description: 'Always last 24 hours',
+      description: timeDescription,
       color: 'text-[#64748A] dark:text-white',
       isStatic: true,
       tooltip:
-        'Unique users who played 30+ second games in the last 24 hours (rolling). Includes authenticated and guest users.',
+        'Unique users who played 30+ second games in the selected period. Includes authenticated and guest users.',
     },
     {
       title: 'Best Performing Games',
@@ -311,20 +313,22 @@ export default function StatsCard({ filters }: StatsCardProps) {
 
         {/* bottom */}
         <div className="flex md:flex-1 justify-between items-center pr-2 gap-3 min-h-[32px]">
-          <div
-            className={`flex flex-row gap-1 items-center text-[14px] flex-shrink-0 ${
-              card.changeType === 'up'
-                ? 'text-white bg-[#475568] pl-1 pr-1 pt-1 pb-1 rounded-lg dark:bg-[#64748A]'
-                : 'text-white bg-[#475568] dark:bg-[#64748A] pl-2 pr-2 pt-1 pb-1 rounded-lg'
-            }`}
-          >
-            {card.changeType === 'up' ? (
-              <ArrowUp />
-            ) : (
-              <ArrowDown />
-            )}
-            <span>{card.change}</span>
-          </div>
+          {!card.isStatic && (
+            <div
+              className={`flex flex-row gap-1 items-center text-[14px] flex-shrink-0 ${
+                card.changeType === 'up'
+                  ? 'text-white bg-[#475568] pl-1 pr-1 pt-1 pb-1 rounded-lg dark:bg-[#64748A]'
+                  : 'text-white bg-[#475568] dark:bg-[#64748A] pl-2 pr-2 pt-1 pb-1 rounded-lg'
+              }`}
+            >
+              {card.changeType === 'up' ? (
+                <ArrowUp />
+              ) : (
+                <ArrowDown />
+              )}
+              <span>{card.change}</span>
+            </div>
+          )}
           <div className="text-gray-400 text-[12px] font-worksans tracking-wider dark:text-white leading-tight text-right flex-shrink min-w-0 max-w-[140px] break-words">
             {card.description}
           </div>

@@ -17,7 +17,7 @@ function isoDateFromUtcContainer(d: Date): string {
 // for a Tokyo user at Apr 23 15:49 UTC because JST has already tipped into
 // the next day). Uses toZonedTime + UTC accessors; date-fns-tz's `format`
 // with a `timeZone` option behaves inconsistently across v3 versions.
-function todayDateInUserTz(nowUtc: Date, userTimezone: string): string {
+export function todayDateInUserTz(nowUtc: Date, userTimezone: string): string {
   return isoDateFromUtcContainer(toZonedTime(nowUtc, userTimezone));
 }
 
@@ -74,17 +74,6 @@ export function getPeriodBoundaries(
   return { currentStart, prevStart, prevEnd };
 }
 
-// Rolling 24h window ending at `nowUtc`. Timezone-independent: the dashboard's
-// "Last 24 hours" filter means a true rolling window matching GA4 semantics,
-// not "since user-tz midnight today." Calendar-day anchoring lives in
-// getPeriodBoundaries and applies to longer periods (7d, 30d, custom).
-export function rollingDayBoundaries(nowUtc: Date): PeriodBoundaries {
-  const ms24h = 24 * 60 * 60 * 1000;
-  const currentStart = new Date(nowUtc.getTime() - ms24h);
-  const prevStart = new Date(nowUtc.getTime() - 2 * ms24h);
-  return { currentStart, prevStart, prevEnd: currentStart };
-}
-
 // Interpret user-supplied start/end dates as calendar days in the user's
 // timezone rather than UTC. A Nicosia user picking "2026-04-20" as start
 // means "Apr 20 00:00 in Nicosia" (= 2026-04-19T21:00Z), not UTC midnight.
@@ -98,8 +87,33 @@ export function parseCustomDayBoundary(
   return fromZonedTime(`${dateOnly}T${time}`, userTimezone);
 }
 
-export interface YesterdayBoundaries extends PeriodBoundaries {
+export interface BoundedPeriod extends PeriodBoundaries {
   currentEnd: Date;
+}
+
+// Calendar-day window for "today" in the user's timezone: start = today
+// 00:00:00 user-tz, end = nowUtc (the moment the query was made). Comparison
+// period is yesterday from 00:00 user-tz to the same elapsed time-of-day, so
+// the previous window has the exact same duration as the current one. This
+// gives apples-to-apples percentageChange and matches GA4 "Today" semantics.
+//
+// prevEnd is computed via elapsedMs (not nowUtc - 24h) so DST transitions in
+// the user's timezone don't skew the window length: on the fall-back day the
+// current window can be 23h or 25h wide depending on where nowUtc falls.
+export function todayBoundaries(
+  nowUtc: Date,
+  userTimezone: string,
+): BoundedPeriod {
+  const today = todayDateInUserTz(nowUtc, userTimezone);
+  const yesterday = calendarDateDaysBefore(today, 1);
+
+  const currentStart = zonedMidnight(today, userTimezone);
+  const currentEnd = nowUtc;
+  const elapsedMs = currentEnd.getTime() - currentStart.getTime();
+  const prevStart = zonedMidnight(yesterday, userTimezone);
+  const prevEnd = new Date(prevStart.getTime() + elapsedMs);
+
+  return { currentStart, currentEnd, prevStart, prevEnd };
 }
 
 // The user-tz calendar date of "yesterday" (YYYY-MM-DD). Stamping this on the
@@ -116,7 +130,7 @@ export function yesterdayDateInUserTz(nowUtc: Date, userTimezone: string): strin
 export function yesterdayBoundaries(
   nowUtc: Date,
   userTimezone: string,
-): YesterdayBoundaries {
+): BoundedPeriod {
   const today = todayDateInUserTz(nowUtc, userTimezone);
   const yesterday = calendarDateDaysBefore(today, 1);
   const dayBefore = calendarDateDaysBefore(today, 2);

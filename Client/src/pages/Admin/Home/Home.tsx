@@ -29,7 +29,7 @@ function DashboardContent() {
 
   const [isAcceptInviteOpen, setIsAcceptInviteOpen] = useState(false);
   const [statsTimeRange, setStatsTimeRange] = useState<DashboardTimeRange>({
-    period: 'last24hours',
+    period: 'today',
   });
   const [countryFilter, setCountryFilter] = useState<string[]>([]);
   const [timezoneFilter, setTimezoneFilter] = useState<string>('Europe/Nicosia');

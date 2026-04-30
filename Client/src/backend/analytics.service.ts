@@ -351,7 +351,7 @@ interface UserActivityLog {
 
 // Dashboard time range filter types
 export interface DashboardTimeRange {
-  period?: 'last24hours' | 'yesterday' | 'last7days' | 'last30days' | 'custom';
+  period?: 'today' | 'yesterday' | 'last7days' | 'last30days' | 'custom';
   startDate?: string;
   endDate?: string;
 }
