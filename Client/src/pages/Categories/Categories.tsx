@@ -185,9 +185,8 @@ export default function Categories() {
                           }
                         `}
                         onClick={() => {
-                          setSelectedCategory(cat.id);
-                          setSelectedSecondary(null);
                           setShowMobileCategories(false);
+                          navigate(`/categories/${cat.slug}`);
                         }}
                         title={cat.name.length > 25 ? cat.name : undefined}
                       >
@@ -273,10 +272,7 @@ export default function Categories() {
                               : 'text-[#121C2D] hover:bg-[#E5E7EB] hover:text-[#6A7282] dark:text-white tracking-wider dark:hover:text-[#6A7282]'
                           }
                         `}
-                        onClick={() => {
-                          setSelectedCategory(cat.id);
-                          setSelectedSecondary(null);
-                        }}
+                        onClick={() => navigate(`/categories/${cat.slug}`)}
                         title={cat.name.length > 16 ? cat.name : undefined}
                       >
                         <h3 className="block truncate m-0 font-worksans">
@@ -375,7 +371,13 @@ export default function Categories() {
                             ? 'span 1'
                             : `span ${rowSpan}`,
                       }}
-                      onClick={() => handleGameClick(game.id)}
+                      onClick={() =>
+                        handleGameClick(
+                          game.id,
+                          game.slug,
+                          game.category?.slug
+                        )
+                      }
                     >
                       <div className="relative h-full overflow-hidden rounded-[20px] transition-all duration-300 ease-in-out group-hover:shadow-[0_0px_20px_#6A7282,0_0px_10px_rgba(106,114,130,0.8)] aspect-square sm:aspect-auto">
                         <div className="w-full h-full rounded-[16px] overflow-hidden">

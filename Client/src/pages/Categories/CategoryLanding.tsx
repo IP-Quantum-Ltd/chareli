@@ -117,7 +117,7 @@ export default function CategoryLanding() {
                   key={game.id}
                   type="button"
                   className="relative group cursor-pointer text-left"
-                  onClick={() => handleGameClick(game.id, game.slug)}
+                  onClick={() => handleGameClick(game.id, game.slug, category.slug)}
                 >
                   <div className="relative aspect-square overflow-hidden rounded-[20px] transition-all duration-300 group-hover:shadow-[0_0px_20px_#6A7282,0_0px_10px_rgba(106,114,130,0.8)]">
                     <div className="w-full h-full rounded-[16px] overflow-hidden">

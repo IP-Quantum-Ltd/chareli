@@ -228,22 +228,26 @@ describe('AllGamesSection Business Logic', () => {
   })
 
   describe('Navigation Logic', () => {
-    it('should generate correct game play URLs', () => {
-      const gameIds = ['game-123', 'puzzle-456', 'action-789']
+    it('should generate correct game play URLs with category slug', () => {
+      const samples = [
+        { categorySlug: 'action', gameSlug: 'space-shooter' },
+        { categorySlug: 'puzzle', gameSlug: 'block-match-456' },
+        { categorySlug: 'general', gameSlug: 'hamster-roll' },
+      ]
 
-      gameIds.forEach(gameId => {
-        const url = `/gameplay/${gameId}`
-        expect(url).toBe(`/gameplay/${gameId}`)
-        expect(url).toMatch(/^\/gameplay\/[\w-]+$/)
+      samples.forEach(({ categorySlug, gameSlug }) => {
+        const url = `/gameplay/${categorySlug}/${gameSlug}`
+        expect(url).toBe(`/gameplay/${categorySlug}/${gameSlug}`)
+        expect(url).toMatch(/^\/gameplay\/[a-z0-9-]+\/[a-z0-9-]+$/)
       })
     })
 
-    it('should handle special characters in game IDs', () => {
-      const specialGameIds = ['game_123', 'game-with-dashes', 'game123']
+    it('should fall back to legacy /gameplay/<slug> when category slug missing', () => {
+      const slugs = ['game-123', 'game-with-dashes', 'game123']
 
-      specialGameIds.forEach(gameId => {
-        const url = `/gameplay/${gameId}`
-        expect(url).toContain(gameId)
+      slugs.forEach(slug => {
+        const url = `/gameplay/${slug}`
+        expect(url).toContain(slug)
         expect(url.startsWith('/gameplay/')).toBe(true)
       })
     })

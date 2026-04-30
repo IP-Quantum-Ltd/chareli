@@ -81,6 +81,7 @@ export const routes = [
           { path: 'categories', element: <SuspenseWrapper><Categories /></SuspenseWrapper> },
           { path: 'categories/:slug', element: <SuspenseWrapper><CategoryLanding /></SuspenseWrapper> },
           { path: 'gameplay/:gameId', element: <SuspenseWrapper><GamePlay /></SuspenseWrapper> },
+          { path: 'gameplay/:categorySlug/:gameSlug', element: <SuspenseWrapper><GamePlay /></SuspenseWrapper> },
           { path: 'terms', element: <SuspenseWrapper><Terms /></SuspenseWrapper> },
           { path: 'privacy', element: <SuspenseWrapper><Privacy /></SuspenseWrapper> },
         ],
