@@ -1,0 +1,56 @@
+%% ArcadeBox AI Agent Graph
+%% Simple flow diagram with short explanatory cards
+
+flowchart TD
+    A["Entry<br/>POST /agent/run<br/>Webhook<br/>Cron"]
+    B["Queue Job"]
+    C["initialize"]
+    D["capture"]
+    E["research"]
+    F["analyze"]
+    G["librarian"]
+    H["architect"]
+    I["critic"]
+    J["scribe"]
+    K["auditor"]
+    L["optimizer"]
+    M["Finalize Result"]
+    Z["Finalize Failed Result"]
+
+    A --> B --> C --> D --> E --> F --> G --> H --> I --> J --> K --> L --> M
+    I -->|Revise plan| H
+    K -->|Revise draft| J
+
+    C -->|Fail| Z
+    D -->|Fail| Z
+    E -->|Fail| Z
+    F -->|Fail| Z
+    G -->|Fail| Z
+    I -->|Hard fail| Z
+    K -->|Hard fail| Z
+
+    C1["What we need<br/>game_id or proposal_id<br/><br/>What we do<br/>load the game/proposal context<br/><br/>Why<br/>we need one clear item to review"]
+    D1["What we need<br/>game context and title<br/><br/>What we do<br/>capture trusted internal screenshots<br/><br/>Why<br/>they are the reference for all later verification"]
+    E1["What we need<br/>internal screenshots and game title<br/><br/>What we do<br/>search external pages, capture candidates, compare visuals, score confidence<br/><br/>Why<br/>we must verify we found the correct public version of the game"]
+    F1["What we need<br/>best verified external match<br/><br/>What we do<br/>extract keyword strategy, entities, search intent, title ideas, FAQ opportunities<br/><br/>Why<br/>content should match how users actually search"]
+    G1["What we need<br/>investigation plus SEO blueprint<br/><br/>What we do<br/>query Postgres and Mongo, gather supporting evidence, and synthesize the grounded packet<br/><br/>Why<br/>the librarian node makes later planning and writing evidence-based"]
+    H1["What we need<br/>grounded context and SEO blueprint<br/><br/>What we do<br/>build the article outline and section goals<br/><br/>Why<br/>a strong plan reduces bad drafting"]
+    I1["What we need<br/>outline, grounded context, SEO blueprint<br/><br/>What we do<br/>check coverage of facts, entities, intent, and FAQ needs<br/><br/>Why<br/>we should catch missing topics before writing"]
+    J1["What we need<br/>outline, verified facts, metadata, grounded context<br/><br/>What we do<br/>write the full markdown article<br/><br/>Why<br/>this produces the main content output"]
+    K1["What we need<br/>article, investigation, grounded context, outline<br/><br/>What we do<br/>audit factual accuracy and completeness, then request revisions if needed<br/><br/>Why<br/>we should not ship unsupported claims"]
+    L1["What we need<br/>article, SEO blueprint, outline, audit report<br/><br/>What we do<br/>generate meta title, meta description, H1, FAQ schema, and readiness evaluation<br/><br/>Why<br/>this makes the content publish-ready"]
+    M1["What we need<br/>all accumulated workflow state<br/><br/>What we do<br/>assemble the final payload, article, warnings, metrics, and optional review submission<br/><br/>Why<br/>other systems and reviewers need one clean output"]
+    Z1["What we need<br/>the failure reason from any stage<br/><br/>What we do<br/>stop the graph and return a structured failed result<br/><br/>Why<br/>the system must fail clearly and traceably"]
+
+    C -. notes .-> C1
+    D -. notes .-> D1
+    E -. notes .-> E1
+    F -. notes .-> F1
+    G -. notes .-> G1
+    H -. notes .-> H1
+    I -. notes .-> I1
+    J -. notes .-> J1
+    K -. notes .-> K1
+    L -. notes .-> L1
+    M -. notes .-> M1
+    Z -. notes .-> Z1

@@ -26,6 +26,12 @@ class WebSocketService {
       try {
         const pubClient = redisClient.duplicate();
         const subClient = redisClient.duplicate();
+        pubClient.on('error', (err) => {
+          logger.error('Socket.io Redis pub client error:', err);
+        });
+        subClient.on('error', (err) => {
+          logger.error('Socket.io Redis sub client error:', err);
+        });
         this.io.adapter(createAdapter(pubClient, subClient));
         logger.info('Socket.io Redis adapter configured for PM2 cluster sync');
       } catch (err) {

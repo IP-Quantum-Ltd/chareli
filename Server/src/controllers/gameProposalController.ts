@@ -18,6 +18,35 @@ const gameRepository = AppDataSource.getRepository(Game);
 const fileRepository = AppDataSource.getRepository(File);
 
 /**
+ * Get pending proposals — accessible by editors and admins.
+ * Used by the AI agent service for its cron fallback scan.
+ * Returns only PENDING proposals, sorted oldest-first so the AI works in submission order.
+ */
+export const getPendingProposals = async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const proposals = await proposalRepository.find({
+      where: { status: GameProposalStatus.PENDING },
+      relations: ['game', 'game.thumbnailFile'],
+      order: { createdAt: 'ASC' },
+      select: {
+        id: true,
+        type: true,
+        gameId: true,
+        editorId: true,
+        status: true,
+        proposedData: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    res.status(200).json({ success: true, data: proposals });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * Get all proposals (Admin/Superadmin)
  */
 export const getProposals = async (req: Request, res: Response, next: NextFunction) => {

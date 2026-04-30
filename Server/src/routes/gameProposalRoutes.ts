@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import {
   getProposals,
+  getPendingProposals,
   getMyProposals,
   approveProposal,
   declineProposal,
@@ -24,6 +25,9 @@ router.use(authenticate);
 router.get('/', isAdmin, getProposals);
 router.post('/:id/approve', isAdmin, approveProposal);
 router.post('/:id/decline', isAdmin, declineProposal);
+
+// AI agent cron fallback — read-only list of pending proposals (editor + admin)
+router.get('/pending', isEditor, getPendingProposals);
 
 // Editor Routes
 router.get('/my', isEditor, getMyProposals);

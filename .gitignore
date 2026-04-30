@@ -78,6 +78,23 @@ supabase_*.sql
 compose.yml
 docker-compose.override.yml
 
+# ai-agent Python artefacts
+ai-agent/venv/
+ai-agent/.venv/
+ai-agent/__pycache__/
+ai-agent/**/__pycache__/
+ai-agent/**/*.pyc
+ai-agent/.pytest_cache/
+ai-agent/.mypy_cache/
+ai-agent/.ruff_cache/
+ai-agent/.langgraph_api/
+
+# ai-agent runtime artefacts
+scope_comparison.md
+ai-agent/test_internal_*.png
+ai-agent/test_thumbnail_*.png
+ai-agent/stage0_artifacts/
+
 # Claude Code local state and Playwright MCP session artifacts
 .claude/
 .playwright-mcp/
