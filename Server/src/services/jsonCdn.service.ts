@@ -154,7 +154,16 @@ class JsonCdnService {
 
       const categories = await categoryRepository.find({
         order: { name: 'ASC' },
-        select: ['id', 'name', 'description', 'isDefault', 'createdAt'],
+        select: [
+          'id',
+          'name',
+          'slug',
+          'description',
+          'introText',
+          'faqAnswers',
+          'isDefault',
+          'createdAt',
+        ],
       });
 
       const json = {
@@ -199,6 +208,7 @@ class JsonCdnService {
           category: {
             id: true,
             name: true,
+            slug: true,
             description: true,
           },
           createdBy: {
@@ -334,6 +344,7 @@ class JsonCdnService {
             category: {
               id: true,
               name: true,
+              slug: true,
               description: true,
             },
             createdBy: {
@@ -446,6 +457,7 @@ class JsonCdnService {
           category: {
             id: true,
             name: true,
+            slug: true,
             description: true,
           },
           createdBy: {
@@ -533,7 +545,7 @@ class JsonCdnService {
 
       // Fetch all categories
       const categories = await categoryRepository.find({
-        select: ['name', 'id'],
+        select: ['name', 'id', 'slug'],
         order: { name: 'ASC' },
       });
 
@@ -596,9 +608,8 @@ class JsonCdnService {
   <!-- Category Pages -->
 `;
       for (const category of categories) {
-        const categorySlug = category.name.toLowerCase().replace(/\s+/g, '-');
         xml += `  <url>
-    <loc>${baseUrl}/categories/${categorySlug}</loc>
+    <loc>${baseUrl}/categories/${category.slug}</loc>
     <lastmod>${today}</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -682,6 +693,7 @@ Disallow: /
           category: {
             id: true,
             name: true,
+            slug: true,
             description: true,
           },
           createdBy: {

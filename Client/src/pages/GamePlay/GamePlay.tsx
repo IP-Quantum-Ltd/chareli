@@ -19,12 +19,20 @@ import { GameSchemaLD } from '../../components/single/GameSchemaLD';
 import { GameInfoSection } from '../../components/single/GameInfoSection';
 import { RecommendedGamesGrid } from '../../components/single/RecommendedGamesGrid';
 import { usePermissions } from '../../hooks/usePermissions';
+import { useDocumentMeta } from '../../hooks/useDocumentMeta';
 
 export default function GamePlay() {
   const { gameId } = useParams();
   const navigate = useNavigate();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const { data: game, isLoading, error } = useGameById(gameId || '');
+
+  useDocumentMeta(
+    game ? `${game.title} | Arcadesbox` : undefined,
+    game?.description
+      ? game.description.replace(/\s+/g, ' ').slice(0, 160)
+      : undefined
+  );
   const { mutate: createAnalytics } = useCreateAnalytics();
   const { mutate: updateAnalytics } = useUpdateAnalytics();
   const analyticsIdRef = useRef<string | null>(null);
@@ -728,7 +736,7 @@ export default function GamePlay() {
               <div>
                 <GameBreadcrumb
                   categoryName={game.category?.name}
-                  categoryId={game.category?.id}
+                  categorySlug={game.category?.slug}
                   gameTitle={game.title}
                 />
               </div>

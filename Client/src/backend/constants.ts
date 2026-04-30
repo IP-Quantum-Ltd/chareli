@@ -28,6 +28,7 @@ export const BackendRoute = {
   GAME_BY_POSITION: '/api/games/position/:position',
   CATEGORIES: '/api/categories',
   CATEGORY_BY_ID: '/api/categories/:id',
+  CATEGORY_BY_SLUG: '/api/categories/slug/:slug',
 
   // Game Proposal Routes
   GAME_PROPOSALS: '/api/game-proposals',
