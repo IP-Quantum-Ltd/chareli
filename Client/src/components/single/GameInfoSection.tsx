@@ -9,6 +9,7 @@ import { trackGameplay } from '../../utils/analytics';
 import DOMPurify from 'dompurify';
 import { usePermissions } from '../../hooks/usePermissions';
 import { DEFAULT_FAQ_TEMPLATE, renderFAQ, parseFAQ } from '../../utils/faqTemplate';
+import { gameplayUrl as buildGameplayUrl } from '../../utils/gameUrl';
 
 interface GameInfoSectionProps {
   game: GameData;
@@ -19,6 +20,8 @@ interface GameInfoSectionProps {
 export function GameInfoSection({ game, likeCount, hideEditButton = false }: GameInfoSectionProps) {
   const { metadata } = game;
   const [shareStatus, setShareStatus] = useState<'idle' | 'success' | 'error'>('idle');
+
+  const gameplayUrl = buildGameplayUrl(game);
   const navigate = useNavigate();
   const permissions = usePermissions();
 
@@ -35,9 +38,6 @@ export function GameInfoSection({ game, likeCount, hideEditButton = false }: Gam
 
   // Handle share button click
   const handleShare = async () => {
-    // Always use gameplay URL with slug, not current location
-    const gameplayUrl = `${window.location.origin}/gameplay/${game.slug}`;
-
     const shareData = {
       title: game.title,
       text: game.description || `Play ${game.title} on ArcadesBox`,
@@ -156,7 +156,6 @@ export function GameInfoSection({ game, likeCount, hideEditButton = false }: Gam
         {/* WhatsApp Share */}
         <button
           onClick={() => {
-            const gameplayUrl = `${window.location.origin}/gameplay/${game.slug}`;
             const text = `Check out ${game.title} on ArcadesBox!`;
             const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(text + ' ' + gameplayUrl)}`;
             window.open(whatsappUrl, '_blank');
@@ -172,7 +171,6 @@ export function GameInfoSection({ game, likeCount, hideEditButton = false }: Gam
         {/* Facebook Share */}
         <button
           onClick={() => {
-            const gameplayUrl = `${window.location.origin}/gameplay/${game.slug}`;
             const facebookUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(gameplayUrl)}`;
             window.open(facebookUrl, '_blank', 'width=600,height=400');
             trackGameplay.gameShare(game.id, game.title, 'facebook');

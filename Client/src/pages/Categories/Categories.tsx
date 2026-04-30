@@ -375,7 +375,13 @@ export default function Categories() {
                             ? 'span 1'
                             : `span ${rowSpan}`,
                       }}
-                      onClick={() => handleGameClick(game.id)}
+                      onClick={() =>
+                        handleGameClick(
+                          game.id,
+                          game.slug,
+                          game.category?.slug
+                        )
+                      }
                     >
                       <div className="relative h-full overflow-hidden rounded-[20px] transition-all duration-300 ease-in-out group-hover:shadow-[0_0px_20px_#6A7282,0_0px_10px_rgba(106,114,130,0.8)] aspect-square sm:aspect-auto">
                         <div className="w-full h-full rounded-[16px] overflow-hidden">

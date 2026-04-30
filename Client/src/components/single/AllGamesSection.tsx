@@ -423,7 +423,13 @@ const AllGamesSection = ({ searchQuery }: AllGamesSectionProps) => {
                   <div
                     key={game.id}
                     className="relative group cursor-pointer"
-                    onClick={() => handleGameClick(game.id, game.slug)}
+                    onClick={() =>
+                      handleGameClick(
+                        game.id,
+                        game.slug,
+                        game.category?.slug
+                      )
+                    }
                   >
                     <div className="relative h-full overflow-hidden rounded-[20px] transition-all duration-300 ease-in-out group-hover:shadow-[0_0px_20px_#64748A,0_0px_10px_rgba(100,116,138,0.8)] aspect-square sm:aspect-auto">
                       <div className="w-full h-full rounded-[16px] overflow-hidden">

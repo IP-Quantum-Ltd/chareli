@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { LazyImage } from '../ui/LazyImage';
 import type { SimilarGame } from '../../backend/types';
+import { gameplayPath } from '../../utils/gameUrl';
 import placeholderImg from '@/assets/gamesImg/1.svg';
 
 interface RecommendedGamesGridProps {
@@ -14,9 +15,8 @@ export function RecommendedGamesGrid({ games }: RecommendedGamesGridProps) {
     return null;
   }
 
-  const handleGameClick = (gameId: string) => {
-    navigate(`/gameplay/${gameId}`);
-    // Scroll to top when new game loads
+  const handleGameClick = (game: SimilarGame) => {
+    navigate(gameplayPath(game));
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -29,7 +29,7 @@ export function RecommendedGamesGrid({ games }: RecommendedGamesGridProps) {
         {games.map((game) => (
           <div
             key={game.id}
-            onClick={() => handleGameClick(game.id)}
+            onClick={() => handleGameClick(game)}
             className="group cursor-pointer bg-white dark:bg-[#121C2D] rounded-lg overflow-hidden shadow-sm hover:shadow-lg transition-all duration-200 hover:scale-105"
           >
             <div className="aspect-square relative overflow-hidden bg-gray-100 dark:bg-gray-800">

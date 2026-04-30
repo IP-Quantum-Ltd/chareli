@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { gameplayUrl } from '../../utils/gameUrl';
 
 interface CategorySchemaLDProps {
   name: string;
@@ -43,7 +44,10 @@ export function CategorySchemaLD({
       itemListElement: games.map((game, index) => ({
         '@type': 'ListItem',
         position: index + 1,
-        url: `${baseUrl}/gameplay/${game.slug}`,
+        url: gameplayUrl(
+          { slug: game.slug, category: { slug } },
+          baseUrl
+        ),
         name: game.title,
         image: game.thumbnailFile?.url,
       })),

@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { useRecordGameClick } from '../backend/games.service';
 import { trackEvent } from '../utils/analytics';
+import { gameplayPath } from '../utils/gameUrl';
 
 interface UseGameClickHandlerOptions {
   onSuccess?: () => void;
@@ -15,9 +16,19 @@ export const useGameClickHandler = (
   const recordGameClick = useRecordGameClick();
   const { onSuccess, onError, trackingEnabled = true } = options;
 
-  const handleGameClick = async (gameId: string, gameSlug?: string) => {
-    // Navigate immediately to avoid blocking gameplay
-    navigate(`/gameplay/${gameSlug || gameId}`);
+  const handleGameClick = async (
+    gameId: string,
+    gameSlug?: string,
+    categorySlug?: string
+  ) => {
+    // Navigate immediately to avoid blocking gameplay.
+    navigate(
+      gameplayPath({
+        id: gameId,
+        slug: gameSlug,
+        category: categorySlug ? { slug: categorySlug } : undefined,
+      })
+    );
 
     // Track click asynchronously using sendBeacon for reliability during navigation
    if (trackingEnabled) {
