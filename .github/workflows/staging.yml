@@ -27,6 +27,7 @@ jobs:
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
+      ai_agent: ${{ steps.filter.outputs.ai_agent }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v6
@@ -43,6 +44,9 @@ jobs:
               - '.github/workflows/**'
             frontend:
               - 'Client/**'
+              - '.github/workflows/**'
+            ai_agent:
+              - 'ai-agent/**'
               - '.github/workflows/**'
 
   build-and-test-backend:
@@ -301,6 +305,75 @@ jobs:
 
           echo "✅ Worker deployed successfully"
 
+  deploy-ai-agent:
+    name: Deploy AI Agent to ECS
+    needs: [ detect-changes ]
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref_name == 'release' && 'production' || github.ref_name
+      == 'dev' && 'development' || github.ref_name == 'main' && 'staging' ||
+      'development' }}
+    if: |
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      needs.detect-changes.outputs.ai_agent == 'true'
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Set up Docker BuildX
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.ECR_REGISTRY }}/${{ vars.AI_AGENT_ECR_REPO }}
+          tags: |
+            type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/') }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/') }}
+            type=semver,pattern={{major}},enable=${{ startsWith(github.ref, 'refs/tags/') }}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/') }}
+
+            type=ref,event=branch,enable=${{ !startsWith(github.ref, 'refs/tags/') }}
+            type=sha,enable=${{ !startsWith(github.ref, 'refs/tags/') }}
+
+      - name: Build and Push AI Agent Docker Image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./ai-agent
+          file: ./ai-agent/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=ai-agent
+          cache-to: type=gha,mode=max,scope=ai-agent
+
+      - name: Fill in the new image ID in the Amazon ECS task definition
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition-family: ${{ vars.AI_AGENT_ECS_TASK_FAMILY }}
+          container-name: ${{ vars.AI_AGENT_ECS_CONTAINER_NAME }}
+          image: ${{ fromJSON(steps.meta.outputs.json).tags[0] }}
+
+      - name: Deploy Amazon ECS task definition
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.task-def.outputs.task-definition }}
+          service: ${{ vars.AI_AGENT_ECS_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
+
   notify-discord:
     name: Notify Discord
     needs:
@@ -310,6 +383,7 @@ jobs:
         deploy-frontend,
         deploy-backend,
         deploy-worker,
+        deploy-ai-agent,
       ]
     environment: ${{ github.ref_name == 'release' && 'production' || github.ref_name
       == 'dev' && 'development' || github.ref_name == 'main' && 'staging' ||
@@ -367,6 +441,16 @@ jobs:
           else
             echo "frontend_msg=:x: Frontend deployment to Cloudflare Pages FAILED" >> $GITHUB_OUTPUT
           fi
+      - name: Generate AI Agent Deploy Status
+        id: ai-agent-status
+        run: |
+          if [[ "${{ needs.deploy-ai-agent.result }}" == "success" ]]; then
+            echo "ai_agent_msg=:white_check_mark: AI Agent deployment to ECS SUCCESSFUL" >> $GITHUB_OUTPUT
+          elif [[ "${{ needs.deploy-ai-agent.result }}" == "skipped" ]]; then
+            echo "ai_agent_msg=:warning: AI Agent deployment SKIPPED" >> $GITHUB_OUTPUT
+          else
+            echo "ai_agent_msg=:x: AI Agent deployment to ECS FAILED" >> $GITHUB_OUTPUT
+          fi
       - name: Notify Discord
         if: always()
         uses: appleboy/discord-action@v1.2.0
@@ -381,5 +465,6 @@ jobs:
             🧪 **Build & Test:** ${{ steps.build-status.outputs.build_msg }}
             🖥️ **Backend (ECS):** ${{ steps.backend-status.outputs.backend_msg }}
             🌐 **Frontend (Cloudflare Pages):** ${{ steps.frontend-status.outputs.frontend_msg }}
+            🤖 **AI Agent (ECS):** ${{ steps.ai-agent-status.outputs.ai_agent_msg }}
             🔗 [View Run on GitHub](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
             🔗 [View site here](${{ vars.APP_URL }})
