@@ -17,7 +17,7 @@ interface DashboardTimeFilterProps {
 }
 
 const timeRangeOptions = [
-  { value: 'last24hours', label: '24 hours' },
+  { value: 'today', label: 'Today' },
   { value: 'yesterday', label: 'Yesterday' },
   { value: 'last7days', label: '7 days' },
   { value: 'last30days', label: '30 days' },
@@ -56,7 +56,7 @@ export function DashboardTimeFilter({ value, onChange }: DashboardTimeFilterProp
       const end = parseLocalDate(value.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
       return `${start} - ${end}`;
     }
-    return timeRangeOptions.find(option => option.value === value.period)?.label || '24 hours';
+    return timeRangeOptions.find(option => option.value === value.period)?.label || 'Today';
   };
 
   const handlePresetSelect = (period: Exclude<DashboardTimeRange['period'], 'custom'>) => {

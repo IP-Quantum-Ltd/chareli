@@ -16,7 +16,8 @@ import { AdminExclusionService } from '../services/adminExclusion.service';
 import {
   getPeriodBoundaries,
   parseCustomDayBoundary,
-  rollingDayBoundaries,
+  todayBoundaries,
+  todayDateInUserTz,
   yesterdayBoundaries,
   yesterdayDateInUserTz,
 } from '../utils/timezonePeriod';
@@ -67,18 +68,15 @@ export const getDashboardAnalytics = async (
 
     const nowUtc = new Date();
 
-    // Check cache first (TTL: 3 minutes). Timezone is included only when it
-    // affects the result. last24hours is a rolling now-24h window — timezone-
-    // independent — so we omit userTimezone from its key to share the cache
-    // entry across all timezones. Calendar-based periods (last7days, last30days,
-    // custom, yesterday) anchor on user-tz midnight, so they keep timezone in
-    // the key. yesterday additionally stamps its calendar date so the entry
+    // Check cache first (TTL: 3 minutes). All periods are calendar-day anchored
+    // in the user's timezone, so userTimezone is part of every key. `today` and
+    // `yesterday` additionally stamp their calendar date so a cached entry
     // doesn't survive the user-tz midnight rollover into the next day.
-    const periodKey = period || 'last24hours';
+    const periodKey = period || 'today';
     const base = `${periodKey}:${countries.sort().join(',')}`;
     const cacheKey = (() => {
-      if (periodKey === 'last24hours') return base;
       if (periodKey === 'custom') return `${base}:${userTimezone}:${startDate}:${endDate}`;
+      if (periodKey === 'today') return `${base}:${userTimezone}:${todayDateInUserTz(nowUtc, userTimezone)}`;
       if (periodKey === 'yesterday') return `${base}:${userTimezone}:${yesterdayDateInUserTz(nowUtc, userTimezone)}`;
       return `${base}:${userTimezone}`;
     })();
@@ -138,18 +136,20 @@ export const getDashboardAnalytics = async (
           // For custom range, the "end" boundary of the current window is the user-picked end.
           now = customEndDate;
         } else {
-          // Fallback to last 24 hours if custom dates are invalid.
-          const boundaries = rollingDayBoundaries(nowUtc);
-          currentPeriodStart = boundaries.currentStart;
-          previousPeriodStart = boundaries.prevStart;
-          previousPeriodEnd = boundaries.prevEnd;
+          // Fallback to today if custom dates are invalid.
+          const b = todayBoundaries(nowUtc, userTimezone);
+          currentPeriodStart = b.currentStart;
+          now = b.currentEnd;
+          previousPeriodStart = b.prevStart;
+          previousPeriodEnd = b.prevEnd;
         }
         break;
-      default: { // 'last24hours' or no period specified — see rollingDayBoundaries.
-        const boundaries = rollingDayBoundaries(nowUtc);
-        currentPeriodStart = boundaries.currentStart;
-        previousPeriodStart = boundaries.prevStart;
-        previousPeriodEnd = boundaries.prevEnd;
+      default: {
+        const b = todayBoundaries(nowUtc, userTimezone);
+        currentPeriodStart = b.currentStart;
+        now = b.currentEnd;
+        previousPeriodStart = b.prevStart;
+        previousPeriodEnd = b.prevEnd;
         break;
       }
     }
@@ -2195,17 +2195,19 @@ export const getGamesPopularityMetrics = async (
           previousPeriodEnd = currentPeriodStart;
           now = customEndDate;
         } else {
-          const boundaries = rollingDayBoundaries(nowUtc);
-          currentPeriodStart = boundaries.currentStart;
-          previousPeriodStart = boundaries.prevStart;
-          previousPeriodEnd = boundaries.prevEnd;
+          const b = todayBoundaries(nowUtc, userTimezone);
+          currentPeriodStart = b.currentStart;
+          now = b.currentEnd;
+          previousPeriodStart = b.prevStart;
+          previousPeriodEnd = b.prevEnd;
         }
         break;
-      default: { // last24hours — see rollingDayBoundaries.
-        const boundaries = rollingDayBoundaries(nowUtc);
-        currentPeriodStart = boundaries.currentStart;
-        previousPeriodStart = boundaries.prevStart;
-        previousPeriodEnd = boundaries.prevEnd;
+      default: {
+        const b = todayBoundaries(nowUtc, userTimezone);
+        currentPeriodStart = b.currentStart;
+        now = b.currentEnd;
+        previousPeriodStart = b.prevStart;
+        previousPeriodEnd = b.prevEnd;
       }
     }
 
