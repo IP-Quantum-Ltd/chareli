@@ -122,7 +122,11 @@ export default function CategoryLanding() {
                   <div className="relative aspect-square overflow-hidden rounded-[20px] transition-all duration-300 group-hover:shadow-[0_0px_20px_#6A7282,0_0px_10px_rgba(106,114,130,0.8)]">
                     <div className="w-full h-full rounded-[16px] overflow-hidden">
                       <LazyImage
-                        src={game.thumbnailFile?.s3Key || emptyGameImg}
+                        src={
+                          game.thumbnailFile?.url ||
+                          game.thumbnailFile?.s3Key ||
+                          emptyGameImg
+                        }
                         alt={game.title}
                         className="w-full h-full object-cover"
                         variants={game.thumbnailFile?.variants}
