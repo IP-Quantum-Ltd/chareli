@@ -1,39 +1,75 @@
 import * as yup from 'yup';
 
-/**
- * Create category schema validation
- */
+const FAQ_ANSWER_MAX = 200;
+const INTRO_TEXT_WORD_MAX = 200;
+
+const wordCount = (text: string) =>
+  text.trim().length === 0 ? 0 : text.trim().split(/\s+/).length;
+
+const introTextSchema = yup
+  .string()
+  .trim()
+  .nullable()
+  .test(
+    'word-count',
+    `Intro text must be ${INTRO_TEXT_WORD_MAX} words or fewer`,
+    (value) => !value || wordCount(value) <= INTRO_TEXT_WORD_MAX
+  );
+
+const answerField = yup
+  .string()
+  .trim()
+  .max(FAQ_ANSWER_MAX, `Answer must be ${FAQ_ANSWER_MAX} characters or fewer`)
+  .nullable();
+
+const faqAnswersSchema = yup
+  .object({
+    whatAre: answerField,
+    mostPopular: answerField,
+    doINeedToDownload: answerField,
+    areTheyFree: answerField,
+  })
+  .nullable()
+  .noUnknown();
+
 export const createCategorySchema = yup.object({
   name: yup.string().trim().required('Category name is required'),
-  description: yup.string().trim().nullable()
+  description: yup.string().trim().nullable(),
+  introText: introTextSchema,
+  faqAnswers: faqAnswersSchema,
 });
 
-/**
- * Update category schema validation
- */
-export const updateCategorySchema = yup.object({
-  name: yup.string().trim(),
-  description: yup.string().trim().nullable()
-}).test(
-  'at-least-one-field',
-  'At least one field must be provided',
-  (value) => {
-    return Object.keys(value).length > 0;
-  }
-);
+export const updateCategorySchema = yup
+  .object({
+    name: yup.string().trim(),
+    description: yup.string().trim().nullable(),
+    introText: introTextSchema,
+    faqAnswers: faqAnswersSchema,
+  })
+  .test(
+    'at-least-one-field',
+    'At least one field must be provided',
+    (value) => Object.keys(value).length > 0
+  );
 
-/**
- * Category ID param schema validation
- */
 export const categoryIdParamSchema = yup.object({
-  id: yup.string().uuid('Invalid category ID').required('Category ID is required')
+  id: yup
+    .string()
+    .uuid('Invalid category ID')
+    .required('Category ID is required'),
 });
 
-/**
- * Query params schema validation
- */
+export const categorySlugParamSchema = yup.object({
+  slug: yup
+    .string()
+    .trim()
+    .matches(/^[a-z0-9-]+$/, 'Invalid category slug')
+    .required('Category slug is required'),
+});
+
 export const categoryQuerySchema = yup.object({
-  page: yup.number().integer('Page must be an integer').min(1, 'Page must be at least 1'),
-  limit: yup.number().integer('Limit must be an integer').min(1, 'Limit must be at least 1').max(100, 'Limit must be at most 100'),
-  search: yup.string()
+  page: yup.number().integer().min(1),
+  limit: yup.number().integer().min(1).max(100),
+  search: yup.string(),
+  sortBy: yup.string(),
 });

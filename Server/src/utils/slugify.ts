@@ -1,5 +1,6 @@
 import { AppDataSource } from '../config/database';
 import { Game } from '../entities/Games';
+import { Category } from '../entities/Category';
 
 /**
  * Convert a string to a URL-safe slug
@@ -53,6 +54,36 @@ export async function generateUniqueSlug(
     }
 
     // Slug exists, try with counter
+    slug = `${baseSlug}-${counter}`;
+    counter++;
+  }
+}
+
+export async function generateUniqueCategorySlug(
+  name: string,
+  excludeId?: string
+): Promise<string> {
+  const baseSlug = slugify(name);
+  let slug = baseSlug;
+  let counter = 1;
+
+  const categoryRepository = AppDataSource.getRepository(Category);
+
+  while (true) {
+    const queryBuilder = categoryRepository
+      .createQueryBuilder('category')
+      .where('category.slug = :slug', { slug });
+
+    if (excludeId) {
+      queryBuilder.andWhere('category.id != :excludeId', { excludeId });
+    }
+
+    const existing = await queryBuilder.getOne();
+
+    if (!existing) {
+      return slug;
+    }
+
     slug = `${baseSlug}-${counter}`;
     counter++;
   }

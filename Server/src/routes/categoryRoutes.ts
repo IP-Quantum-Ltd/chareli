@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   getAllCategories,
   getCategoryById,
+  getCategoryBySlug,
   createCategory,
   updateCategory,
   deleteCategory
@@ -13,21 +14,26 @@ import {
   createCategorySchema,
   updateCategorySchema,
   categoryIdParamSchema,
+  categorySlugParamSchema,
   categoryQuerySchema
 } from '../validation';
 
 const router = Router();
-router.get('/', validateQuery(categoryQuerySchema), getAllCategories);
-router.get('/:id', validateParams(categoryIdParamSchema), getCategoryById);
 
-// All category routes require authentication and admin privileges
+// Public endpoints
+router.get('/', validateQuery(categoryQuerySchema), getAllCategories);
+router.get(
+  '/slug/:slug',
+  validateParams(categorySlugParamSchema),
+  getCategoryBySlug
+);
+
+// Authenticated admin endpoints (analytics-heavy detail + mutations)
 router.use(authenticate);
 router.use(isAdmin);
-
-// Apply API rate limiter to all category routes
 router.use(apiLimiter);
 
-// Category routes
+router.get('/:id', validateParams(categoryIdParamSchema), getCategoryById);
 router.post('/', validateBody(createCategorySchema), createCategory);
 router.put('/:id', validateParams(categoryIdParamSchema), validateBody(updateCategorySchema), updateCategory);
 router.delete('/:id', validateParams(categoryIdParamSchema), deleteCategory);
