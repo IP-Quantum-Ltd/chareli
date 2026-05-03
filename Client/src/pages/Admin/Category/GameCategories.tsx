@@ -2,12 +2,10 @@ import { Trash2, Edit } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import CreateCategory from '../../../components/single/CreateCategory-Sheet';
-import { EditCategory } from '../../../components/single/EditCategory-Sheet';
 import {
   useCategories,
   useDeleteCategory,
 } from '../../../backend/category.service';
-// import { useGames } from '../../../backend/games.service';
 import { DeleteConfirmationModal } from '../../../components/modals/DeleteConfirmationModal';
 import { toast } from 'sonner';
 import { usePermissions } from '../../../hooks/usePermissions';
@@ -16,7 +14,6 @@ export default function GameCategories() {
   const permissions = usePermissions();
   const navigate = useNavigate();
   const [createOpen, setCreateOpen] = useState(false);
-  const [editOpen, setEditOpen] = useState(false);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(
     null
   );
@@ -26,7 +23,6 @@ export default function GameCategories() {
   });
   const { mutateAsync: deleteCategory, isPending: issDeletingCategory } =
     useDeleteCategory();
-  // const { data: games, isLoading: loadingGames } = useGames();
   const isLoading = loadingCategories;
 
   const handleDelete = async () => {
@@ -36,7 +32,6 @@ export default function GameCategories() {
       toast.success('Category deleted successfully');
       setShowDeleteModal(false);
       setSelectedCategoryId(null);
-      setEditOpen(false);
     } catch (error: any) {
       console.log(error);
     }
@@ -104,8 +99,7 @@ export default function GameCategories() {
                       className="p-1 rounded transition"
                       onClick={(e) => {
                         e.stopPropagation();
-                        setSelectedCategoryId(cat.id);
-                        setEditOpen(true);
+                        navigate(`/admin/categories/${cat.id}/edit`);
                       }}
                     >
                       <Edit className="dark:text-white w-5 h-5 text-black cursor-pointer" />
@@ -179,13 +173,6 @@ export default function GameCategories() {
         description="This action cannot be reversed"
       />
       <CreateCategory open={createOpen} onOpenChange={setCreateOpen} />
-      {editOpen && selectedCategoryId && (
-        <EditCategory
-          open={editOpen}
-          onOpenChange={setEditOpen}
-          categoryId={selectedCategoryId}
-        />
-      )}
     </div>
   );
 }
