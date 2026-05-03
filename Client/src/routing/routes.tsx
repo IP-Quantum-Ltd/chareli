@@ -46,6 +46,9 @@ const GameCategories = lazy(
 const CategoryDetail = lazy(
   () => import('../pages/Admin/Category/CategoryDetail')
 );
+const EditCategory = lazy(
+  () => import('../pages/Admin/Category/EditCategory')
+);
 const UserManagementView = lazy(() => import('../pages/Admin/UserMgtView'));
 const MyProposals = lazy(() => import('../pages/Admin/Proposals/MyProposals'));
 const AdminProposals = lazy(() => import('../pages/Admin/Proposals/AdminProposals'));
@@ -122,6 +125,7 @@ export const routes = [
               { path: 'game-library', element: <SuspenseWrapper><GameLibrary /></SuspenseWrapper> },
               { path: 'categories', element: <SuspenseWrapper><GameCategories /></SuspenseWrapper> },
               { path: 'categories/:categoryId', element: <SuspenseWrapper><CategoryDetail /></SuspenseWrapper> },
+              { path: 'categories/:categoryId/edit', element: <SuspenseWrapper><EditCategory /></SuspenseWrapper> },
               { path: 'management', element: <SuspenseWrapper><UserManagement /></SuspenseWrapper> },
               { path: 'management/:userId', element: <SuspenseWrapper><UserManagementView /></SuspenseWrapper> },
               { path: 'team', element: <SuspenseWrapper><TeamManagement /></SuspenseWrapper> },

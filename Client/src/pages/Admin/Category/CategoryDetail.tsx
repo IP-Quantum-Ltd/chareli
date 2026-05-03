@@ -9,7 +9,6 @@ import { TbCalendarClock } from "react-icons/tb";
 import { FaTrophy, FaMedal } from "react-icons/fa";
 import { Button } from "../../../components/ui/button";
 import { useCategoryById, useDeleteCategory } from "../../../backend/category.service";
-import { EditCategory } from "../../../components/single/EditCategory-Sheet";
 import { DeleteConfirmationModal } from "../../../components/modals/DeleteConfirmationModal";
 import { toast } from "sonner";
 import { usePermissions } from "../../../hooks/usePermissions";
@@ -20,7 +19,6 @@ export default function CategoryDetail() {
   const navigate = useNavigate();
   const permissions = usePermissions();
   const [currentPage, setCurrentPage] = useState(1);
-  const [editOpen, setEditOpen] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   const { mutateAsync: deleteCategory, isPending: isDeletingCategory } = useDeleteCategory();
@@ -102,7 +100,9 @@ export default function CategoryDetail() {
                 <Button
                   variant="outline"
                   className="flex items-center justify-center gap-2 w-full border-2 border-[white] text-[#475568] bg-transparent dark:border-2 dark:border-white dark:text-white cursor-pointer"
-                  onClick={() => setEditOpen(true)}
+                  onClick={() =>
+                    navigate(`/admin/categories/${categoryId}/edit`)
+                  }
                 >
                   Edit <CiEdit className="dark:text-white" />
                 </Button>
@@ -353,13 +353,6 @@ export default function CategoryDetail() {
         description="This action cannot be reversed"
       />
 
-      {editOpen && categoryId && (
-        <EditCategory
-          open={editOpen}
-          onOpenChange={setEditOpen}
-          categoryId={categoryId}
-        />
-      )}
     </div>
   );
 }

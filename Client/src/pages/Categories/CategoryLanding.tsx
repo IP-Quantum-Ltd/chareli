@@ -1,17 +1,22 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useMemo } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import { LuPenLine } from 'react-icons/lu';
 import { useCategoryBySlug } from '../../backend/category.service';
 import { useGameClickHandler } from '../../hooks/useGameClickHandler';
 import { useDocumentMeta } from '../../hooks/useDocumentMeta';
+import { usePermissions } from '../../hooks/usePermissions';
 import { LazyImage } from '../../components/ui/LazyImage';
 import GamesSkeleton from '../../components/single/GamesSkeleton';
 import { CategorySchemaLD } from '../../components/single/CategorySchemaLD';
+import { CategoriesSidebar } from '../../components/single/CategoriesSidebar';
 import { CATEGORY_FAQ_QUESTIONS } from '../../utils/categoryFaq';
 import emptyGameImg from '../../assets/empty-game.png';
 
 export default function CategoryLanding() {
   const { slug } = useParams<{ slug: string }>();
+  const navigate = useNavigate();
+  const permissions = usePermissions();
   const [page, setPage] = useState(1);
   const { data, isLoading, error } = useCategoryBySlug(slug, {
     page,
@@ -45,33 +50,39 @@ export default function CategoryLanding() {
 
   if (isLoading) {
     return (
-      <div className="min-h-[calc(100vh-80px)] bg-white dark:bg-[#0f1221] p-4 lg:p-8">
-        <GamesSkeleton count={12} showCategories={false} />
+      <div className="flex flex-col lg:flex-row min-h-[calc(100vh-80px)] bg-white dark:bg-[#0f1221]">
+        <CategoriesSidebar activeCategorySlug={slug} />
+        <div className="flex-1 p-4 lg:p-8">
+          <GamesSkeleton count={12} showCategories={false} />
+        </div>
       </div>
     );
   }
 
   if (error || !category) {
     return (
-      <div className="min-h-[calc(100vh-80px)] flex flex-col items-center justify-center text-center bg-white dark:bg-[#0f1221] p-8">
-        <h1 className="text-2xl font-worksans text-[#121C2D] dark:text-white mb-2">
-          Category not found
-        </h1>
-        <p className="text-[#6A7282] dark:text-gray-300 mb-6">
-          The category you're looking for doesn't exist or has been moved.
-        </p>
-        <Link
-          to="/categories"
-          className="text-[#6A7282] underline font-dmmono"
-        >
-          Browse all categories
-        </Link>
+      <div className="flex flex-col lg:flex-row min-h-[calc(100vh-80px)] bg-white dark:bg-[#0f1221]">
+        <CategoriesSidebar activeCategorySlug={slug} />
+        <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
+          <h1 className="text-2xl font-worksans text-[#121C2D] dark:text-white mb-2">
+            Category not found
+          </h1>
+          <p className="text-[#6A7282] dark:text-gray-300 mb-6">
+            The category you're looking for doesn't exist or has been moved.
+          </p>
+          <Link
+            to="/categories"
+            className="text-[#6A7282] underline font-dmmono"
+          >
+            Browse all categories
+          </Link>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-[calc(100vh-80px)] bg-white dark:bg-[#0f1221]">
+    <div className="flex flex-col lg:flex-row min-h-[calc(100vh-80px)] bg-white dark:bg-[#0f1221]">
       <CategorySchemaLD
         name={category.name}
         slug={category.slug}
@@ -81,7 +92,9 @@ export default function CategoryLanding() {
         faqItems={faqItems}
       />
 
-      <div className="max-w-7xl mx-auto p-4 lg:p-8">
+      <CategoriesSidebar activeCategorySlug={category.slug} />
+
+      <div className="flex-1 p-4 lg:p-8">
         <header className="mb-6">
           <nav className="text-sm text-[#6A7282] dark:text-gray-400 mb-2 font-worksans">
             <Link to="/categories" className="hover:underline">
@@ -90,9 +103,21 @@ export default function CategoryLanding() {
             <span className="mx-2">/</span>
             <span>{category.name}</span>
           </nav>
-          <h1 className="text-3xl lg:text-4xl font-worksans text-[#121C2D] dark:text-white m-0">
-            {category.name} Games
-          </h1>
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+            <h1 className="text-3xl lg:text-4xl font-worksans text-[#121C2D] dark:text-white m-0">
+              {category.name} Games
+            </h1>
+            {permissions.hasAdminAccess && (
+              <button
+                type="button"
+                onClick={() => navigate(`/admin/categories/${category.id}/edit`)}
+                className="flex items-center gap-2 self-start px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-gray-700 dark:text-gray-300 text-sm font-semibold font-worksans cursor-pointer"
+              >
+                <LuPenLine className="w-4 h-4" />
+                Edit Category
+              </button>
+            )}
+          </div>
           {category.description && (
             <p className="mt-3 text-[#475568] dark:text-gray-300 font-worksans text-base max-w-3xl">
               {category.description}
