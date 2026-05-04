@@ -105,6 +105,7 @@ class ApplicationRuntime:
             critic_plan_node=CriticPlanNode(
                 self.critic,
                 min_coverage_score=config.queue.critic_min_coverage_score,
+                best_coverage_score=config.queue.critic_best_coverage_score,
             ),
             audit_content_node=AuditContentNode(
                 self.auditor,

@@ -68,6 +68,7 @@ class QueueConfig:
     max_draft_revisions: int
     job_retention_hours: int
     critic_min_coverage_score: int
+    critic_best_coverage_score: int
     auditor_min_factual_score: int
     auditor_min_completeness_score: int
     stage0_required_candidates: int

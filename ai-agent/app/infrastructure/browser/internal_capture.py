@@ -37,16 +37,10 @@ class InternalCaptureService:
         playwright, browser = await self._browser_factory.launch()
         context = await self._browser_factory.new_internal_context(browser)
         page = await context.new_page()
+        preview_url = f"{self._config.client_url}/gameplay/{proposal_id}"
         try:
             page.set_default_timeout(self._config.internal_page_timeout_ms)
             page.set_default_navigation_timeout(self._config.internal_page_timeout_ms)
-            await page.goto(f"{self._config.client_url}/admin/login", wait_until="domcontentloaded", timeout=self._config.internal_page_timeout_ms)
-            await page.fill('input[type="email"]', self._config.admin_email)
-            await page.fill('input[type="password"]', self._config.admin_password)
-            await page.click('button[type="submit"]')
-            await page.wait_for_url("**/admin", timeout=self._config.internal_page_timeout_ms)
-
-            preview_url = f"{self._config.client_url}/gameplay/{proposal_id}"
             await page.goto(preview_url, wait_until="domcontentloaded", timeout=self._config.internal_page_timeout_ms)
             await page.wait_for_selector("iframe", state="visible", timeout=self._config.internal_page_timeout_ms)
 
@@ -118,26 +112,21 @@ class InternalCaptureService:
             )
         except asyncio.TimeoutError as exc:
             raise TimeoutError(f"Thumbnail capture timed out for game {game_id}.") from exc
-        gameplay_result: Dict[str, Any] = {}
-        gameplay_error = ""
         try:
             gameplay_result = await asyncio.wait_for(
                 self.capture_proposal_gameplay(game_id, str(gameplay_path)),
                 timeout=max(20, (self._config.internal_page_timeout_ms / 1000) * 3),
             )
         except asyncio.TimeoutError as exc:
-            gameplay_error = f"Gameplay capture timed out for game {game_id}."
-        except Exception as exc:
-            gameplay_error = str(exc)
+            raise TimeoutError(f"Gameplay capture timed out for game {game_id}.") from exc
         return CaptureArtifacts(
             game_id=game_id,
             game_title=title,
             thumbnail_url=thumbnail_url,
-            paths=[str(thumbnail_path), *([str(gameplay_path)] if gameplay_result.get("paths") else [])],
+            paths=[str(thumbnail_path), str(gameplay_path)],
             metadata={
                 "thumbnail_url": thumbnail_url,
                 "gameplay_capture": gameplay_result.get("metadata", {}),
-                "gameplay_capture_available": bool(gameplay_result.get("paths")),
-                "gameplay_capture_error": gameplay_error,
+                "gameplay_capture_available": True,
             },
         )

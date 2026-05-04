@@ -63,6 +63,7 @@ def build_runtime_config(app_settings: AppSettings) -> RuntimeConfig:
             max_draft_revisions=app_settings.MAX_DRAFT_REVISIONS,
             job_retention_hours=app_settings.JOB_RETENTION_HOURS,
             critic_min_coverage_score=app_settings.CRITIC_MIN_COVERAGE_SCORE,
+            critic_best_coverage_score=app_settings.CRITIC_BEST_COVERAGE_SCORE,
             auditor_min_factual_score=app_settings.AUDITOR_MIN_FACTUAL_SCORE,
             auditor_min_completeness_score=app_settings.AUDITOR_MIN_COMPLETENESS_SCORE,
             stage0_required_candidates=max(1, app_settings.STAGE0_REQUIRED_CANDIDATES),
