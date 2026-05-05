@@ -99,10 +99,11 @@ uvicorn app.main:app --reload --port 8000
 For LangGraph local dev:
 
 ```bash
-langgraph dev
+venv/bin/langgraph dev
 ```
 
 The default LangGraph dev server port is `2024`. The graph name is `ai_review_agent`.
+If you use a globally installed `langgraph` CLI instead of the project virtualenv, you can hit package-version mismatches between `langgraph-api` and `langgraph-runtime-inmem`.
 
 ## Environment Setup
 

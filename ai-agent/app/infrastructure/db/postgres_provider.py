@@ -30,7 +30,7 @@ class PostgresProvider:
             return None
         import asyncpg
 
-        self._pool = await asyncpg.create_pool(dsn=dsn, min_size=1, max_size=4, statement_cache_size=0)
+        self._pool = await asyncpg.create_pool(dsn=dsn, min_size=1, max_size=4, statement_cache_size=0, timeout=20)
         return self._pool
 
     async def close(self) -> None:

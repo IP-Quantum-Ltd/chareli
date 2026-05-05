@@ -1,5 +1,6 @@
 from typing import Optional
 
+import certifi
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
 from app.config import MongoConfig
@@ -16,7 +17,7 @@ class MongoProvider:
             return self._db
         if not self._config.url:
             return None
-        self._client = AsyncIOMotorClient(self._config.url)
+        self._client = AsyncIOMotorClient(self._config.url, tlsCAFile=certifi.where())
         self._db = self._client[self._config.database_name]
         return self._db
 
