@@ -1,0 +1,7 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "ai_review_agent": "./app/langgraph_entry.py:graph"
+  },
+  "env": "./.env"
+}
