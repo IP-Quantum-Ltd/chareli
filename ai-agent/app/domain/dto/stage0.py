@@ -6,7 +6,8 @@ from typing import Any, Dict, List, Optional
 class CaptureArtifacts:
     game_id: str
     game_title: str
-    paths: List[str]
+    paths: List[str]       # S3 keys for the uploaded artifacts
+    image_urls: List[str]  # presigned URLs for direct LLM use — no base64, no memory overhead
     metadata: Dict[str, Any] = field(default_factory=dict)
     thumbnail_url: str = ""
 

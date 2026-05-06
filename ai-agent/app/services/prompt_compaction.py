@@ -7,7 +7,6 @@ from app.services.json_utils import sanitize_for_json
 
 _OMIT_KEYS = {
     "embedding",
-    "internal_imgs_base64",
     "screenshot_base64",
 }
 

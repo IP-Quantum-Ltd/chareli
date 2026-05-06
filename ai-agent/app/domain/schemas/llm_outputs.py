@@ -159,3 +159,20 @@ class SeoOptimizerOutput(BaseModel):
     faq_schema: List[FaqSchemaItemOutput] = Field(default_factory=list)
     heading_audit: Dict[str, Any] = Field(default_factory=dict)
     evaluation: OptimizerEvaluationOutput = Field(default_factory=OptimizerEvaluationOutput)
+
+
+class GameMetadataOutput(BaseModel):
+    howToPlay: str = ""
+    faqOverride: str = ""
+    features: List[str] = Field(default_factory=list)
+    tags: List[str] = Field(default_factory=list)
+    seoKeywords: str = ""
+    developer: str = ""
+    platform: List[str] = Field(default_factory=lambda: ["Browser"])
+    releaseDate: str = ""
+
+
+class ProposedGameDataOutput(BaseModel):
+    title: str = ""
+    description: str = ""
+    metadata: GameMetadataOutput = Field(default_factory=GameMetadataOutput)

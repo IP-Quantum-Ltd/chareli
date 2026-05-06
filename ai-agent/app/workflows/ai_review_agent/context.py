@@ -5,10 +5,11 @@ class AgentState(TypedDict, total=False):
     proposal_id: str
     game_id: str
     game_title: str
+    proposal_type: str  # "create" | "update"
     proposal_snapshot: Dict[str, Any]
     submit_review: bool
     internal_capture_metadata: Dict[str, Any]
-    internal_imgs_base64: list[str]
+    internal_imgs_urls: list[str]
     internal_imgs_paths: list[str]
     investigation: Dict[str, Any]
     seo_blueprint: Dict[str, Any]
@@ -18,6 +19,7 @@ class AgentState(TypedDict, total=False):
     article: str
     audit_report: Dict[str, Any]
     optimization: Dict[str, Any]
+    proposed_game_data: Dict[str, Any]
     revision_history: list[Dict[str, Any]]
     plan_revision_count: int
     draft_revision_count: int
@@ -46,9 +48,10 @@ def build_initial_state(
         "game_id": game_id,
         "game_title": "",
         "proposal_snapshot": {},
+        "proposal_type": "update",
         "submit_review": submit_review,
         "internal_capture_metadata": {},
-        "internal_imgs_base64": [],
+        "internal_imgs_urls": [],
         "internal_imgs_paths": [],
         "investigation": {},
         "seo_blueprint": {},
@@ -58,6 +61,7 @@ def build_initial_state(
         "article": "",
         "audit_report": {},
         "optimization": {},
+        "proposed_game_data": {},
         "revision_history": [],
         "plan_revision_count": 0,
         "draft_revision_count": 0,
@@ -79,9 +83,10 @@ def ensure_state_defaults(state: Dict[str, Any]) -> Dict[str, Any]:
     state.setdefault("game_id", "")
     state.setdefault("game_title", "")
     state.setdefault("proposal_snapshot", {})
+    state.setdefault("proposal_type", "update")
     state.setdefault("submit_review", False)
     state.setdefault("internal_capture_metadata", {})
-    state.setdefault("internal_imgs_base64", [])
+    state.setdefault("internal_imgs_urls", [])
     state.setdefault("internal_imgs_paths", [])
     state.setdefault("investigation", {})
     state.setdefault("seo_blueprint", {})
@@ -91,6 +96,7 @@ def ensure_state_defaults(state: Dict[str, Any]) -> Dict[str, Any]:
     state.setdefault("article", "")
     state.setdefault("audit_report", {})
     state.setdefault("optimization", {})
+    state.setdefault("proposed_game_data", {})
     state.setdefault("revision_history", [])
     state.setdefault("plan_revision_count", 0)
     state.setdefault("draft_revision_count", 0)

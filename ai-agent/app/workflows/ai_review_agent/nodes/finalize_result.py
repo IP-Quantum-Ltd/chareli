@@ -1,15 +1,17 @@
+import logging
 from typing import Any, Awaitable, Callable
 
 try:
     from langsmith import traceable
-except ModuleNotFoundError:  # pragma: no cover - exercised in lightweight test environments
+except ModuleNotFoundError:  # pragma: no cover
     def traceable(*args: Any, **kwargs: Any) -> Callable[[Callable[..., Awaitable[Any]]], Callable[..., Awaitable[Any]]]:
         def decorator(func: Callable[..., Awaitable[Any]]) -> Callable[..., Awaitable[Any]]:
             return func
-
         return decorator
 
 from app.workflows.ai_review_agent.context import record_stage
+
+logger = logging.getLogger(__name__)
 
 
 class FinalizeResultNode:
@@ -31,6 +33,7 @@ class FinalizeResultNode:
             "confidence_score": review.confidence_score,
             "metrics": review.metrics,
             "review": state["review"],
+            "proposed_game_data": state.get("proposed_game_data") or {},
             "optimization": state.get("optimization") or {},
             "final_article": state.get("article") or "",
             "audit_report": state.get("audit_report") or {},

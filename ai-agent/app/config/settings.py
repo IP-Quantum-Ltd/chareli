@@ -9,6 +9,9 @@ class AppSettings(BaseSettings):
 
     ARCADE_API_BASE_URL: str
     ARCADE_API_TOKEN: str
+    SERVICE_EMAIL: str = ""
+    SERVICE_PASSWORD: str = ""
+    SERVICE_USER_ID: str = ""
 
     OPENAI_API_KEY: str
     ANTHROPIC_API_KEY: str = ""
@@ -19,8 +22,8 @@ class AppSettings(BaseSettings):
     OPENAI_WEB_SEARCH_MODEL: str = "gpt-5.4-mini"
 
     CLIENT_URL: str = "https://staging.arcadesbox.com/"
-    SUPERADMIN_EMAIL: str
-    SUPERADMIN_PASSWORD: str
+    SUPERADMIN_EMAIL: str = ""
+    SUPERADMIN_PASSWORD: str = ""
     BROWSER_VIEWPORT_WIDTH: int = 1280
     BROWSER_VIEWPORT_HEIGHT: int = 800
     EXTERNAL_PAGE_TIMEOUT_MS: int = 45000
@@ -43,14 +46,32 @@ class AppSettings(BaseSettings):
     MONGODB_VECTOR_INDEX: str = "stage2_grounded_context_vector_index"
     MONGODB_EVALUATION_COLLECTION: str = "agent_evaluations"
 
+    # Storage — same env vars as the Node server so a single .env covers both
+    STORAGE_PROVIDER: str = "s3"  # 's3' | 'r2' | 'local'
+    AWS_REGION: str = "us-east-1"
+    AWS_ACCESS_KEY_ID: str = ""
+    AWS_SECRET_ACCESS_KEY: str = ""
+    AWS_S3_BUCKET: str = ""
+    AWS_S3_ENDPOINT: str = ""
+    AWS_S3_FORCE_PATH_STYLE: bool = False
+    CLOUDFLARE_ACCOUNT_ID: str = ""
+    R2_ACCESS_KEY_ID: str = ""
+    R2_SECRET_ACCESS_KEY: str = ""
+    R2_BUCKET_NAME: str = ""
+    R2_PUBLIC_URL: str = ""
+    AI_AGENT_S3_PREFIX: str = "ai-agent/stage0"
+
     WEBHOOK_SECRET: str = ""
     CRON_INTERVAL_MINUTES: int = 15
     MAX_PLAN_REVISIONS: int = 2
     MAX_DRAFT_REVISIONS: int = 2
     JOB_RETENTION_HOURS: int = 24
-    CRITIC_MIN_COVERAGE_SCORE: int = 70
+    CRITIC_MIN_COVERAGE_SCORE: int = 60
+    CRITIC_BEST_COVERAGE_SCORE: int = 70
     AUDITOR_MIN_FACTUAL_SCORE: int = 75
     AUDITOR_MIN_COMPLETENESS_SCORE: int = 70
+    MAX_PIPELINE_RETRIES: int = 3
+    PIPELINE_DATA_COMPLETENESS_THRESHOLD: int = 65
     STAGE0_REQUIRED_CANDIDATES: int = 5
     STAGE0_MIN_CANDIDATES: int = 3
     STAGE0_MAX_SEARCH_RESULTS: int = 5

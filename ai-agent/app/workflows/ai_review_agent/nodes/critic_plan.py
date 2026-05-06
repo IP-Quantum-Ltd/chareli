@@ -2,9 +2,10 @@ from app.workflows.ai_review_agent.context import record_stage
 
 
 class CriticPlanNode:
-    def __init__(self, content_critic_service, min_coverage_score: int = 70):
+    def __init__(self, content_critic_service, min_coverage_score: int = 60, best_coverage_score: int = 70):
         self.critic = content_critic_service
         self.min_coverage_score = max(0, min(min_coverage_score, 100))
+        self.best_coverage_score = max(self.min_coverage_score, min(best_coverage_score, 100))
 
     async def __call__(self, state):
         if state["status"] == "failed":
@@ -32,7 +33,10 @@ class CriticPlanNode:
                 "reasoning": validation.get("reasoning", ""),
             }
         )
-        if coverage_score >= self.min_coverage_score and state["plan_revision_count"] >= state["max_plan_revisions"]:
+        if coverage_score >= self.best_coverage_score:
+            state["status"] = "plan_approved"
+            record_stage(state, "critic", "completed", f"Plan auto-approved with best coverage score of {coverage_score}.")
+        elif coverage_score >= self.min_coverage_score and state["plan_revision_count"] >= state["max_plan_revisions"]:
             warning = (
                 f"Stage 4 Critic requested more revisions, but the plan reached an acceptable coverage score of "
                 f"{coverage_score}. Continuing with warnings."

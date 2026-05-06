@@ -1,4 +1,6 @@
 import asyncio
+import shutil
+import tempfile
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -11,6 +13,7 @@ from app.domain.dto import CaptureArtifacts
 from app.infrastructure.browser.browser_session_factory import BrowserSessionFactory
 from app.infrastructure.browser.page_extractors import dismiss_accept_overlay, wait_for_iframe_render
 from app.infrastructure.db.repositories.game_repository import GameRepository
+from app.infrastructure.storage.s3_storage_service import S3StorageService
 
 
 def resolve_thumbnail_url(game_row: Optional[Dict[str, Any]]) -> Optional[str]:
@@ -28,25 +31,27 @@ def resolve_thumbnail_url(game_row: Optional[Dict[str, Any]]) -> Optional[str]:
 
 
 class InternalCaptureService:
-    def __init__(self, config: BrowserConfig, browser_factory: BrowserSessionFactory, game_repository: GameRepository):
+    def __init__(
+        self,
+        config: BrowserConfig,
+        browser_factory: BrowserSessionFactory,
+        game_repository: GameRepository,
+        s3: S3StorageService,
+    ):
         self._config = config
         self._browser_factory = browser_factory
         self._game_repository = game_repository
+        self._s3 = s3
 
     async def capture_proposal_gameplay(self, proposal_id: str, output_path: str) -> Dict[str, Any]:
+        """Navigate directly to the public gameplay preview and screenshot it."""
         playwright, browser = await self._browser_factory.launch()
         context = await self._browser_factory.new_internal_context(browser)
         page = await context.new_page()
+        preview_url = f"{self._config.client_url}/gameplay/{proposal_id}"
         try:
             page.set_default_timeout(self._config.internal_page_timeout_ms)
             page.set_default_navigation_timeout(self._config.internal_page_timeout_ms)
-            await page.goto(f"{self._config.client_url}/admin/login", wait_until="domcontentloaded", timeout=self._config.internal_page_timeout_ms)
-            await page.fill('input[type="email"]', self._config.admin_email)
-            await page.fill('input[type="password"]', self._config.admin_password)
-            await page.click('button[type="submit"]')
-            await page.wait_for_url("**/admin", timeout=self._config.internal_page_timeout_ms)
-
-            preview_url = f"{self._config.client_url}/gameplay/{proposal_id}"
             await page.goto(preview_url, wait_until="domcontentloaded", timeout=self._config.internal_page_timeout_ms)
             await page.wait_for_selector("iframe", state="visible", timeout=self._config.internal_page_timeout_ms)
 
@@ -99,45 +104,75 @@ class InternalCaptureService:
                 await browser.close()
                 await playwright.stop()
 
-    async def capture_stage0_internal_assets(self, game_id: str, artifact_dir: str) -> CaptureArtifacts:
+    async def capture_stage0_internal_assets(self, game_id: str, proposal_id: str) -> CaptureArtifacts:
+        """Capture thumbnail + gameplay, upload both to S3, return in-memory bytes.
+
+        A temporary directory is used for Playwright's output and is removed
+        immediately after the S3 uploads complete — nothing persists on disk.
+        """
         game_row = await self._game_repository.get_public_game_with_thumbnail_by_id(game_id)
         if not game_row:
             raise RuntimeError(f"Could not fetch game {game_id} from public.games")
         title = game_row.get("title") or game_id
-        output_root = Path(artifact_dir)
-        await asyncio.to_thread(output_root.mkdir, parents=True, exist_ok=True)
-        thumbnail_path = output_root / "internal_thumbnail.png"
-        gameplay_path = output_root / "internal_gameplay.png"
         thumbnail_url = resolve_thumbnail_url(game_row)
         if not thumbnail_url:
             raise RuntimeError(f"No thumbnail URL found for game {game_id}")
+
+        tmpdir = Path(await asyncio.to_thread(tempfile.mkdtemp, prefix="arcadebox_cap_"))
         try:
-            await asyncio.wait_for(
-                self.capture_thumbnail_preview(thumbnail_url, str(thumbnail_path)),
-                timeout=max(10, self._config.internal_page_timeout_ms / 1000 + 5),
+            thumbnail_tmp = str(tmpdir / "internal_thumbnail.png")
+            gameplay_tmp = str(tmpdir / "internal_gameplay.png")
+
+            # --- thumbnail ---
+            try:
+                await asyncio.wait_for(
+                    self.capture_thumbnail_preview(thumbnail_url, thumbnail_tmp),
+                    timeout=max(10, self._config.internal_page_timeout_ms / 1000 + 5),
+                )
+            except asyncio.TimeoutError as exc:
+                raise TimeoutError(f"Thumbnail capture timed out for game {game_id}.") from exc
+
+            # --- gameplay (mandatory — fail fast if browser cannot reach it) ---
+            try:
+                await asyncio.wait_for(
+                    self.capture_proposal_gameplay(game_id, gameplay_tmp),
+                    timeout=max(20, (self._config.internal_page_timeout_ms / 1000) * 3),
+                )
+            except asyncio.TimeoutError as exc:
+                raise TimeoutError(f"Gameplay capture timed out for game {game_id}.") from exc
+
+            thumb_key = self._s3.proposal_key(proposal_id, "internal_thumbnail.png")
+            play_key = self._s3.proposal_key(proposal_id, "internal_gameplay.png")
+
+            # Upload both concurrently while files still exist in tmpdir
+            thumb_bytes = await asyncio.to_thread(Path(thumbnail_tmp).read_bytes)
+            play_bytes = await asyncio.to_thread(Path(gameplay_tmp).read_bytes)
+
+            await asyncio.gather(
+                self._s3.upload(thumb_key, thumb_bytes, "image/png"),
+                self._s3.upload(play_key, play_bytes, "image/png"),
             )
-        except asyncio.TimeoutError as exc:
-            raise TimeoutError(f"Thumbnail capture timed out for game {game_id}.") from exc
-        gameplay_result: Dict[str, Any] = {}
-        gameplay_error = ""
-        try:
-            gameplay_result = await asyncio.wait_for(
-                self.capture_proposal_gameplay(game_id, str(gameplay_path)),
-                timeout=max(20, (self._config.internal_page_timeout_ms / 1000) * 3),
-            )
-        except asyncio.TimeoutError as exc:
-            gameplay_error = f"Gameplay capture timed out for game {game_id}."
-        except Exception as exc:
-            gameplay_error = str(exc)
+            # Bytes no longer needed — generate presigned URLs for the LLM
+            del thumb_bytes, play_bytes
+
+        finally:
+            await asyncio.to_thread(shutil.rmtree, str(tmpdir), True)
+
+        # Presigned URLs generated after tmpdir cleanup — S3 objects are already persisted
+        thumb_url, play_url = await asyncio.gather(
+            self._s3.image_url(thumb_key),
+            self._s3.image_url(play_key),
+        )
+
         return CaptureArtifacts(
             game_id=game_id,
             game_title=title,
             thumbnail_url=thumbnail_url,
-            paths=[str(thumbnail_path), *([str(gameplay_path)] if gameplay_result.get("paths") else [])],
+            paths=[thumb_key, play_key],
+            image_urls=[thumb_url, play_url],
             metadata={
                 "thumbnail_url": thumbnail_url,
-                "gameplay_capture": gameplay_result.get("metadata", {}),
-                "gameplay_capture_available": bool(gameplay_result.get("paths")),
-                "gameplay_capture_error": gameplay_error,
+                "gameplay_capture": {"preview_url": f"{self._config.client_url}/gameplay/{game_id}", "source": "proposal_gameplay"},
+                "gameplay_capture_available": True,
             },
         )
