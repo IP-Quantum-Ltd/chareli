@@ -1,7 +1,6 @@
-import base64
 import json
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 from fastapi import APIRouter, HTTPException
 
@@ -11,43 +10,33 @@ from app.runtime import get_runtime
 router = APIRouter(prefix="/stage0")
 
 
-def _proposal_dir(game_id: str) -> Path:
-    return Path(__file__).resolve().parents[1] / "stage0_artifacts" / game_id
-
-
 def _load_json(path: Path) -> Dict[str, Any]:
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"File not found: {path.name}")
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _artifact_paths(game_id: str) -> Stage0ArtifactPaths:
-    proposal_dir = _proposal_dir(game_id)
+def _artifact_paths(game_id: str, s3: Any) -> Stage0ArtifactPaths:
     return Stage0ArtifactPaths(
-        internal_thumbnail_path=str(proposal_dir / "internal_thumbnail.png"),
-        internal_gameplay_path=str(proposal_dir / "internal_gameplay.png"),
-        comparison_scores_path=str(proposal_dir / "comparison_scores.json"),
-        research_findings_path=str(Path(__file__).resolve().parents[1] / f"research_findings_{game_id}.json"),
-        stage0_manifest_path=str(proposal_dir / "stage0_manifest.json"),
+        internal_thumbnail_path=s3.proposal_key(game_id, "internal_thumbnail.png"),
+        internal_gameplay_path=s3.proposal_key(game_id, "internal_gameplay.png"),
+        comparison_scores_path=s3.proposal_key(game_id, "comparison_scores.json"),
+        research_findings_path=s3.proposal_key(game_id, "research_findings.json"),
+        stage0_manifest_path=s3.proposal_key(game_id, "stage0_manifest.json"),
     )
 
 
 @router.post("/run", tags=["Stage 0"], response_model=Stage0RunResponse)
 async def run_stage0(payload: Stage0RunRequest) -> Stage0RunResponse:
     runtime = get_runtime()
-    proposal_dir = _proposal_dir(payload.game_id)
-    proposal_dir.mkdir(parents=True, exist_ok=True)
+    proposal_id = payload.game_id
 
-    capture_result = await runtime.internal_capture.capture_stage0_internal_assets(payload.game_id, str(proposal_dir))
-    internal_base64: List[str] = []
-    for path_str in capture_result.paths:
-        with open(path_str, "rb") as handle:
-            internal_base64.append(base64.b64encode(handle.read()).decode("utf-8"))
+    capture_result = await runtime.internal_capture.capture_stage0_internal_assets(payload.game_id, proposal_id)
 
     result = await runtime.visual_verification.verify_and_research(
-        proposal_id=payload.game_id,
+        proposal_id=proposal_id,
         game_title=capture_result.game_title,
-        internal_screenshots=internal_base64,
+        internal_screenshots=capture_result.image_urls,
     )
     best_match = (result.get("best_match") or {}) if isinstance(result, dict) else {}
     all_candidates = result.get("all_candidates") or []
@@ -60,7 +49,7 @@ async def run_stage0(payload: Stage0RunRequest) -> Stage0RunResponse:
         candidate_count=len(all_candidates),
         best_match_url=best_match.get("url", ""),
         confidence_score=int(best_match.get("confidence_score") or 0),
-        artifact_paths=_artifact_paths(payload.game_id),
+        artifact_paths=_artifact_paths(proposal_id, runtime.s3_storage),
     )
 
 

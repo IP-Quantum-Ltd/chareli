@@ -28,10 +28,10 @@ class ContentDraftingService:
         )
         article = await self.ai.chat_completion(
             messages=[
-                {"role": "system", "content": "You are a professional Content Creator for ArcadeBox. Respond with high-quality Markdown."},
-                {"role": "user", "content": f"Task: Write a highly engaging, SEO-optimized guide for the game '{game_title}' on ArcadeBox.\n\nFact Sheet (The Ground Truth):\n{json_dumps_safe(compact_fact_sheet, indent=2)}\n\nReturn the full Markdown article."},
+                {"role": "system", "content": "You are a professional Content Creator for ArcadeBox. Respond with well-structured HTML using semantic tags: <h2>, <h3>, <p>, <ul>, <li>, <strong>, <em>, <blockquote>. No Markdown."},
+                {"role": "user", "content": f"Task: Write a highly engaging, SEO-optimized guide for the game '{game_title}' on ArcadeBox.\n\nFact Sheet (The Ground Truth):\n{json_dumps_safe(compact_fact_sheet, indent=2)}\n\nDo not include any external URLs, links, or image references in the article.\n\nReturn the full HTML article (only the body content, no <html>/<body> tags)."},
             ],
-            fallback_data=f"# {game_title} Guide\n\n[Drafting failed. Research data missing.]",
+            fallback_data=f"<h2>{game_title} Guide</h2>\n<p>[Drafting failed. Research data missing.]</p>",
         )
         self.last_cost = self.ai.last_cost
         return article

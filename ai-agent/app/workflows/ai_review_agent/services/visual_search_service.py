@@ -13,9 +13,9 @@ class VisualSearchService:
 
     def _input_images(self, internal_images: List[str]) -> List[Dict[str, str]]:
         return [
-            {"type": "input_image", "image_url": f"data:image/png;base64,{image_b64}"}
-            for image_b64 in internal_images
-            if image_b64
+            {"type": "input_image", "image_url": url}
+            for url in internal_images
+            if url
         ]
 
     async def search_candidates(self, title: str, internal_images: List[str], search_query: str, exact_identity: Dict[str, Any], count: int = 10) -> Dict[str, Any]:

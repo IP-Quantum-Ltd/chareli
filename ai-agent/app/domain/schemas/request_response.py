@@ -29,6 +29,13 @@ class AgentRunResponse(BaseModel):
     game_id: str
 
 
+class ProposalRunResponse(BaseModel):
+    accepted: bool
+    job_id: str
+    status: str
+    proposal_id: str
+
+
 class JobStatusResponse(BaseModel):
     job_id: str
     status: str

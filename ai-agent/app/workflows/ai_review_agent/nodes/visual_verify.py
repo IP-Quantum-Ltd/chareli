@@ -11,7 +11,7 @@ class VisualVerifyNode:
         result = await self.visual_librarian.verify_and_research(
             proposal_id=state["proposal_id"],
             game_title=state["game_title"],
-            internal_screenshots=state["internal_imgs_base64"],
+            internal_screenshots=state["internal_imgs_urls"],
         )
         state["accumulated_cost"] = float(state.get("accumulated_cost") or 0.0) + self.visual_librarian.last_cost
         if result["status"] == "failed":

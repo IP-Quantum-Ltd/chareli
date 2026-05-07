@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import Optional
 
 from app.config import RuntimeConfig, get_runtime_config
@@ -11,6 +10,7 @@ from app.infrastructure.db.repositories.game_repository import GameRepository
 from app.infrastructure.external.arcade_api_client import ArcadeApiClient
 from app.infrastructure.llm.client_factory import AIClientFactory
 from app.infrastructure.storage.artifact_store import ArtifactStore
+from app.infrastructure.storage.s3_storage_service import S3StorageService
 from app.services.job_store import InMemoryJobStore
 from app.services.queue import InMemoryJobQueue
 from app.workflows.ai_review_agent.nodes.audit_content import AuditContentNode
@@ -18,6 +18,7 @@ from app.workflows.ai_review_agent.nodes.capture_internal_assets import CaptureI
 from app.workflows.ai_review_agent.nodes.critic_plan import CriticPlanNode
 from app.workflows.ai_review_agent.nodes.draft_content import DraftContentNode
 from app.workflows.ai_review_agent.nodes.finalize_result import FinalizeResultNode
+from app.workflows.ai_review_agent.nodes.format_proposed_data import FormatProposedDataNode
 from app.workflows.ai_review_agent.nodes.grounded_retrieve import GroundedRetrieveNode
 from app.workflows.ai_review_agent.nodes.initialize_agent import InitializeAgentNode
 from app.workflows.ai_review_agent.nodes.optimize_content import OptimizeContentNode
@@ -49,10 +50,11 @@ class ApplicationRuntime:
         self.game_repository = GameRepository(self.postgres_provider)
         self.arcade_client = ArcadeApiClient(config.arcade_api)
         self.ai_factory = AIClientFactory(config.llm, config.observability)
-        self.artifact_store = ArtifactStore(Path(__file__).resolve().parents[0])
+        self.s3_storage = S3StorageService(config.storage)
+        self.artifact_store = ArtifactStore(self.s3_storage)
         self.browser_factory = BrowserSessionFactory(config.browser)
-        self.internal_capture = InternalCaptureService(config.browser, self.browser_factory, self.game_repository)
-        self.external_capture = ExternalCaptureService(config.browser, self.browser_factory)
+        self.internal_capture = InternalCaptureService(config.browser, self.browser_factory, self.game_repository, self.s3_storage)
+        self.external_capture = ExternalCaptureService(config.browser, self.browser_factory, self.s3_storage)
 
         self.visual_search = VisualSearchService(self.ai_factory.create_executor())
         self.visual_correlation = VisualCorrelationService()
@@ -96,7 +98,7 @@ class ApplicationRuntime:
                 game_repository=self.game_repository,
                 proposal_context_builder=ProposalContextBuilder(),
             ),
-            capture_node=CaptureInternalAssetsNode(self.internal_capture, self.artifact_store),
+            capture_node=CaptureInternalAssetsNode(self.internal_capture),
             visual_verify_node=VisualVerifyNode(self.visual_verification),
             seo_analyze_node=SeoAnalyzeNode(self.analyst),
             grounded_retrieve_node=GroundedRetrieveNode(self.librarian),
@@ -105,6 +107,7 @@ class ApplicationRuntime:
             critic_plan_node=CriticPlanNode(
                 self.critic,
                 min_coverage_score=config.queue.critic_min_coverage_score,
+                best_coverage_score=config.queue.critic_best_coverage_score,
             ),
             audit_content_node=AuditContentNode(
                 self.auditor,
@@ -112,9 +115,12 @@ class ApplicationRuntime:
                 min_completeness_score=config.queue.auditor_min_completeness_score,
             ),
             optimize_content_node=OptimizeContentNode(self.optimizer),
+            format_proposed_data_node=FormatProposedDataNode(self.ai_factory.create_executor()),
             finalize_result_node=FinalizeResultNode(ReviewMapper()),
             max_plan_revisions=config.queue.max_plan_revisions,
             max_draft_revisions=config.queue.max_draft_revisions,
+            max_pipeline_retries=config.queue.max_pipeline_retries,
+            pipeline_data_completeness_threshold=config.queue.pipeline_data_completeness_threshold,
         )
 
     async def process_job(self, job_id: str) -> None:

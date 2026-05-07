@@ -11,8 +11,6 @@ class ArcadeApiConfig:
 @dataclass(frozen=True)
 class BrowserConfig:
     client_url: str
-    admin_email: str
-    admin_password: str
     viewport_width: int
     viewport_height: int
     external_page_timeout_ms: int
@@ -62,14 +60,31 @@ class MongoConfig:
 
 
 @dataclass(frozen=True)
+class StorageConfig:
+    provider: str  # 's3' | 'r2' | 'local'
+    bucket: str
+    region: str
+    access_key_id: str
+    secret_access_key: str
+    endpoint_url: str
+    force_path_style: bool
+    public_url: str
+    prefix: str
+    local_root: str = ""  # only used when provider='local'
+
+
+@dataclass(frozen=True)
 class QueueConfig:
     cron_interval_minutes: int
     max_plan_revisions: int
     max_draft_revisions: int
     job_retention_hours: int
     critic_min_coverage_score: int
+    critic_best_coverage_score: int
     auditor_min_factual_score: int
     auditor_min_completeness_score: int
+    max_pipeline_retries: int
+    pipeline_data_completeness_threshold: int
     stage0_required_candidates: int
     stage0_min_candidates: int
     stage0_max_search_results: int
@@ -87,3 +102,4 @@ class RuntimeConfig:
     postgres: PostgresConfig
     mongo: MongoConfig
     queue: QueueConfig
+    storage: StorageConfig

@@ -13,7 +13,6 @@ class DraftContentNode:
         article = await self.scribe.draft_from_facts(
             state["game_title"],
             {
-                "source_url": best_match["url"],
                 "facts": best_match.get("extracted_facts") or {},
                 "source_metadata": best_match.get("metadata") or {},
                 "seo": state["seo_blueprint"],

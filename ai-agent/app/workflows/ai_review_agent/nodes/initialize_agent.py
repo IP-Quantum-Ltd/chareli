@@ -21,21 +21,41 @@ class InitializeAgentNode:
             if proposal_id:
                 logger.info("Node: Initialize | Proposal: %s", proposal_id)
                 proposal = await self.arcade_client.get_proposal(proposal_id)
+                proposal_type = str(proposal.get("type") or "update").lower()
                 derived_game_id = self.proposal_context_builder.extract_game_id(proposal)
-                if not derived_game_id:
-                    raise ValueError(
-                        f"Proposal {proposal_id} does not include a game id, so the canonical game table cannot be queried."
-                    )
-                game_record = await self.game_repository.get_game_record(derived_game_id)
-                if not game_record:
-                    raise ValueError(f"Game {derived_game_id} was not found in the Postgres game table.")
-                proposal_with_game = self.proposal_context_builder.merge_game_record_into_proposal(proposal, game_record)
-                game_title = self.proposal_context_builder.extract_game_title(proposal_with_game, proposal_id)
-                state["proposal_id"] = proposal_id
-                state["game_id"] = derived_game_id
-                state["game_title"] = game_title
-                state["proposal_snapshot"] = proposal_with_game
-                state["submit_review"] = submit_review
+
+                # If the agent already enriched this proposal, don't submit again
+                if proposal.get("proposedData", {}).get("aiReview"):
+                    submit_review = False
+
+                if proposal_type == "create" and not derived_game_id:
+                    # New game — no existing game record to look up; research from title only
+                    game_title = self.proposal_context_builder.extract_game_title(proposal, proposal_id)
+                    if not game_title or game_title.startswith("Game Proposal"):
+                        raise ValueError(f"CREATE proposal {proposal_id} has no game title in proposedData.")
+                    logger.info("Node: Initialize | CREATE proposal | Title: %s", game_title)
+                    state["proposal_id"] = proposal_id
+                    state["game_id"] = ""
+                    state["game_title"] = game_title
+                    state["proposal_type"] = "create"
+                    state["proposal_snapshot"] = proposal
+                    state["submit_review"] = submit_review
+                else:
+                    if not derived_game_id:
+                        raise ValueError(
+                            f"Proposal {proposal_id} does not include a game id, so the canonical game table cannot be queried."
+                        )
+                    game_record = await self.game_repository.get_game_record(derived_game_id)
+                    if not game_record:
+                        raise ValueError(f"Game {derived_game_id} was not found in the Postgres game table.")
+                    proposal_with_game = self.proposal_context_builder.merge_game_record_into_proposal(proposal, game_record)
+                    game_title = self.proposal_context_builder.extract_game_title(proposal_with_game, proposal_id)
+                    state["proposal_id"] = proposal_id
+                    state["game_id"] = derived_game_id
+                    state["game_title"] = game_title
+                    state["proposal_type"] = proposal_type
+                    state["proposal_snapshot"] = proposal_with_game
+                    state["submit_review"] = submit_review
             else:
                 if not game_id:
                     raise ValueError("The agent requires a game_id when no proposal_id is provided.")
@@ -48,7 +68,7 @@ class InitializeAgentNode:
                 state["game_id"] = game_id
                 state["game_title"] = game_title
                 state["proposal_snapshot"] = {"game": game_record, "gameId": game_id, "proposedData": {"title": game_title}}
-                state["submit_review"] = False
+                state["submit_review"] = submit_review
             state["status"] = "initialized"
             state["error_message"] = ""
             record_stage(state, "initialize", "completed", f"Initialized context for {state['game_title']}")

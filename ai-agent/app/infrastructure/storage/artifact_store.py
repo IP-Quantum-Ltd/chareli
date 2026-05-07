@@ -1,23 +1,26 @@
-import asyncio
-import json
-from pathlib import Path
-from typing import Any, Dict, List
+"""S3-backed store for Stage 0 research artifacts.
+
+All JSON documents (manifests, scores, findings) are written directly to S3.
+The store returns S3 keys so callers can reference artifacts without holding
+local file paths.
+"""
+
+import logging
+from typing import Any, Dict, List, Optional
 
 from app.domain.dto import CandidateCapture
+from app.infrastructure.storage.s3_storage_service import S3StorageService
+
+logger = logging.getLogger(__name__)
 
 
 class ArtifactStore:
-    def __init__(self, root: Path):
-        self._root = root
+    def __init__(self, s3: S3StorageService):
+        self._s3 = s3
 
-    def proposal_dir(self, proposal_id: str) -> Path:
-        return self._root / "stage0_artifacts" / proposal_id
-
-    async def ensure_proposal_dirs(self, proposal_id: str) -> tuple[Path, Path]:
-        proposal_dir = self.proposal_dir(proposal_id)
-        external_dir = proposal_dir / "external"
-        await asyncio.to_thread(external_dir.mkdir, parents=True, exist_ok=True)
-        return proposal_dir, external_dir
+    def proposal_key(self, proposal_id: str, *parts: str) -> str:
+        """Return the S3 key prefix for a proposal artifact."""
+        return self._s3.proposal_key(proposal_id, *parts)
 
     async def write_research_findings(
         self,
@@ -27,10 +30,10 @@ class ArtifactStore:
         candidates: List[CandidateCapture],
         failures: List[Dict[str, Any]],
         total_cost_usd: float,
-        best_match: Dict[str, Any] | None = None,
+        best_match: Optional[Dict[str, Any]] = None,
     ) -> str:
-        findings_path = self._root / f"research_findings_{proposal_id}.json"
-        report = {
+        """Upload research findings JSON. Returns the S3 key."""
+        payload = {
             "game_title": game_title,
             "proposal_id": proposal_id,
             "search_query": search_query,
@@ -39,58 +42,57 @@ class ArtifactStore:
             "visual_confidence": (best_match or {}).get("confidence_score", ""),
             "all_candidates": [
                 {
-                    "url": candidate.url,
-                    "confidence_score": candidate.confidence_score,
-                    "reasoning": candidate.reasoning,
-                    "extracted_facts": candidate.extracted_facts,
-                    "screenshot_path": candidate.screenshot_path,
-                    "metadata_path": candidate.metadata_path,
-                    "seo_intelligence": candidate.seo_intelligence,
-                    "scoring": candidate.scoring,
-                    "comparison_triplet": candidate.comparison_triplet,
+                    "url": c.url,
+                    "confidence_score": c.confidence_score,
+                    "reasoning": c.reasoning,
+                    "extracted_facts": c.extracted_facts,
+                    "screenshot_path": c.screenshot_path,
+                    "metadata_path": c.metadata_path,
+                    "seo_intelligence": c.seo_intelligence,
+                    "scoring": c.scoring,
+                    "comparison_triplet": c.comparison_triplet,
                 }
-                for candidate in candidates
+                for c in candidates
             ],
             "failures": failures,
         }
-        await asyncio.to_thread(findings_path.write_text, json.dumps(report, indent=4), encoding="utf-8")
-        return str(findings_path)
+        key = self._s3.proposal_key(proposal_id, "research_findings.json")
+        return await self._s3.upload_json(key, payload)
 
     async def write_comparison_scores(
         self,
-        proposal_dir: Path,
         proposal_id: str,
         game_title: str,
         search_query: str,
         candidates: List[CandidateCapture],
         failures: List[Dict[str, Any]],
     ) -> str:
-        comparison_scores_path = proposal_dir / "comparison_scores.json"
-        score_report = {
+        """Upload comparison scores JSON. Returns the S3 key."""
+        payload = {
             "proposal_id": proposal_id,
             "game_title": game_title,
             "search_query": search_query,
             "candidate_count": len(candidates),
             "candidates": [
                 {
-                    "rank": candidate.rank,
-                    "url": candidate.url,
-                    "screenshot_path": candidate.screenshot_path,
-                    "metadata_path": candidate.metadata_path,
-                    "confidence_score": candidate.confidence_score,
-                    "correlation": candidate.correlation,
-                    "seo_intelligence": candidate.seo_intelligence,
-                    "scoring": candidate.scoring,
-                    "comparison_triplet": candidate.comparison_triplet,
+                    "rank": c.rank,
+                    "url": c.url,
+                    "screenshot_path": c.screenshot_path,
+                    "metadata_path": c.metadata_path,
+                    "confidence_score": c.confidence_score,
+                    "correlation": c.correlation,
+                    "seo_intelligence": c.seo_intelligence,
+                    "scoring": c.scoring,
+                    "comparison_triplet": c.comparison_triplet,
                 }
-                for candidate in candidates
+                for c in candidates
             ],
             "failures": failures,
         }
-        await asyncio.to_thread(comparison_scores_path.write_text, json.dumps(score_report, indent=2), encoding="utf-8")
-        return str(comparison_scores_path)
+        key = self._s3.proposal_key(proposal_id, "comparison_scores.json")
+        return await self._s3.upload_json(key, payload)
 
-    async def write_manifest(self, proposal_dir: Path, payload: Dict[str, Any]) -> str:
-        manifest_path = proposal_dir / "stage0_manifest.json"
-        await asyncio.to_thread(manifest_path.write_text, json.dumps(payload, indent=2), encoding="utf-8")
-        return str(manifest_path)
+    async def write_manifest(self, proposal_id: str, payload: Dict[str, Any]) -> str:
+        """Upload stage0 manifest JSON. Returns the S3 key."""
+        key = self._s3.proposal_key(proposal_id, "stage0_manifest.json")
+        return await self._s3.upload_json(key, payload)

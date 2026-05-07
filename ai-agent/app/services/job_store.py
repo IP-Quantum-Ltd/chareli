@@ -66,6 +66,15 @@ class InMemoryJobStore:
                 return job
         return None
 
+    def find_recent_job(self, job_type: JobType, target_id: str) -> Optional[JobRecord]:
+        """Returns any non-expired job for the target regardless of status. Used by the cron
+        safety-net to skip proposals already processed within the retention window."""
+        self._purge_expired()
+        for job in self._jobs.values():
+            if job.job_type == job_type and job.target_id == target_id:
+                return job
+        return None
+
     def list_jobs(self) -> list[JobRecord]:
         self._purge_expired()
         return sorted(self._jobs.values(), key=lambda item: item.created_at, reverse=True)

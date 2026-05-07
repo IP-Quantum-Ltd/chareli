@@ -11,7 +11,7 @@ class PipelineState:
     game_title: str
     proposal_snapshot: Dict[str, Any] = field(default_factory=dict)
     internal_capture_metadata: Dict[str, Any] = field(default_factory=dict)
-    internal_imgs_base64: List[str] = field(default_factory=list)
+    internal_imgs_urls: List[str] = field(default_factory=list)
     internal_imgs_paths: List[str] = field(default_factory=list)
     investigation: Dict[str, Any] = field(default_factory=dict)
     seo_blueprint: Dict[str, Any] = field(default_factory=dict)
