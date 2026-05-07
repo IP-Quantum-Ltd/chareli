@@ -30,6 +30,7 @@ class AgentState(TypedDict, total=False):
     stage_trace: list[Dict[str, Any]]
     review: Dict[str, Any]
     result_payload: Dict[str, Any]
+    seo_meta: Dict[str, Any]
     warnings: list[str]
     status: str
     error_message: str
@@ -72,6 +73,7 @@ def build_initial_state(
         "stage_trace": [],
         "review": {},
         "result_payload": {},
+        "seo_meta": {},
         "warnings": [],
         "status": "starting",
         "error_message": "",
@@ -107,6 +109,7 @@ def ensure_state_defaults(state: Dict[str, Any]) -> Dict[str, Any]:
     state.setdefault("stage_trace", [])
     state.setdefault("review", {})
     state.setdefault("result_payload", {})
+    state.setdefault("seo_meta", {})
     state.setdefault("warnings", [])
     state.setdefault("status", "starting")
     state.setdefault("error_message", "")

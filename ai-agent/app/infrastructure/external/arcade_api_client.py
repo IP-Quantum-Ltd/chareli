@@ -52,12 +52,13 @@ class ArcadeApiClient:
         proposal_id: str,
         review: Dict[str, Any],
         proposed_game_data: Optional[Dict[str, Any]] = None,
+        seo_meta: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Submit AI review + structured game data to the server.
 
         proposedData layout:
           - top-level game fields (title, description, metadata) → applied to Game on approval
-          - aiReview → decision context shown to admin (recommendation, confidence, findings)
+          - aiReview → decision context shown to admin (recommendation, confidence, findings, seo_meta)
         """
         metrics = review.get("metrics") or {}
         ai_review_context = {
@@ -71,6 +72,7 @@ class ArcadeApiClient:
             "total_cost_usd": metrics.get("total_cost_usd"),
             "warnings": review.get("warnings") or [],
             "stage_trace": review.get("stage_trace") or [],
+            "seo_meta": seo_meta or {},
         }
 
         proposed_data: Dict[str, Any] = dict(proposed_game_data or {})

@@ -196,11 +196,12 @@ class AiReviewAgentWorkflow:
         game_id = final_state.get("game_id") or ""
         proposed_game_data = final_state.get("proposed_game_data") or {}
         review = final_state.get("review") or {}
+        seo_meta = final_state.get("seo_meta") or {}
 
         # Case 1: existing proposal (not same as game_id) — try PUT /game-proposals/:id
         if proposal_id and proposal_id != game_id:
             try:
-                await self.arcade_client.submit_review(proposal_id, review, proposed_game_data)
+                await self.arcade_client.submit_review(proposal_id, review, proposed_game_data, seo_meta)
                 logger.info("[workflow] Updated proposal %s with enriched data", proposal_id)
                 return
             except Exception as exc:
@@ -215,7 +216,7 @@ class AiReviewAgentWorkflow:
             new_proposal_id = (new_proposal or {}).get("id") or ""
             logger.info("[workflow] Created new proposal %s for game %s", new_proposal_id, game_id)
             if new_proposal_id:
-                await self.arcade_client.submit_review(new_proposal_id, review, {})
+                await self.arcade_client.submit_review(new_proposal_id, review, {}, seo_meta)
                 logger.info("[workflow] Attached aiReview to new proposal %s", new_proposal_id)
         except Exception as exc:
             logger.warning("[workflow] Failed to create proposal for game %s: %s", game_id, exc)
