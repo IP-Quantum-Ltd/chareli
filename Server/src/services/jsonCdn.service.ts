@@ -154,7 +154,16 @@ class JsonCdnService {
 
       const categories = await categoryRepository.find({
         order: { name: 'ASC' },
-        select: ['id', 'name', 'description', 'isDefault', 'createdAt'],
+        select: [
+          'id',
+          'name',
+          'slug',
+          'description',
+          'introText',
+          'faqAnswers',
+          'isDefault',
+          'createdAt',
+        ],
       });
 
       const json = {
@@ -199,6 +208,7 @@ class JsonCdnService {
           category: {
             id: true,
             name: true,
+            slug: true,
             description: true,
           },
           createdBy: {
@@ -334,6 +344,7 @@ class JsonCdnService {
             category: {
               id: true,
               name: true,
+              slug: true,
               description: true,
             },
             createdBy: {
@@ -446,6 +457,7 @@ class JsonCdnService {
           category: {
             id: true,
             name: true,
+            slug: true,
             description: true,
           },
           createdBy: {
@@ -524,16 +536,21 @@ class JsonCdnService {
       const gameRepository = AppDataSource.getRepository(Game);
       const categoryRepository = AppDataSource.getRepository(Category);
 
-      // Fetch all active games
+      // Fetch all active games + their category slug for canonical URLs
       const games = await gameRepository.find({
         where: { ...publiclyVisibleGameFilter },
-        select: ['slug', 'updatedAt'],
+        relations: ['category'],
+        select: {
+          slug: true,
+          updatedAt: true,
+          category: { slug: true },
+        },
         order: { updatedAt: 'DESC' },
       });
 
       // Fetch all categories
       const categories = await categoryRepository.find({
-        select: ['name', 'id'],
+        select: ['name', 'id', 'slug'],
         order: { name: 'ASC' },
       });
 
@@ -582,8 +599,18 @@ class JsonCdnService {
 
       for (const game of games) {
         const lastmod = game.updatedAt.toISOString().split('T')[0];
+        // Skip games without a category slug rather than emit a 404-prone URL.
+        // Should never happen post-migration (every game auto-assigns to
+        // "General" if no category is supplied) — log if it does so a
+        // missing entry doesn't disappear from search engines silently.
+        if (!game.category?.slug) {
+          logger.warn('Sitemap: skipping game without category slug', {
+            gameSlug: game.slug,
+          });
+          continue;
+        }
         xml += `  <url>
-    <loc>${baseUrl}/games/${game.slug}</loc>
+    <loc>${baseUrl}/gameplay/${game.category.slug}/${game.slug}</loc>
     <lastmod>${lastmod}</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
@@ -596,9 +623,8 @@ class JsonCdnService {
   <!-- Category Pages -->
 `;
       for (const category of categories) {
-        const categorySlug = category.name.toLowerCase().replace(/\s+/g, '-');
         xml += `  <url>
-    <loc>${baseUrl}/categories/${categorySlug}</loc>
+    <loc>${baseUrl}/categories/${category.slug}</loc>
     <lastmod>${today}</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -682,6 +708,7 @@ Disallow: /
           category: {
             id: true,
             name: true,
+            slug: true,
             description: true,
           },
           createdBy: {

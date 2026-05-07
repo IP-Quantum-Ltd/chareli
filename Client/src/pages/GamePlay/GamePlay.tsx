@@ -19,12 +19,40 @@ import { GameSchemaLD } from '../../components/single/GameSchemaLD';
 import { GameInfoSection } from '../../components/single/GameInfoSection';
 import { RecommendedGamesGrid } from '../../components/single/RecommendedGamesGrid';
 import { usePermissions } from '../../hooks/usePermissions';
+import { useDocumentMeta } from '../../hooks/useDocumentMeta';
 
 export default function GamePlay() {
-  const { gameId } = useParams();
+  // categorySlug isn't read directly — the redirect effect compares the full
+  // pathname to the canonical, so any stale category prefix (rename or
+  // game-category change) is corrected without explicitly reading it here.
+  const { gameId, gameSlug } = useParams<{
+    gameId?: string;
+    gameSlug?: string;
+  }>();
   const navigate = useNavigate();
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const { data: game, isLoading, error } = useGameById(gameId || '');
+  // Identifier hits the legacy or new route; server resolves UUID or slug.
+  const identifier = gameSlug || gameId || '';
+  const { data: game, isLoading, error } = useGameById(identifier);
+
+  // Redirect any non-canonical URL to /gameplay/<category>/<game-slug>:
+  //   - legacy /gameplay/:gameId paths (UUID or bare slug)
+  //   - /gameplay/:categorySlug/:gameSlug where categorySlug is stale after
+  //     a category rename or game-category change.
+  useEffect(() => {
+    if (!game?.slug || !game.category?.slug) return;
+    const canonical = `/gameplay/${game.category.slug}/${game.slug}`;
+    if (window.location.pathname !== canonical) {
+      navigate(canonical, { replace: true });
+    }
+  }, [game?.slug, game?.category?.slug, navigate]);
+
+  useDocumentMeta(
+    game ? `${game.title} | Arcadesbox` : undefined,
+    game?.description
+      ? game.description.replace(/\s+/g, ' ').slice(0, 160)
+      : undefined
+  );
   const { mutate: createAnalytics } = useCreateAnalytics();
   const { mutate: updateAnalytics } = useUpdateAnalytics();
   const analyticsIdRef = useRef<string | null>(null);
@@ -63,15 +91,16 @@ export default function GamePlay() {
   const [likeCount, setLikeCount] = useState(game?.likeCount ?? 999); // TEST: Changed from 100 to 999 to verify this is the source
   const [isAnimating, setIsAnimating] = useState(false);
 
-  // Load guest like state from localStorage
+  // Load guest like state from localStorage. Keyed by game.id (stable UUID)
+  // so the entry survives URL redirects between legacy and slug-based routes.
   useEffect(() => {
-    if (!isAuthenticated && gameId) {
+    if (!isAuthenticated && game?.id) {
       const guestLikes = JSON.parse(localStorage.getItem('guestLikes') || '{}');
-      if (guestLikes[gameId]) {
+      if (guestLikes[game.id]) {
         setHasLiked(true);
       }
     }
-  }, [gameId, isAuthenticated]);
+  }, [game?.id, isAuthenticated]);
 
   // Sync hasLiked state with game data for authenticated users
   useEffect(() => {
@@ -85,7 +114,8 @@ export default function GamePlay() {
 
   // Handle like button click
   const handleLikeClick = () => {
-    if (!gameId) return;
+    if (!game?.id) return;
+    const id = game.id;
 
     // Trigger animation
     setIsAnimating(true);
@@ -96,7 +126,7 @@ export default function GamePlay() {
       if (hasLiked) {
         setHasLiked(false);
         setLikeCount(likeCount - 1);
-        unlikeGame(gameId, {
+        unlikeGame(id, {
           onError: () => {
             setHasLiked(true);
             setLikeCount(likeCount + 1);
@@ -105,7 +135,7 @@ export default function GamePlay() {
       } else {
         setHasLiked(true);
         setLikeCount(likeCount + 1);
-        likeGame(gameId, {
+        likeGame(id, {
           onError: () => {
             setHasLiked(false);
             setLikeCount(likeCount - 1);
@@ -118,13 +148,13 @@ export default function GamePlay() {
 
       if (hasLiked) {
         // Unlike
-        delete guestLikes[gameId];
+        delete guestLikes[id];
         localStorage.setItem('guestLikes', JSON.stringify(guestLikes));
         setHasLiked(false);
         setLikeCount(likeCount - 1);
       } else {
         // Like
-        guestLikes[gameId] = true;
+        guestLikes[id] = true;
         localStorage.setItem('guestLikes', JSON.stringify(guestLikes));
         setHasLiked(true);
         setLikeCount(likeCount + 1);
@@ -157,7 +187,8 @@ export default function GamePlay() {
     };
   }, [isMobile, expanded]);
 
-  // Reset loading states when gameId changes (for similar games navigation)
+  // Reset loading states when the route's game identifier changes
+  // (covers similar-games nav across either the legacy or slug-based route).
   useEffect(() => {
     setIsGameLoading(true);
     setLoadProgress(0);
@@ -167,21 +198,19 @@ export default function GamePlay() {
     if (typeof window !== 'undefined') {
       window.scrollTo(0, 0);
     }
-  }, [gameId]);
+  }, [identifier]);
 
   // Scroll management: Keep users at the top (main game area) when they arrive
   useEffect(() => {
-    // Scroll to top when component mounts or gameId changes
     window.scrollTo({ top: 0, behavior: 'instant' });
 
-    // Also ensure the game container is visible
     if (gameContainerRef.current) {
       gameContainerRef.current.scrollIntoView({
         behavior: 'instant',
         block: 'start',
       });
     }
-  }, [gameId]);
+  }, [identifier]);
 
   // Prevent auto-scroll when page loads
   useEffect(() => {
@@ -728,7 +757,7 @@ export default function GamePlay() {
               <div>
                 <GameBreadcrumb
                   categoryName={game.category?.name}
-                  categoryId={game.category?.id}
+                  categorySlug={game.category?.slug}
                   gameTitle={game.title}
                 />
               </div>

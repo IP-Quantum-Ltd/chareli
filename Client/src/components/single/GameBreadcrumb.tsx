@@ -10,7 +10,7 @@ import {
 
 interface GameBreadcrumbProps {
   categoryName?: string;
-  categoryId?: string;
+  categorySlug?: string;
   gameTitle: string;
   overrideLink?: string;
   overrideText?: string;
@@ -18,7 +18,7 @@ interface GameBreadcrumbProps {
 
 export function GameBreadcrumb({
   categoryName,
-  categoryId,
+  categorySlug,
   gameTitle,
   overrideLink,
   overrideText,
@@ -41,11 +41,11 @@ export function GameBreadcrumb({
             </BreadcrumbItem>
             <BreadcrumbSeparator />
           </>
-        ) : categoryName && categoryId ? (
+        ) : categoryName && categorySlug ? (
           <>
             <BreadcrumbItem>
               <BreadcrumbLink asChild>
-                <Link to={`/categories?category=${categoryId}`}>
+                <Link to={`/categories/${categorySlug}`}>
                   {categoryName}
                 </Link>
               </BreadcrumbLink>

@@ -15,6 +15,9 @@ const RegisterInvitationPage = lazy(() =>
 const MainLayout = lazy(() => import('../layout/MainLayout'));
 const GamePlay = lazy(() => import('../pages/GamePlay/GamePlay'));
 const Categories = lazy(() => import('../pages/Categories/Categories'));
+const CategoryLanding = lazy(
+  () => import('../pages/Categories/CategoryLanding')
+);
 const ResetPasswordPage = lazy(() =>
   import('../pages/ResetPassword/ResetPasswordPage').then((module) => ({
     default: module.ResetPasswordPage,
@@ -42,6 +45,9 @@ const GameCategories = lazy(
 );
 const CategoryDetail = lazy(
   () => import('../pages/Admin/Category/CategoryDetail')
+);
+const EditCategory = lazy(
+  () => import('../pages/Admin/Category/EditCategory')
 );
 const UserManagementView = lazy(() => import('../pages/Admin/UserMgtView'));
 const MyProposals = lazy(() => import('../pages/Admin/Proposals/MyProposals'));
@@ -76,7 +82,9 @@ export const routes = [
           { index: true, element: <SuspenseWrapper><Home /></SuspenseWrapper> },
           { path: 'about', element: <SuspenseWrapper><About /></SuspenseWrapper> },
           { path: 'categories', element: <SuspenseWrapper><Categories /></SuspenseWrapper> },
+          { path: 'categories/:slug', element: <SuspenseWrapper><CategoryLanding /></SuspenseWrapper> },
           { path: 'gameplay/:gameId', element: <SuspenseWrapper><GamePlay /></SuspenseWrapper> },
+          { path: 'gameplay/:categorySlug/:gameSlug', element: <SuspenseWrapper><GamePlay /></SuspenseWrapper> },
           { path: 'terms', element: <SuspenseWrapper><Terms /></SuspenseWrapper> },
           { path: 'privacy', element: <SuspenseWrapper><Privacy /></SuspenseWrapper> },
         ],
@@ -117,6 +125,7 @@ export const routes = [
               { path: 'game-library', element: <SuspenseWrapper><GameLibrary /></SuspenseWrapper> },
               { path: 'categories', element: <SuspenseWrapper><GameCategories /></SuspenseWrapper> },
               { path: 'categories/:categoryId', element: <SuspenseWrapper><CategoryDetail /></SuspenseWrapper> },
+              { path: 'categories/:categoryId/edit', element: <SuspenseWrapper><EditCategory /></SuspenseWrapper> },
               { path: 'management', element: <SuspenseWrapper><UserManagement /></SuspenseWrapper> },
               { path: 'management/:userId', element: <SuspenseWrapper><UserManagementView /></SuspenseWrapper> },
               { path: 'team', element: <SuspenseWrapper><TeamManagement /></SuspenseWrapper> },

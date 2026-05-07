@@ -4,6 +4,7 @@ import { SignupAnalytics } from '../entities/SignupAnalytics';
 import { User } from '../entities/User';
 import { getCountryFromIP, extractClientIP, getIPCacheStats } from '../utils/ipUtils';
 import { AdminExclusionService } from '../services/adminExclusion.service';
+import { todayBoundaries } from '../utils/timezonePeriod';
 
 const signupAnalyticsRepository = AppDataSource.getRepository(SignupAnalytics);
 
@@ -166,7 +167,7 @@ export const trackSignupClick = async (
  *         name: period
  *         schema:
  *           type: string
- *           enum: [last24hours, last7days, last30days, custom]
+ *           enum: [today, last7days, last30days, custom]
  *         description: Time period filter
  *       - in: query
  *         name: startDate
@@ -201,7 +202,8 @@ export const getSignupAnalyticsData = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { period, startDate: queryStartDate, endDate: queryEndDate, country, days } = req.query;
+    const { period, startDate: queryStartDate, endDate: queryEndDate, country, days, timezone } = req.query;
+    const userTimezone = (timezone as string) || 'UTC';
 
     // Handle country filter
     const countries = Array.isArray(country) ? country as string[] : country ? [country as string] : [];
@@ -213,9 +215,11 @@ export const getSignupAnalyticsData = async (
     if (period) {
       // Use period-based filtering (same as dashboard analytics)
       switch (period) {
-        case 'last24hours':
-          startDate = new Date(endDate.getTime() - 24 * 60 * 60 * 1000);
+        case 'today': {
+          const b = todayBoundaries(endDate, userTimezone);
+          startDate = b.currentStart;
           break;
+        }
         case 'last7days':
           startDate = new Date(endDate.getTime() - 7 * 24 * 60 * 60 * 1000);
           break;

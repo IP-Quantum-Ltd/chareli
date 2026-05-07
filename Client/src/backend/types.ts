@@ -7,10 +7,20 @@ export interface Role {
   updatedAt: string;
 }
 
+export interface CategoryFaqAnswers {
+  whatAre?: string;
+  mostPopular?: string;
+  doINeedToDownload?: string;
+  areTheyFree?: string;
+}
+
 export interface Category {
   id: string;
   name: string;
+  slug: string;
   description?: string;
+  introText?: string | null;
+  faqAnswers?: CategoryFaqAnswers | null;
   isDefault: boolean;
   games?: Game[];
   gameCount?: number;
@@ -119,6 +129,8 @@ export interface GameFile {
 
 export interface SimilarGame {
   id: string;
+  slug: string;
+  category?: { slug: string; name: string };
   title: string;
   description: string;
   thumbnailFile?: GameFile;

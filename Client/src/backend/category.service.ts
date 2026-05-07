@@ -46,6 +46,32 @@ export const useCategories = (options?: { sortBy?: string; skipCdn?: boolean }) 
 };
 
 /**
+ * Public slug-based landing payload (no analytics).
+ */
+export const useCategoryBySlug = (
+  slug: string | undefined,
+  params?: { page?: number; limit?: number }
+) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return useQuery<any>({
+    queryKey: [BackendRoute.CATEGORY_BY_SLUG, slug, params],
+    enabled: !!slug,
+    queryFn: async () => {
+      const response = await backendService.get(
+        BackendRoute.CATEGORY_BY_SLUG.replace(':slug', slug as string),
+        { params, suppressErrorToast: true }
+      );
+      return response.data;
+    },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    retry: (failureCount, error: any) => {
+      if (error?.response?.status === 404) return false;
+      return failureCount < 3;
+    },
+  });
+};
+
+/**
  * Hook to fetch a specific category by ID
  * @param id - Category ID
  * @param params - Optional pagination parameters
@@ -82,10 +108,15 @@ export const useCategoryById = (
  * Hook to create a new category
  * @returns Mutation function to create a category
  */
+type CreateCategoryInput = Omit<
+  Category,
+  'id' | 'slug' | 'createdAt' | 'updatedAt'
+>;
+
 export const useCreateCategory = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: Omit<Category, 'id' | 'createdAt' | 'updatedAt'>) =>
+    mutationFn: (data: CreateCategoryInput) =>
       backendService.post(BackendRoute.CATEGORIES, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [BackendRoute.CATEGORIES] });
