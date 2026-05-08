@@ -5,7 +5,9 @@ import { useGames } from '../../backend/games.service';
 import { useCategories } from '../../backend/category.service';
 import { useGameClickHandler } from '../../hooks/useGameClickHandler';
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import GamesSkeleton from './GamesSkeleton';
+import { CategoryEditorial } from './CategoryEditorial';
 import './AllGamesSection.css';
 import { trackInteraction } from '../../utils/analytics';
 
@@ -13,11 +15,22 @@ import emptyGameImg from '../../assets/empty-game.png';
 
 interface AllGamesSectionProps {
   searchQuery: string;
+  /**
+   * Optional category slug from the URL (when the user is on /<slug>).
+   * Used to pre-select the category tab on mount and after the categories
+   * list loads. Updates to this prop also re-sync the selected category
+   * (handles browser back/forward between root-level slug URLs).
+   */
+  initialCategorySlug?: string;
 }
 
 const GAMES_PER_PAGE = 40;
 
-const AllGamesSection = ({ searchQuery }: AllGamesSectionProps) => {
+const AllGamesSection = ({
+  searchQuery,
+  initialCategorySlug,
+}: AllGamesSectionProps) => {
+  const navigate = useNavigate();
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [screenSize, setScreenSize] = useState<'mobile' | 'tablet' | 'desktop'>(
     'mobile'
@@ -45,6 +58,19 @@ const AllGamesSection = ({ searchQuery }: AllGamesSectionProps) => {
 
   const { data: categoriesData, isLoading: categoriesLoading } =
     useCategories();
+
+  // Sync URL slug → selectedCategory once categories have loaded. Re-runs when
+  // the prop changes so browser back/forward between root-level slug URLs
+  // (e.g. /action ↔ /quiz ↔ /) keeps the active tab in sync.
+  useEffect(() => {
+    if (!categoriesData) return;
+    if (!initialCategorySlug) {
+      setSelectedCategory('all');
+      return;
+    }
+    const match = categoriesData.find((c) => c.slug === initialCategorySlug);
+    setSelectedCategory(match ? match.id : 'all');
+  }, [initialCategorySlug, categoriesData]);
 
   const shouldUsePagination = selectedCategory !== 'recent';
 
@@ -98,6 +124,13 @@ const AllGamesSection = ({ searchQuery }: AllGamesSectionProps) => {
     const category = allCategories.find((cat) => cat.id === selectedCategory);
     return category?.name || 'All Games';
   }, [selectedCategory, allCategories]);
+
+  // The full Category object for the active filter, used to render the
+  // editorial blocks below the grid. Null when on All / Recently Added.
+  const filteredCategory = useMemo(() => {
+    if (selectedCategory === 'all' || selectedCategory === 'recent') return null;
+    return categoriesData?.find((c) => c.id === selectedCategory) ?? null;
+  }, [selectedCategory, categoriesData]);
 
   // 1. Reset Effect: Handles Category/Search changes
   useEffect(() => {
@@ -379,7 +412,21 @@ const AllGamesSection = ({ searchQuery }: AllGamesSectionProps) => {
                         ? 'bg-[#64748A]'
                         : 'bg-[#94A3B8]'
                     }`}
-                    onClick={() => setSelectedCategory(category.id)}
+                    onClick={() => {
+                      // Sync URL for primary categories (a real category id with
+                      // a slug). 'all' and 'recent' (and any synthetic id without
+                      // a slug) just update in-page filter state.
+                      const fullCat = categoriesData?.find(
+                        (c) => c.id === category.id
+                      );
+                      if (fullCat?.slug) {
+                        navigate(`/${fullCat.slug}`);
+                      } else if (category.id === 'all') {
+                        navigate('/');
+                      } else {
+                        setSelectedCategory(category.id);
+                      }
+                    }}
                     title={category.name.length > 18 ? category.name : undefined}
                   >
                     <h3 className="block truncate text-sm font-medium m-0 font-worksans">
@@ -513,6 +560,12 @@ const AllGamesSection = ({ searchQuery }: AllGamesSectionProps) => {
           )}
         </Card>
       </div>
+
+      {filteredCategory && (
+        <div className="px-4">
+          <CategoryEditorial category={filteredCategory} />
+        </div>
+      )}
     </div>
   );
 };

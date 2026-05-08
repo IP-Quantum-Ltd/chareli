@@ -1,7 +1,8 @@
-import { useState, Suspense, lazy, useEffect } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useState, Suspense, lazy, useEffect, useMemo } from "react";
+import { useSearchParams, useParams } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { useSystemConfigByKey } from "../../backend/configuration.service";
+import { useCategories } from "../../backend/category.service";
 import { useDocumentMeta } from "../../hooks/useDocumentMeta";
 
 const PopularSection = lazy(
@@ -42,10 +43,29 @@ const SectionFallback = ({ title, count = 9 }: { title: string; count?: number }
 );
 
 function Home() {
-  useDocumentMeta(
-    'Arcadesbox — Free Online Games',
-    'Play free online games at Arcadesbox. Browse popular categories, discover new releases, and jump straight into the fun in your browser.'
-  );
+  const { slug } = useParams<{ slug?: string }>();
+  const { data: categoriesData } = useCategories();
+
+  // Resolve slug → category for SEO + meta override on the homepage filter view.
+  const filteredCategory = useMemo(() => {
+    if (!slug || !categoriesData) return null;
+    return categoriesData.find((c) => c.slug === slug) ?? null;
+  }, [slug, categoriesData]);
+
+  const docTitle = filteredCategory
+    ? `${filteredCategory.name} Games | Arcadesbox`
+    : 'Arcadesbox — Free Online Games';
+  const docDescription = filteredCategory
+    ? (filteredCategory.introText || filteredCategory.description || `Play ${filteredCategory.name} games online at Arcadesbox.`)
+        .toString()
+        .slice(0, 160)
+    : 'Play free online games at Arcadesbox. Browse popular categories, discover new releases, and jump straight into the fun in your browser.';
+  const canonicalOverride = filteredCategory
+    ? `https://www.arcadesbox.com/categories/${filteredCategory.slug}`
+    : undefined;
+
+  useDocumentMeta(docTitle, docDescription, canonicalOverride);
+
   const [isSignUpModalOpen, setIsSignUpModalOpen] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -105,7 +125,7 @@ function Home() {
         />
       </Suspense>
       <Suspense fallback={<SectionFallback title="All games" count={9} />}>
-        <AllGamesSection searchQuery={searchQuery} />
+        <AllGamesSection searchQuery={searchQuery} initialCategorySlug={slug} />
       </Suspense>
       {isPublicAuthEnabled && (
         <>

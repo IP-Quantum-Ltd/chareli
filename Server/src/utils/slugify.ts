@@ -59,11 +59,30 @@ export async function generateUniqueSlug(
   }
 }
 
+/**
+ * Slugs that would collide with top-level client routes if used at root
+ * (the homepage exposes `/<category-slug>` as a filtered view, so a category
+ * slug equal to one of these would shadow the named route). The guard
+ * appends `-cat` to keep collisions from ever happening even if a name is
+ * deliberately chosen.
+ */
+const RESERVED_CATEGORY_SLUGS = new Set([
+  'about',
+  'admin',
+  'categories',
+  'gameplay',
+  'privacy',
+  'register-invitation',
+  'reset-password',
+  'terms',
+]);
+
 export async function generateUniqueCategorySlug(
   name: string,
   excludeId?: string
 ): Promise<string> {
-  const baseSlug = slugify(name);
+  const raw = slugify(name);
+  const baseSlug = RESERVED_CATEGORY_SLUGS.has(raw) ? `${raw}-cat` : raw;
   let slug = baseSlug;
   let counter = 1;
 

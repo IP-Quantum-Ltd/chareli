@@ -251,6 +251,26 @@ describe('AllGamesSection Business Logic', () => {
         expect(url.startsWith('/gameplay/')).toBe(true)
       })
     })
+
+    it('should generate root-level category URLs for homepage tab clicks', () => {
+      // Mirrors AllGamesSection's primary-category click handler:
+      // - 'all' synthetic id navigates to /
+      // - real category id with a slug navigates to /<slug>
+      // - 'recent' synthetic id keeps the URL the same (state-only)
+      const buildUrl = (
+        synthetic: 'all' | 'recent' | 'real',
+        slug?: string
+      ): string | null => {
+        if (synthetic === 'all') return '/'
+        if (synthetic === 'real' && slug) return `/${slug}`
+        return null // 'recent' or anything without a slug => no nav
+      }
+
+      expect(buildUrl('all')).toBe('/')
+      expect(buildUrl('real', 'action')).toBe('/action')
+      expect(buildUrl('real', 'general')).toBe('/general')
+      expect(buildUrl('recent')).toBeNull()
+    })
   })
 
   describe('Image Handling Logic', () => {

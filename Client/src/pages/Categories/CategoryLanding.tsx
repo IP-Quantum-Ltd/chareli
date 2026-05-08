@@ -10,6 +10,7 @@ import { LazyImage } from '../../components/ui/LazyImage';
 import GamesSkeleton from '../../components/single/GamesSkeleton';
 import { CategorySchemaLD } from '../../components/single/CategorySchemaLD';
 import { CategoriesSidebar } from '../../components/single/CategoriesSidebar';
+import { CategoryEditorial } from '../../components/single/CategoryEditorial';
 import { CATEGORY_FAQ_QUESTIONS } from '../../utils/categoryFaq';
 import emptyGameImg from '../../assets/empty-game.png';
 
@@ -200,36 +201,7 @@ export default function CategoryLanding() {
           </section>
         )}
 
-        {category.introText && (
-          <section className="mt-12 max-w-3xl">
-            <h2 className="text-2xl font-worksans text-[#121C2D] dark:text-white mb-3">
-              About {category.name} Games
-            </h2>
-            <div className="text-[#475568] dark:text-gray-300 font-worksans text-base whitespace-pre-line">
-              {category.introText}
-            </div>
-          </section>
-        )}
-
-        {faqItems.length > 0 && (
-          <section className="mt-12 max-w-3xl">
-            <h2 className="text-2xl font-worksans text-[#121C2D] dark:text-white mb-4">
-              Frequently Asked Questions
-            </h2>
-            <div className="space-y-5">
-              {faqItems.map((qa) => (
-                <div key={qa.question}>
-                  <h3 className="text-base font-semibold font-worksans text-[#121C2D] dark:text-white m-0">
-                    {qa.question}
-                  </h3>
-                  <p className="mt-1 text-[#475568] dark:text-gray-300 font-worksans text-sm">
-                    {qa.answer}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
+        <CategoryEditorial category={category} />
       </div>
     </div>
   );
