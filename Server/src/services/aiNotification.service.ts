@@ -17,16 +17,20 @@ interface ProposalCreatedPayload {
  */
 export const notifyProposalCreated = (payload: ProposalCreatedPayload): void => {
   const agentUrl = config.aiAgent?.webhookUrl;
+  const agentSecret = config.aiAgent?.webhookSecret;
 
   if (!agentUrl) {
     logger.debug('AI_AGENT_WEBHOOK_URL not configured — skipping AI notification');
     return;
   }
 
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (agentSecret) headers['X-Webhook-Secret'] = agentSecret;
+
   axios
     .post(`${agentUrl}/webhook/proposal-created`, payload, {
       timeout: 5000,
-      headers: { 'Content-Type': 'application/json' },
+      headers,
     })
     .then(() => {
       logger.info(`[aiNotification] Notified AI agent for proposal ${payload.proposalId}`);
