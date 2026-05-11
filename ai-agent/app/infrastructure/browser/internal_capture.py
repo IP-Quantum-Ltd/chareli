@@ -148,9 +148,13 @@ class InternalCaptureService:
 
             # --- gameplay (mandatory — fail fast if browser cannot reach it) ---
             try:
+                page_secs = self._config.internal_page_timeout_ms / 1000
+                # Budget: up to 2 full page-timeouts for goto+selector, plus
+                # wait_for_iframe_render (30 s loop + 5 s initial wait) + 10 s buffer.
+                gameplay_timeout = max(90, page_secs * 2 + 45)
                 await asyncio.wait_for(
                     self.capture_proposal_gameplay(game_id, gameplay_tmp),
-                    timeout=max(20, (self._config.internal_page_timeout_ms / 1000) * 3),
+                    timeout=gameplay_timeout,
                 )
             except asyncio.TimeoutError as exc:
                 raise TimeoutError(f"Gameplay capture timed out for game {game_id}.") from exc
