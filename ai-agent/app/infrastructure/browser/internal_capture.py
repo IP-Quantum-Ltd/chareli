@@ -45,6 +45,15 @@ class InternalCaptureService:
 
     async def capture_proposal_gameplay(self, proposal_id: str, output_path: str) -> Dict[str, Any]:
         """Navigate directly to the public gameplay preview and screenshot it."""
+        loop = asyncio.get_event_loop()
+        prev_handler = loop.get_exception_handler()
+
+        def _suppress_target_closed(loop, ctx):
+            if type(ctx.get("exception")).__name__ in ("TargetClosedError", "ConnectionClosedError"):
+                return
+            (prev_handler or loop.default_exception_handler)(loop, ctx)
+
+        loop.set_exception_handler(_suppress_target_closed)
         playwright, browser = await self._browser_factory.launch()
         context = await self._browser_factory.new_internal_context(browser)
         page = await context.new_page()
@@ -61,6 +70,7 @@ class InternalCaptureService:
             await game_element.screenshot(path=output_path)
             return {"paths": [output_path], "metadata": {"preview_url": preview_url, "source": "proposal_gameplay"}}
         finally:
+            loop.set_exception_handler(prev_handler)
             for coro in (context.close(), browser.close(), playwright.stop()):
                 try:
                     await coro

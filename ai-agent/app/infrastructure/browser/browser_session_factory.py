@@ -4,8 +4,20 @@ from playwright.async_api import Browser, BrowserContext, async_playwright
 
 from app.config import BrowserConfig
 
-# Required on Linux/WSL where kernel sandbox features are unavailable
-_LINUX_ARGS = ["--no-sandbox", "--disable-dev-shm-usage"] if sys.platform.startswith("linux") else []
+# Required on Linux/WSL: no kernel sandbox, no GPU (virtualized env has none)
+_LINUX_ARGS = (
+    [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+        "--disable-software-rasterizer",
+        "--no-zygote",
+        "--disable-accelerated-2d-canvas",
+    ]
+    if sys.platform.startswith("linux")
+    else []
+)
 
 
 class BrowserSessionFactory:
