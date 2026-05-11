@@ -165,6 +165,15 @@ export interface GameData {
     platform?: string[];
     faqOverride?: string;
   };
+  seoMeta?: {
+    slug?: string;
+    title_tag?: string;
+    meta_description?: string;
+    primary_h1?: string;
+    primary_keywords?: string[];
+    json_ld?: any;
+    faq_schema?: any[];
+  };
   statistics?: {
     totalSessions: number;
     uniquePlayers: number;

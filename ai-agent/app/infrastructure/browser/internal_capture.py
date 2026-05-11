@@ -45,6 +45,15 @@ class InternalCaptureService:
 
     async def capture_proposal_gameplay(self, proposal_id: str, output_path: str) -> Dict[str, Any]:
         """Navigate directly to the public gameplay preview and screenshot it."""
+        loop = asyncio.get_event_loop()
+        prev_handler = loop.get_exception_handler()
+
+        def _suppress_target_closed(loop, ctx):
+            if type(ctx.get("exception")).__name__ in ("TargetClosedError", "ConnectionClosedError"):
+                return
+            (prev_handler or loop.default_exception_handler)(loop, ctx)
+
+        loop.set_exception_handler(_suppress_target_closed)
         playwright, browser = await self._browser_factory.launch()
         context = await self._browser_factory.new_internal_context(browser)
         page = await context.new_page()
@@ -61,9 +70,12 @@ class InternalCaptureService:
             await game_element.screenshot(path=output_path)
             return {"paths": [output_path], "metadata": {"preview_url": preview_url, "source": "proposal_gameplay"}}
         finally:
-            await context.close()
-            await browser.close()
-            await playwright.stop()
+            loop.set_exception_handler(prev_handler)
+            for coro in (context.close(), browser.close(), playwright.stop()):
+                try:
+                    await coro
+                except Exception:
+                    pass
 
     async def capture_thumbnail_preview(self, thumbnail_url: str, output_path: str) -> str:
         try:
@@ -100,9 +112,11 @@ class InternalCaptureService:
                 await page.locator("img").screenshot(path=output_path)
                 return output_path
             finally:
-                await context.close()
-                await browser.close()
-                await playwright.stop()
+                for coro in (context.close(), browser.close(), playwright.stop()):
+                    try:
+                        await coro
+                    except Exception:
+                        pass
 
     async def capture_stage0_internal_assets(self, game_id: str, proposal_id: str) -> CaptureArtifacts:
         """Capture thumbnail + gameplay, upload both to S3, return in-memory bytes.
@@ -134,9 +148,13 @@ class InternalCaptureService:
 
             # --- gameplay (mandatory — fail fast if browser cannot reach it) ---
             try:
+                page_secs = self._config.internal_page_timeout_ms / 1000
+                # Budget: up to 2 full page-timeouts for goto+selector, plus
+                # wait_for_iframe_render (30 s loop + 5 s initial wait) + 10 s buffer.
+                gameplay_timeout = max(90, page_secs * 2 + 45)
                 await asyncio.wait_for(
                     self.capture_proposal_gameplay(game_id, gameplay_tmp),
-                    timeout=max(20, (self._config.internal_page_timeout_ms / 1000) * 3),
+                    timeout=gameplay_timeout,
                 )
             except asyncio.TimeoutError as exc:
                 raise TimeoutError(f"Gameplay capture timed out for game {game_id}.") from exc
