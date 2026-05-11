@@ -61,9 +61,11 @@ class InternalCaptureService:
             await game_element.screenshot(path=output_path)
             return {"paths": [output_path], "metadata": {"preview_url": preview_url, "source": "proposal_gameplay"}}
         finally:
-            await context.close()
-            await browser.close()
-            await playwright.stop()
+            for coro in (context.close(), browser.close(), playwright.stop()):
+                try:
+                    await coro
+                except Exception:
+                    pass
 
     async def capture_thumbnail_preview(self, thumbnail_url: str, output_path: str) -> str:
         try:
@@ -100,9 +102,11 @@ class InternalCaptureService:
                 await page.locator("img").screenshot(path=output_path)
                 return output_path
             finally:
-                await context.close()
-                await browser.close()
-                await playwright.stop()
+                for coro in (context.close(), browser.close(), playwright.stop()):
+                    try:
+                        await coro
+                    except Exception:
+                        pass
 
     async def capture_stage0_internal_assets(self, game_id: str, proposal_id: str) -> CaptureArtifacts:
         """Capture thumbnail + gameplay, upload both to S3, return in-memory bytes.
