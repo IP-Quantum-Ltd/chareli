@@ -48,10 +48,10 @@ export default function GamePlay() {
   }, [game?.slug, game?.category?.slug, navigate]);
 
   useDocumentMeta(
-    game ? `${game.title} | Arcadesbox` : undefined,
-    game?.description
+    game?.seoMeta?.title_tag || (game ? `${game.title} | Arcadesbox` : undefined),
+    game?.seoMeta?.meta_description || (game?.description
       ? game.description.replace(/\s+/g, ' ').slice(0, 160)
-      : undefined
+      : undefined)
   );
   const { mutate: createAnalytics } = useCreateAnalytics();
   const { mutate: updateAnalytics } = useUpdateAnalytics();

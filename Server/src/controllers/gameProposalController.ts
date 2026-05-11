@@ -142,6 +142,12 @@ export const approveProposal = async (req: Request, res: Response, next: NextFun
       } as unknown as DeepPartial<Game>;
 
       game = gameRepository.create(gameData);
+      
+      // Map AI SEO metadata if available
+      if (proposedData.aiReview?.seo_meta) {
+        game.seoMeta = proposedData.aiReview.seo_meta;
+      }
+
       await queryRunner.manager.save(game);
 
       // If we have a game ID now, we update the proposal linked game
@@ -156,6 +162,12 @@ export const approveProposal = async (req: Request, res: Response, next: NextFun
 
       // Merge data
       Object.assign(game, proposedData);
+
+      // Map AI SEO metadata if available (overwrites any existing)
+      if (proposedData.aiReview?.seo_meta) {
+        game.seoMeta = proposedData.aiReview.seo_meta;
+      }
+
       await queryRunner.manager.save(game);
     }
 
