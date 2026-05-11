@@ -85,9 +85,11 @@ class ExternalCaptureService:
         except Exception:
             return None
         finally:
-            await context.close()
-            await browser.close()
-            await playwright.stop()
+            for coro in (context.close(), browser.close(), playwright.stop()):
+                try:
+                    await coro
+                except Exception:
+                    pass
             await asyncio.to_thread(tmp_path.unlink, True)
 
         png_key = self._s3.proposal_key(proposal_id, "external", f"candidate_{index:02d}_render.png")
