@@ -123,6 +123,17 @@ export class Game {
     schemaVersion?: string;
   } | null;
 
+  @Column({ type: 'jsonb', nullable: true })
+  seoMeta: {
+    slug?: string;
+    title_tag?: string;
+    meta_description?: string;
+    primary_h1?: string;
+    primary_keywords?: string[];
+    json_ld?: any;
+    faq_schema?: any[];
+  } | null;
+
   @Column({ type: 'timestamp', nullable: true })
   @Index()
   publishedAt: Date | null;

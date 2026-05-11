@@ -27,7 +27,7 @@ export function GameSchemaLD({ game, likeCount }: GameSchemaLDProps) {
     // Calculate rating value from likes (scale to 3-5 stars)
     const ratingValue = Math.min(5, likeCount / 50 + 3);
 
-    const schemaData = {
+    const schemaData = game.seoMeta?.json_ld || {
       '@context': 'https://schema.org',
       '@type': 'VideoGame',
       name: game.title,
@@ -76,21 +76,33 @@ export function GameSchemaLD({ game, likeCount }: GameSchemaLDProps) {
     document.head.appendChild(gameScript);
 
     // Add FAQ schema
-    const faqHTML = game.metadata?.faqOverride || renderFAQ(DEFAULT_FAQ_TEMPLATE, game);
-    const faqItems = parseFAQFromHTML(faqHTML);
+    const faqItems = game.seoMeta?.faq_schema || [];
+    const hasExistingFaq = faqItems.length > 0;
+    
+    let finalFaqItems = faqItems;
+    if (!hasExistingFaq) {
+        const faqHTML = game.metadata?.faqOverride || renderFAQ(DEFAULT_FAQ_TEMPLATE, game);
+        finalFaqItems = parseFAQFromHTML(faqHTML);
+    }
 
-    if (faqItems.length > 0) {
+    if (finalFaqItems.length > 0) {
       const faqSchemaData = {
         '@context': 'https://schema.org',
         '@type': 'FAQPage',
-        mainEntity: faqItems.map(qa => ({
-          '@type': 'Question',
-          name: qa.question,
-          acceptedAnswer: {
-            '@type': 'Answer',
-            text: qa.answer
-          }
-        }))
+        mainEntity: finalFaqItems.map(qa => {
+            // If it's already in Schema.org format (from AI agent)
+            if (qa['@type'] === 'Question') return qa;
+            
+            // Otherwise format it
+            return {
+                '@type': 'Question',
+                name: qa.question,
+                acceptedAnswer: {
+                  '@type': 'Answer',
+                  text: qa.answer
+                }
+            };
+        })
       };
 
       const faqScript = document.createElement('script');

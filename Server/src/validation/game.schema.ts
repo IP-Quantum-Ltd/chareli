@@ -30,6 +30,7 @@ export const createGameSchema = yup.object({
     platform: yup.array().of(yup.string().trim()).nullable(), // Support multi-platform
     releaseDate: yup.string().nullable(),
   }).nullable(),
+  seoMeta: yup.object().nullable(),
 });
 
 /**
@@ -64,6 +65,7 @@ export const updateGameSchema = yup
       platform: yup.array().of(yup.string().trim()).nullable(), // Support multi-platform
       releaseDate: yup.string().nullable(),
     }).nullable(),
+    seoMeta: yup.object().nullable(),
   })
   .test(
     'at-least-one-field',
