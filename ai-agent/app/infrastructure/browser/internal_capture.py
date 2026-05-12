@@ -1,4 +1,6 @@
 import asyncio
+import html
+import logging
 import shutil
 import tempfile
 from io import BytesIO
@@ -14,6 +16,8 @@ from app.infrastructure.browser.browser_session_factory import BrowserSessionFac
 from app.infrastructure.browser.page_extractors import dismiss_accept_overlay, wait_for_iframe_render
 from app.infrastructure.db.repositories.game_repository import GameRepository
 from app.infrastructure.storage.s3_storage_service import S3StorageService
+
+logger = logging.getLogger(__name__)
 
 
 def resolve_thumbnail_url(game_row: Optional[Dict[str, Any]]) -> Optional[str]:
@@ -43,8 +47,7 @@ class InternalCaptureService:
         self._game_repository = game_repository
         self._s3 = s3
 
-    async def capture_proposal_gameplay(self, proposal_id: str, output_path: str) -> Dict[str, Any]:
-        """Navigate directly to the public gameplay preview and screenshot it."""
+    async def _capture_gameplay_frame(self, page_url: str, output_path: str, *, source: str) -> Dict[str, Any]:
         loop = asyncio.get_event_loop()
         prev_handler = loop.get_exception_handler()
 
@@ -57,18 +60,17 @@ class InternalCaptureService:
         playwright, browser = await self._browser_factory.launch()
         context = await self._browser_factory.new_internal_context(browser)
         page = await context.new_page()
-        preview_url = f"{self._config.client_url}/gameplay/{proposal_id}"
         try:
             page.set_default_timeout(self._config.internal_page_timeout_ms)
             page.set_default_navigation_timeout(self._config.internal_page_timeout_ms)
-            await page.goto(preview_url, wait_until="domcontentloaded", timeout=self._config.internal_page_timeout_ms)
+            await page.goto(page_url, wait_until="domcontentloaded", timeout=self._config.internal_page_timeout_ms)
             await page.wait_for_selector("iframe", state="visible", timeout=self._config.internal_page_timeout_ms)
 
             game_element = page.locator("iframe").first
             await wait_for_iframe_render(page, game_element)
             await dismiss_accept_overlay(page)
             await game_element.screenshot(path=output_path)
-            return {"paths": [output_path], "metadata": {"preview_url": preview_url, "source": "proposal_gameplay"}}
+            return {"paths": [output_path], "metadata": {"preview_url": page_url, "source": source}}
         finally:
             loop.set_exception_handler(prev_handler)
             for coro in (context.close(), browser.close(), playwright.stop()):
@@ -76,6 +78,83 @@ class InternalCaptureService:
                     await coro
                 except Exception:
                     pass
+
+    async def _capture_embedded_gameplay(self, gameplay_url: str, output_path: str) -> Dict[str, Any]:
+        loop = asyncio.get_event_loop()
+        prev_handler = loop.get_exception_handler()
+
+        def _suppress_target_closed(loop, ctx):
+            if type(ctx.get("exception")).__name__ in ("TargetClosedError", "ConnectionClosedError"):
+                return
+            (prev_handler or loop.default_exception_handler)(loop, ctx)
+
+        loop.set_exception_handler(_suppress_target_closed)
+        playwright, browser = await self._browser_factory.launch()
+        context = await self._browser_factory.new_internal_context(browser)
+        page = await context.new_page()
+        try:
+            page.set_default_timeout(self._config.internal_page_timeout_ms)
+            page.set_default_navigation_timeout(self._config.internal_page_timeout_ms)
+            await page.set_content(
+                f"""
+                <html>
+                  <body style="margin:0;background:#000;overflow:hidden;">
+                    <iframe
+                      src="{html.escape(gameplay_url, quote=True)}"
+                      style="display:block;width:100vw;height:100vh;border:none;background:#000;"
+                      allow="autoplay; fullscreen"
+                      sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+                    ></iframe>
+                  </body>
+                </html>
+                """,
+                wait_until="domcontentloaded",
+            )
+            await page.wait_for_selector("iframe", state="visible", timeout=self._config.internal_page_timeout_ms)
+            game_element = page.locator("iframe").first
+            await wait_for_iframe_render(page, game_element)
+            await game_element.screenshot(path=output_path)
+            return {"paths": [output_path], "metadata": {"preview_url": gameplay_url, "source": "direct_game_file"}}
+        finally:
+            loop.set_exception_handler(prev_handler)
+            for coro in (context.close(), browser.close(), playwright.stop()):
+                try:
+                    await coro
+                except Exception:
+                    pass
+
+    def _resolve_gameplay_url_from_game_row(self, game_row: Optional[Dict[str, Any]]) -> Optional[str]:
+        if not game_row:
+            return None
+        game_file_key = game_row.get("gameFileS3Key")
+        if not isinstance(game_file_key, str) or not game_file_key.strip():
+            return None
+        game_file_key = game_file_key.strip()
+        if game_file_key.startswith(("http://", "https://", "data:")):
+            return game_file_key
+        if self._s3._config.provider == "local":
+            return None
+        return self._s3.public_url(game_file_key)
+
+    async def capture_proposal_gameplay(
+        self,
+        game_id: str,
+        output_path: str,
+        direct_gameplay_url: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Capture gameplay by preferring a direct game file URL, then falling back to the public gameplay page."""
+        gameplay_url = direct_gameplay_url
+        if gameplay_url:
+            try:
+                return await self._capture_embedded_gameplay(gameplay_url, output_path)
+            except Exception as exc:
+                logger.warning(
+                    "Direct gameplay capture failed for game %s; falling back to public gameplay page. Detail: %s",
+                    game_id,
+                    exc,
+                )
+        preview_url = f"{self._config.client_url}/gameplay/{game_id}"
+        return await self._capture_gameplay_frame(preview_url, output_path, source="proposal_gameplay")
 
     async def capture_thumbnail_preview(self, thumbnail_url: str, output_path: str) -> str:
         try:
@@ -131,6 +210,7 @@ class InternalCaptureService:
         thumbnail_url = resolve_thumbnail_url(game_row)
         if not thumbnail_url:
             raise RuntimeError(f"No thumbnail URL found for game {game_id}")
+        direct_gameplay_url = self._resolve_gameplay_url_from_game_row(game_row)
 
         tmpdir = Path(await asyncio.to_thread(tempfile.mkdtemp, prefix="arcadebox_cap_"))
         try:
@@ -153,7 +233,7 @@ class InternalCaptureService:
                 # wait_for_iframe_render (30 s loop + 5 s initial wait) + 10 s buffer.
                 gameplay_timeout = max(90, page_secs * 2 + 45)
                 await asyncio.wait_for(
-                    self.capture_proposal_gameplay(game_id, gameplay_tmp),
+                    self.capture_proposal_gameplay(game_id, gameplay_tmp, direct_gameplay_url=direct_gameplay_url),
                     timeout=gameplay_timeout,
                 )
             except asyncio.TimeoutError as exc:

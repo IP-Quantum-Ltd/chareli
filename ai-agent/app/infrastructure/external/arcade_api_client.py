@@ -1,5 +1,6 @@
 import logging
 from typing import Any, Dict, List, Optional
+from urllib.parse import urljoin
 
 import httpx
 
@@ -11,41 +12,46 @@ logger = logging.getLogger(__name__)
 class ArcadeApiClient:
     def __init__(self, config: ArcadeApiConfig):
         self._config = config
+        self._base_url = config.base_url.strip().rstrip("/")
         self._headers = {
             "Authorization": f"Bearer {config.api_token}",
             "Content-Type": "application/json",
         }
 
+    def _url(self, path: str) -> str:
+        return urljoin(f"{self._base_url}/", path.lstrip("/"))
+
+    async def _request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                response = await client.request(
+                    method,
+                    self._url(path),
+                    headers=self._headers,
+                    **kwargs,
+                )
+                response.raise_for_status()
+                return response
+        except httpx.ConnectError as exc:
+            raise RuntimeError(
+                f"Failed to connect to Arcade API at {self._base_url!r}. "
+                "Check ARCADE_API_BASE_URL DNS/host configuration in the deployment environment."
+            ) from exc
+
     async def get_pending_proposals(self) -> List[Dict[str, Any]]:
-        async with httpx.AsyncClient(timeout=15) as client:
-            response = await client.get(
-                f"{self._config.base_url}/api/game-proposals/pending",
-                headers=self._headers,
-            )
-            response.raise_for_status()
-            return response.json().get("data", [])
+        response = await self._request("GET", "/api/game-proposals/pending")
+        return response.json().get("data", [])
 
     async def get_proposal(self, proposal_id: str) -> Dict[str, Any]:
-        async with httpx.AsyncClient(timeout=15) as client:
-            response = await client.get(
-                f"{self._config.base_url}/api/game-proposals/{proposal_id}",
-                headers=self._headers,
-            )
-            response.raise_for_status()
-            return response.json().get("data", {})
+        response = await self._request("GET", f"/api/game-proposals/{proposal_id}")
+        return response.json().get("data", {})
 
     async def create_game_proposal(self, game_id: str, proposed_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new UPDATE-type proposal for an existing game (editor PUT flow)."""
-        async with httpx.AsyncClient(timeout=15) as client:
-            response = await client.put(
-                f"{self._config.base_url}/api/games/{game_id}",
-                headers=self._headers,
-                json=proposed_data,
-            )
-            response.raise_for_status()
-            data = response.json()
-            logger.info("[arcade_client] Created proposal for game %s", game_id)
-            return data.get("data", data)
+        response = await self._request("PUT", f"/api/games/{game_id}", json=proposed_data)
+        data = response.json()
+        logger.info("[arcade_client] Created proposal for game %s", game_id)
+        return data.get("data", data)
 
     async def submit_review(
         self,
@@ -78,15 +84,13 @@ class ArcadeApiClient:
         proposed_data: Dict[str, Any] = dict(proposed_game_data or {})
         proposed_data["aiReview"] = ai_review_context
 
-        async with httpx.AsyncClient(timeout=15) as client:
-            response = await client.put(
-                f"{self._config.base_url}/api/game-proposals/{proposal_id}",
-                headers=self._headers,
-                json={"proposedData": proposed_data},
-            )
-            response.raise_for_status()
-            logger.info(
-                "[arcade_client] Submitted review for proposal %s | recommendation=%s",
-                proposal_id,
-                ai_review_context.get("recommendation"),
-            )
+        await self._request(
+            "PUT",
+            f"/api/game-proposals/{proposal_id}",
+            json={"proposedData": proposed_data},
+        )
+        logger.info(
+            "[arcade_client] Submitted review for proposal %s | recommendation=%s",
+            proposal_id,
+            ai_review_context.get("recommendation"),
+        )
