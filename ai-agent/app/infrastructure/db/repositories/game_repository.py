@@ -56,9 +56,11 @@ class GameRepository:
                 g.title,
                 g."thumbnailFileId",
                 f."s3Key",
-                f.variants
+                f.variants,
+                gf."s3Key" as "gameFileS3Key"
             FROM public.games g
             LEFT JOIN public.files f ON f.id = g."thumbnailFileId"
+            LEFT JOIN public.files gf ON gf.id = g."gameFileId"
             {where_clause}
             ORDER BY g.title ASC, g.id ASC
             {"LIMIT 1" if game_id else "OFFSET $1 LIMIT 1"}

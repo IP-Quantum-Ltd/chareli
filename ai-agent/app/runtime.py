@@ -53,7 +53,12 @@ class ApplicationRuntime:
         self.s3_storage = S3StorageService(config.storage)
         self.artifact_store = ArtifactStore(self.s3_storage)
         self.browser_factory = BrowserSessionFactory(config.browser)
-        self.internal_capture = InternalCaptureService(config.browser, self.browser_factory, self.game_repository, self.s3_storage)
+        self.internal_capture = InternalCaptureService(
+            config.browser,
+            self.browser_factory,
+            self.game_repository,
+            self.s3_storage,
+        )
         self.external_capture = ExternalCaptureService(config.browser, self.browser_factory, self.s3_storage)
 
         self.visual_search = VisualSearchService(self.ai_factory.create_executor())
