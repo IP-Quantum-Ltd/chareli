@@ -142,19 +142,19 @@ class InternalCaptureService:
         output_path: str,
         direct_gameplay_url: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Capture gameplay by preferring a direct game file URL, then falling back to the public gameplay page."""
-        gameplay_url = direct_gameplay_url
-        if gameplay_url:
-            try:
-                return await self._capture_embedded_gameplay(gameplay_url, output_path)
-            except Exception as exc:
+        preview_url = f"{self._config.client_url}/gameplay/{game_id}"
+        try:
+            return await self._capture_gameplay_frame(preview_url, output_path, source="proposal_gameplay")
+        except Exception as exc:
+            gameplay_url = direct_gameplay_url
+            if gameplay_url:
                 logger.warning(
-                    "Direct gameplay capture failed for game %s; falling back to public gameplay page. Detail: %s",
+                    "Public gameplay capture failed for game %s; falling back to direct game file. Detail: %s",
                     game_id,
                     exc,
                 )
-        preview_url = f"{self._config.client_url}/gameplay/{game_id}"
-        return await self._capture_gameplay_frame(preview_url, output_path, source="proposal_gameplay")
+                return await self._capture_embedded_gameplay(gameplay_url, output_path)
+            raise
 
     async def capture_thumbnail_preview(self, thumbnail_url: str, output_path: str) -> str:
         try:
