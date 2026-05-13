@@ -276,10 +276,14 @@ class SubmissionReconciler:
         seo_meta: Dict[str, Any],
         current_game: Dict[str, Any],
     ) -> tuple[Dict[str, Any], Dict[str, Any]]:
-        current_metadata = (current_game.get("metadata") or {}) if isinstance(current_game, dict) else {}
-        current_seo = (current_game.get("seoMeta") or {}) if isinstance(current_game, dict) else {}
-        candidate_metadata = dict((proposed_game_data or {}).get("metadata") or {})
-        candidate_seo = dict(seo_meta or {})
+        _raw_cur_meta = (current_game.get("metadata") or {}) if isinstance(current_game, dict) else {}
+        current_metadata = _raw_cur_meta if isinstance(_raw_cur_meta, dict) else {}
+        _raw_cur_seo = (current_game.get("seoMeta") or {}) if isinstance(current_game, dict) else {}
+        current_seo = _raw_cur_seo if isinstance(_raw_cur_seo, dict) else {}
+        _raw_cand_meta = (proposed_game_data or {}).get("metadata") or {}
+        candidate_metadata = _raw_cand_meta if isinstance(_raw_cand_meta, dict) else {}
+        _raw_cand_seo = seo_meta or {}
+        candidate_seo = _raw_cand_seo if isinstance(_raw_cand_seo, dict) else {}
 
         merged_faq = merge_faq_content(
             current_metadata.get("faqOverride"),

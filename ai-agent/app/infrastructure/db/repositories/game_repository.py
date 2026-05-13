@@ -19,7 +19,17 @@ class GameRepository:
                 if 'relation "public.game" does not exist' not in str(exc):
                     raise
                 row = await conn.fetchrow('SELECT * FROM public.games WHERE id = $1 LIMIT 1', game_id)
-            return dict(row) if row else None
+            if not row:
+                return None
+            record = dict(row)
+            for field in ("metadata", "seoMeta", "config"):
+                val = record.get(field)
+                if isinstance(val, str):
+                    try:
+                        record[field] = json.loads(val)
+                    except (json.JSONDecodeError, ValueError):
+                        record[field] = {}
+            return record
 
     async def get_public_game_by_offset(self, offset: int = 0) -> Optional[Dict[str, Any]]:
         pool = await self._provider.get_pool()
