@@ -107,7 +107,7 @@ class AiReviewAgentWorkflow:
         max_plan_revisions: int = 2,
         max_draft_revisions: int = 2,
         max_pipeline_retries: int = 3,
-        pipeline_data_completeness_threshold: int = 65,
+        pipeline_data_completeness_threshold: int = 50,
     ):
         self.arcade_client = arcade_client
         self.game_repository = game_repository

@@ -12,6 +12,7 @@ import { generateUniqueSlug } from '../utils/slugify';
 import { DeepPartial } from 'typeorm';
 import logger from '../utils/logger';
 import { websocketService } from '../services/websocket.service';
+import { cacheInvalidationService } from '../services/cache-invalidation.service';
 
 const proposalRepository = AppDataSource.getRepository(GameProposal);
 const gameRepository = AppDataSource.getRepository(Game);
@@ -195,6 +196,13 @@ export const approveProposal = async (req: Request, res: Response, next: NextFun
 
     await queryRunner.manager.save(proposal);
     await queryRunner.commitTransaction();
+
+    // Invalidate caches so the game page reflects the newly approved data
+    if (proposal.type === GameProposalType.CREATE) {
+      await cacheInvalidationService.invalidateGameCreation(game.id, game.categoryId);
+    } else {
+      await cacheInvalidationService.invalidateGameUpdate(game.id, game.categoryId);
+    }
 
     websocketService.emitProposalUpdate('approve', proposal);
 

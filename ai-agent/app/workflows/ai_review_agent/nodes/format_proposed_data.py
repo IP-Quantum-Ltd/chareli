@@ -5,6 +5,10 @@ from typing import Any, Dict
 from app.domain.schemas.llm_outputs import ProposedGameDataOutput
 from app.infrastructure.llm.ai_executor import AIExecutor
 from app.workflows.ai_review_agent.context import record_stage
+from app.workflows.ai_review_agent.services.submission_reconciler import (
+    SubmissionReconciler,
+    merge_faq_content,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -14,6 +18,7 @@ class FormatProposedDataNode:
 
     def __init__(self, ai: AIExecutor):
         self._ai = ai
+        self._submission_reconciler = SubmissionReconciler()
 
     async def __call__(self, state: Dict[str, Any]) -> Dict[str, Any]:
         game_title = state.get("game_title") or ""
@@ -32,12 +37,20 @@ class FormatProposedDataNode:
         seo_support = (grounded.get("seo_support") or {})
         optimization = state.get("optimization") or {}
         investigation = state.get("investigation") or {}
+        current_game = ((state.get("proposal_snapshot") or {}).get("game") or {})
+        current_metadata = (current_game.get("metadata") or {}) if isinstance(current_game, dict) else {}
+        current_seo = (current_game.get("seoMeta") or {}) if isinstance(current_game, dict) else {}
         best_match = (investigation.get("best_match") or {})
         extracted_facts = (best_match.get("extracted_facts") or {})
 
         best_match_meta = best_match.get("metadata") or {}
         faq_schema = optimization.get("faq_schema") or []
         faq_opportunities = seo_support.get("faq_opportunities") or []
+        merged_existing_faq = merge_faq_content(
+            current_metadata.get("faqOverride"),
+            "",
+            current_seo.get("faq_schema"),
+        )
         # Merge optimizer FAQ schema with research FAQ opportunities
         faq_items = [{"question": f.get("question", ""), "answer": f.get("answer", "")} for f in faq_schema if f.get("question")]
         if not faq_items:
@@ -59,13 +72,34 @@ class FormatProposedDataNode:
             "meta_description": optimization.get("meta_description") or "",
             "best_match_url": best_match.get("url") or "",
             "faq_items": faq_items,
+            "existing_game": {
+                "title": current_game.get("title") or "",
+                "description": current_game.get("description") or "",
+                "categoryId": current_game.get("categoryId") or "",
+                "metadata": {
+                    "howToPlay": current_metadata.get("howToPlay") or "",
+                    "features": current_metadata.get("features") or [],
+                    "tags": current_metadata.get("tags") or [],
+                    "seoKeywords": current_metadata.get("seoKeywords") or "",
+                    "developer": current_metadata.get("developer") or "",
+                    "platform": current_metadata.get("platform") or [],
+                    "releaseDate": current_metadata.get("releaseDate") or "",
+                },
+                "seoMeta": {
+                    "title_tag": current_seo.get("title_tag") or "",
+                    "meta_description": current_seo.get("meta_description") or "",
+                    "primary_h1": current_seo.get("primary_h1") or "",
+                    "primary_keywords": current_seo.get("primary_keywords") or [],
+                },
+                "faq_items": merged_existing_faq,
+            },
         }
 
         prompt = f"""You are formatting a browser game's data for storage in a game database.
 Game title: {game_title}
 
 Research context (JSON):
-{json.dumps(context_summary, indent=2)}
+{json.dumps(context_summary, indent=2, default=str)}
 
 Article (first 2000 chars for reference):
 {article[:2000]}
@@ -74,6 +108,7 @@ Return ONLY valid JSON matching this exact structure:
 {{
   "title": "{game_title}",
   "description": "<the full article text verbatim — do not summarise or truncate>",
+  "categoryId": "<preserve the current categoryId when one already exists, otherwise empty string>",
   "metadata": {{
     "howToPlay": "<rich HTML how-to-play section>",
     "faqOverride": "<HTML FAQ section>",
@@ -88,12 +123,15 @@ Return ONLY valid JSON matching this exact structure:
 
 Rules:
 - description MUST be the full article text exactly as written — preserve all HTML tags, NO markdown
+- use existing_game as the current source of truth; if the new evidence is weak, empty, placeholder-like, or instruction-like, keep the existing value instead of inventing one
+- preserve existing_game.categoryId exactly when it exists
 - howToPlay must be comprehensive HTML — include: objective, step-by-step controls for PC AND mobile separately, gameplay rules, power-up/bonus tips; use <h3>, <p>, <ul>, <li>, <strong> tags; NO markdown, only HTML
-- faqOverride must be HTML — use the faq_items from context; format as <h3>FAQ</h3> followed by <h4>Q: ...</h4><p>A: ...</p> blocks; cover at least 4-6 questions about gameplay, controls, and platform; NO markdown, only HTML
+- faqOverride must be HTML — merge existing_game.faq_items with new validated FAQ evidence; format as <h3>FAQ</h3> followed by <h4>Q: ...</h4><p>A: ...</p> blocks; do not overwrite existing valid FAQ entries; append distinct new ones; NO markdown, only HTML
+- never emit FAQ answers that read like instructions to a writer, such as "Provide a detailed..." or "Explain..."; drop those instead
 - features: 3-6 short gameplay feature strings (plain text, no HTML)
 - tags: 4-8 short tags relevant to the game genre and gameplay (plain text)
 - seoKeywords: comma-separated list from the research context primary/secondary keywords
-- developer: exact studio/developer name if known, otherwise empty string
+- developer: exact studio/developer name if known and trustworthy; remove domains like ".com"; if the result is only a low-signal site label such as plays, gamepix, silvergames, primarygames, game-game, or yad, output empty string or keep the existing developer instead
 - platform: always ["Browser"]"""
 
         try:
@@ -120,11 +158,24 @@ Rules:
             if isinstance(result, dict):
                 result["description"] = article
                 result["title"] = game_title
-            state["proposed_game_data"] = result
+            reconciled_game_data, reconciled_seo = self._submission_reconciler.reconcile(
+                result,
+                state.get("seo_meta") or {},
+                current_game,
+            )
+            state["proposed_game_data"] = reconciled_game_data
+            state["seo_meta"] = reconciled_seo
             record_stage(state, "format", "completed", f"Proposed game data formatted for '{game_title}'.")
         except Exception as exc:
             logger.warning("FormatProposedData failed, using fallback: %s", exc)
-            state["proposed_game_data"] = self._build_fallback(state)
+            fallback = self._build_fallback(state)
+            reconciled_game_data, reconciled_seo = self._submission_reconciler.reconcile(
+                fallback,
+                state.get("seo_meta") or {},
+                current_game,
+            )
+            state["proposed_game_data"] = reconciled_game_data
+            state["seo_meta"] = reconciled_seo
             record_stage(state, "format", "completed", "Proposed game data built from fallback.")
 
         return state
@@ -136,17 +187,20 @@ Rules:
         gameplay = grounded.get("grounded_gameplay") or {}
         seo_support = (grounded.get("seo_support") or {})
         investigation = state.get("investigation") or {}
+        current_game = ((state.get("proposal_snapshot") or {}).get("game") or {})
+        current_metadata = (current_game.get("metadata") or {}) if isinstance(current_game, dict) else {}
         extracted_facts = ((investigation.get("best_match") or {}).get("extracted_facts") or {})
         return {
             "title": game_title,
-            "description": article,
+            "description": article or (current_game.get("description") or ""),
+            "categoryId": current_game.get("categoryId") or "",
             "metadata": {
-                "howToPlay": gameplay.get("how_to_play") or gameplay.get("controls") or "",
-                "features": gameplay.get("features") or [],
-                "tags": (seo_support.get("primary_keywords") or [])[:6],
-                "seoKeywords": ", ".join((seo_support.get("primary_keywords") or [])[:10]),
-                "developer": gameplay.get("developer") or extracted_facts.get("original_developer") or "",
+                "howToPlay": gameplay.get("how_to_play") or gameplay.get("controls") or current_metadata.get("howToPlay") or "",
+                "features": gameplay.get("features") or current_metadata.get("features") or [],
+                "tags": (seo_support.get("primary_keywords") or [])[:6] or current_metadata.get("tags") or [],
+                "seoKeywords": ", ".join((seo_support.get("primary_keywords") or [])[:10]) or (current_metadata.get("seoKeywords") or ""),
+                "developer": gameplay.get("developer") or extracted_facts.get("original_developer") or current_metadata.get("developer") or "",
                 "platform": ["Browser"],
-                "releaseDate": "",
+                "releaseDate": current_metadata.get("releaseDate") or "",
             },
         }

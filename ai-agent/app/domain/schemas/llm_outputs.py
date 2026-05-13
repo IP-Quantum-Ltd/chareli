@@ -175,4 +175,5 @@ class GameMetadataOutput(BaseModel):
 class ProposedGameDataOutput(BaseModel):
     title: str = ""
     description: str = ""
+    categoryId: str = ""
     metadata: GameMetadataOutput = Field(default_factory=GameMetadataOutput)
