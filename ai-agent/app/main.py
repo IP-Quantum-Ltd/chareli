@@ -75,7 +75,9 @@ async def cron_scan():
                     await runtime.queue.enqueue(job.job_id)
                     logger.info(f"[cron] Audit: Created and enqueued proposal {proposal_id} for game '{audit_proposal['title']}'")
                     count += 1
-                    continue
+                    # Sequential strategy: break after one to avoid flooding the dashboard.
+                    # The next cron tick will pick up the next game.
+                    break
             
             # Nothing left to do
             break
