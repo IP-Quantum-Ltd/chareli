@@ -203,11 +203,11 @@ class AiReviewAgentWorkflow:
             try:
                 await self.arcade_client.submit_review(proposal_id, review, proposed_game_data, seo_meta)
                 logger.info("[workflow] Updated proposal %s with enriched data", proposal_id)
-                return
             except Exception as exc:
-                logger.warning("[workflow] Could not update proposal %s (%s) — will create new proposal", proposal_id, exc)
+                logger.warning("[workflow] Could not update proposal %s: %s", proposal_id, exc)
+            return  # never fall through to Case 2 when a proposal_id exists
 
-        # Case 2: game_review run OR existing proposal not PENDING — create via game endpoint
+        # Case 2: game_review run (proposal_id == game_id, no separate proposal) — create via game endpoint
         if not game_id:
             logger.warning("[workflow] No game_id — cannot create fallback proposal")
             return

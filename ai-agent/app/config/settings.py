@@ -62,7 +62,14 @@ class AppSettings(BaseSettings):
     AI_AGENT_S3_PREFIX: str = "ai-agent/stage0"
 
     WEBHOOK_SECRET: str = ""
-    CRON_INTERVAL_MINUTES: int = 15
+
+    # Game sweep cron — periodic scan for games the agent hasn't reviewed yet
+    GAME_SWEEP_ENABLED: bool = False
+    GAME_SWEEP_SCHEDULE: str = "weekly"   # "weekly" | "monthly"
+    GAME_SWEEP_DAY: str = "sun"           # day_of_week for weekly (mon-sun), day-of-month for monthly (1-28)
+    GAME_SWEEP_HOUR: int = 2              # 0-23 UTC
+    GAME_SWEEP_MINUTE: int = 0            # 0-59
+
     MAX_PLAN_REVISIONS: int = 2
     MAX_DRAFT_REVISIONS: int = 2
     JOB_RETENTION_HOURS: int = 24
