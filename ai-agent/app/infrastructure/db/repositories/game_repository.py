@@ -129,6 +129,15 @@ class GameRepository:
                 
                 record = dict(row)
                 proposed_data = record["proposedData"] or {}
+                if isinstance(proposed_data, str):
+                    try:
+                        proposed_data = json.loads(proposed_data)
+                    except (json.JSONDecodeError, ValueError):
+                        proposed_data = {}
+                
+                if not isinstance(proposed_data, dict):
+                    proposed_data = {}
+                
                 if "aiReview" not in proposed_data:
                     proposed_data["aiReview"] = {}
                 
@@ -178,6 +187,15 @@ class GameRepository:
             if not row:
                 return
             proposed_data = row["proposedData"] or {}
+            if isinstance(proposed_data, str):
+                try:
+                    proposed_data = json.loads(proposed_data)
+                except (json.JSONDecodeError, ValueError):
+                    proposed_data = {}
+            
+            if not isinstance(proposed_data, dict):
+                proposed_data = {}
+                
             if "aiReview" not in proposed_data:
                 proposed_data["aiReview"] = {}
             
