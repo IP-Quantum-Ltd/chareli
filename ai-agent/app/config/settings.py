@@ -11,7 +11,7 @@ class AppSettings(BaseSettings):
     ARCADE_API_TOKEN: str
     SERVICE_EMAIL: str = ""
     SERVICE_PASSWORD: str = ""
-    SERVICE_USER_ID: str = ""
+    SERVICE_USER_ID: str = Field(default="", validation_alias=AliasChoices("SERVICE_USER_ID", "USER_ID"))
 
     OPENAI_API_KEY: str
     ANTHROPIC_API_KEY: str = ""
