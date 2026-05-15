@@ -4,7 +4,6 @@ from typing import Optional
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 
-from app.config import get_settings
 from app.domain.schemas import ProposalCreatedPayload
 from app.runtime import get_runtime
 
@@ -23,8 +22,10 @@ async def proposal_created(payload: ProposalCreatedPayload, x_webhook_secret: Op
     runtime = get_runtime()
     if runtime.config.arcade_api.webhook_secret and x_webhook_secret != runtime.config.arcade_api.webhook_secret:
         raise HTTPException(status_code=401, detail="Invalid webhook secret")
-    if payload.editorId == get_settings().SERVICE_USER_ID:
-        logger.debug("[webhook] Proposal %s created by agent — skipping", payload.proposalId)
+    # If there's already an active game_review job for this game, the agent owns the
+    # proposal it just created — don't queue a second proposal_review job on top of it.
+    if payload.gameId and runtime.job_store.find_active_job("game_review", payload.gameId):
+        logger.debug("[webhook] Active game_review job for game %s — skipping proposal %s", payload.gameId, payload.proposalId)
         return {"accepted": True, "proposalId": payload.proposalId}
     existing_job = runtime.job_store.find_active_job("proposal_review", payload.proposalId)
     if existing_job is None:
