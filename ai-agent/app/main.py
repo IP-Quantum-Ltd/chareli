@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI
@@ -12,24 +13,58 @@ from app.api import agent, health, jobs, stage0, webhook
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s — %(message)s")
 logger = logging.getLogger(__name__)
 
+# Set at startup. The cron ignores proposals created before this process started,
+# preventing historical PENDING backlog from flooding the queue on restart.
+_process_start_time: datetime = datetime.now(timezone.utc)
+
+
+def _parse_proposal_created_at(p: dict) -> datetime | None:
+    raw = p.get("createdAt")
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
+
 
 async def cron_scan():
     """
     Fallback scan: fetches all PENDING proposals and enqueues any not already queued.
     Runs every CRON_INTERVAL_MINUTES minutes as a safety net for missed webhooks.
+
+    Only considers proposals created after this process started — proposals that existed
+    before the current deployment are ignored to prevent historical backlog from flooding
+    the queue on restart.
+
+    Skips proposals already fully reviewed by the agent service account.
     """
     logger.info("[cron] Scanning for pending proposals...")
     try:
+        settings = get_settings()
         runtime = get_runtime()
         proposals = await runtime.arcade_client.get_pending_proposals()
         count = 0
+        skipped = 0
+        old = 0
         for p in proposals:
-            existing_job = runtime.job_store.find_active_job("proposal_review", p["id"])
+            created_at = _parse_proposal_created_at(p)
+            if created_at is not None and created_at < _process_start_time:
+                old += 1
+                continue
+            proposed_data = p.get("proposedData") or {}
+            if p.get("editorId") == settings.SERVICE_USER_ID and proposed_data.get("aiReview"):
+                skipped += 1
+                continue
+            existing_job = runtime.job_store.find_recent_job("proposal_review", p["id"])
             job = existing_job or runtime.job_store.create_job("proposal_review", p["id"], submit_review=True)
             enqueued = existing_job is None and await runtime.queue.enqueue(job.job_id)
             if enqueued:
                 count += 1
-        logger.info(f"[cron] Enqueued {count} new proposals from {len(proposals)} pending")
+        logger.info(
+            "[cron] Enqueued %d new proposals from %d pending (%d pre-startup — ignored, %d agent-submitted — skipped)",
+            count, len(proposals), old, skipped,
+        )
     except Exception as exc:
         logger.error(f"[cron] Scan failed: {exc}", exc_info=True)
 
@@ -43,7 +78,7 @@ async def lifespan(app: FastAPI):
 
     # Start cron scheduler
     scheduler = AsyncIOScheduler()
-    scheduler.add_job(cron_scan, "interval", minutes=settings.CRON_INTERVAL_MINUTES, id="cron_scan")
+    scheduler.add_job(cron_scan, "interval", minutes=settings.CRON_INTERVAL_MINUTES, id="cron_scan", misfire_grace_time=30)
     scheduler.start()
     logger.info(f"[cron] Scheduler started — interval: {settings.CRON_INTERVAL_MINUTES} min")
 
