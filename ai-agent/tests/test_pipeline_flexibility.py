@@ -15,7 +15,7 @@ class PipelineFlexibilityTests(unittest.IsolatedAsyncioTestCase):
             "revision_instructions": ["Tighten section coverage."],
             "reasoning": "Coverage is acceptable but still incomplete.",
         }
-        node = CriticPlanNode(critic_service, min_coverage_score=70)
+        node = CriticPlanNode(critic_service, min_coverage_score=70, best_coverage_score=80)
         state = {
             "status": "drafting",
             "game_title": "Pinball",

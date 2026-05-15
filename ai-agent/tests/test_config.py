@@ -20,7 +20,7 @@ class ConfigFactoryTests(unittest.TestCase):
 
         self.assertEqual(runtime.arcade_api.base_url, "https://api.example.com")
         self.assertEqual(runtime.arcade_api.api_token, "token")
-        self.assertEqual(runtime.browser.admin_email, "admin@example.com")
+        self.assertEqual(runtime.browser.client_url, "https://staging.arcadesbox.com")
         self.assertEqual(runtime.llm.primary_model, "gpt-4o")
         self.assertEqual(runtime.mongo.rag_collection, "stage2_grounded_contexts")
         self.assertEqual(runtime.queue.stage0_required_candidates, 5)

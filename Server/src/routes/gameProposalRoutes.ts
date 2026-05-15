@@ -11,6 +11,7 @@ import {
   dismissFeedback,
   reviseProposal
 } from '../controllers/gameProposalController';
+import { runAiReview } from '../controllers/aiAgentController';
 import {
   authenticate,
   isAdmin,
@@ -25,6 +26,7 @@ router.use(authenticate);
 router.get('/', isAdmin, getProposals);
 router.post('/:id/approve', isAdmin, approveProposal);
 router.post('/:id/decline', isAdmin, declineProposal);
+router.post('/agent/run', isAdmin, runAiReview);
 
 // AI agent cron fallback — read-only list of pending proposals (editor + admin)
 router.get('/pending', isEditor, getPendingProposals);

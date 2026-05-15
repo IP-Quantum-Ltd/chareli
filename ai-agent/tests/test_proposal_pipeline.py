@@ -23,6 +23,7 @@ class ProposalPipelineServiceTests(unittest.IsolatedAsyncioTestCase):
         audit_content_node = AsyncMock()
         optimize_content_node = AsyncMock()
         finalize_result_node = AsyncMock()
+        format_proposed_data_node = AsyncMock()
 
         arcade_client.get_proposal.return_value = {
             "id": "proposal-1",
@@ -47,6 +48,7 @@ class ProposalPipelineServiceTests(unittest.IsolatedAsyncioTestCase):
             critic_plan_node=critic_plan_node,
             audit_content_node=audit_content_node,
             optimize_content_node=optimize_content_node,
+            format_proposed_data_node=format_proposed_data_node,
             finalize_result_node=finalize_result_node,
         )
         workflow.run_stages = AsyncMock(
@@ -69,6 +71,12 @@ class ProposalPipelineServiceTests(unittest.IsolatedAsyncioTestCase):
 
         result = await workflow.run_proposal("proposal-1")
 
-        arcade_client.submit_review.assert_awaited_once()
+        # Verify the pipeline was triggered with the correct proposal and submit flag.
+        # arcade_client.submit_review lives inside run_stages (mocked), so it is tested
+        # at the integration level; here we assert the outer call contract.
+        workflow.run_stages.assert_awaited_once()
+        call_payload = workflow.run_stages.call_args.args[0]
+        self.assertEqual(call_payload["proposal_id"], "proposal-1")
+        self.assertTrue(call_payload["submit_review"])
         self.assertEqual(result["status"], "complete")
         self.assertEqual(result["final_article"], "# Article")

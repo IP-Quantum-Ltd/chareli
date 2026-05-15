@@ -67,6 +67,11 @@ async function initializeBackgroundServices(isPrimaryWorker: boolean): Promise<v
 }
 
 const startServer = async () => {
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  logger.info(`  Arcades Box API  —  port ${config.port}`);
+  logger.info(`  API          →  http://localhost:${config.port}/api`);
+  logger.info(`  API Docs     →  http://localhost:${config.port}/api-docs`);
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   try {
     await loadConfiguration();
 
@@ -76,42 +81,8 @@ const startServer = async () => {
       logger.info(`Created logs directory at ${logDir}`);
     }
 
-    logger.info('Initializing database connection...');
-    try {
-      await initializeDatabase();
-
-      const isPrimaryWorker = !process.env.NODE_APP_INSTANCE || process.env.NODE_APP_INSTANCE === '0';
-
-      if (isPrimaryWorker) {
-        // Initialize superadmin account
-        logger.info('Initializing superadmin account...');
-        await authService.initializeSuperadmin();
-      }
-
-      // Initialize background services (Redis required for all, Workers for primary only)
-      await initializeBackgroundServices(isPrimaryWorker);
-
-      if (isPrimaryWorker) {
-        // Initialize scheduled jobs
-        initializeScheduledJobs();
-
-        // Initialize JSON CDN refresh job
-        startJsonCdnRefreshJob();
-      }
-    } catch (dbError) {
-      if (config.env === 'development') {
-        logger.warn(
-          'Failed to connect to database in development mode, continuing without database connection'
-        );
-        logger.warn(
-          'You can still access the Swagger documentation at http://localhost:5000/api-docs'
-        );
-      } else {
-        throw dbError;
-      }
-    }
-
-    // Create HTTP server
+    // Create HTTP server and start listening immediately so Swagger docs are
+    // available right away, even while the database connection is still pending.
     const httpServer = createServer(app);
 
     // Initialize WebSocket service
@@ -156,6 +127,42 @@ const startServer = async () => {
         logger.info('Process terminated!');
       });
     });
+
+    logger.info('Initializing database connection...');
+    try {
+      await initializeDatabase();
+
+      const isPrimaryWorker = !process.env.NODE_APP_INSTANCE || process.env.NODE_APP_INSTANCE === '0';
+
+      if (isPrimaryWorker) {
+        // Initialize superadmin account
+        logger.info('Initializing superadmin account...');
+        await authService.initializeSuperadmin();
+      }
+
+      // Initialize background services (Redis required for all, Workers for primary only)
+      await initializeBackgroundServices(isPrimaryWorker);
+
+      if (isPrimaryWorker) {
+        // Initialize scheduled jobs
+        initializeScheduledJobs();
+
+        // Initialize JSON CDN refresh job
+        startJsonCdnRefreshJob();
+      }
+    } catch (dbError) {
+      if (config.env === 'development') {
+        logger.warn(
+          'Failed to connect to database in development mode, continuing without database connection'
+        );
+        logger.warn(
+          `You can still access the Swagger documentation at http://localhost:${config.port}/api-docs`
+        );
+      } else {
+        server.close();
+        throw dbError;
+      }
+    }
   } catch (error) {
     logger.error('Failed to start server:');
     logger.error(
