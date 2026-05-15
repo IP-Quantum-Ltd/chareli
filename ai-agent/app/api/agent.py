@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException
 
+from app.config import get_settings
 from app.domain.schemas import AgentRunRequest, AgentRunResponse, ProposalRunResponse
 from app.runtime import get_runtime
 
@@ -30,8 +31,9 @@ async def run_proposal(proposal_id: str, submit_review: bool = True, override: b
     runtime = get_runtime()
     if not override:
         proposal = await runtime.arcade_client.get_proposal(proposal_id)
+        settings = get_settings()
         proposed_data = proposal.get("proposedData") or {}
-        if proposed_data.get("aiReview"):
+        if proposal.get("editorId") == settings.SERVICE_USER_ID and proposed_data.get("aiReview"):
             raise HTTPException(
                 status_code=409,
                 detail="Proposal was already reviewed by the AI agent. Pass override=true to force a re-run.",

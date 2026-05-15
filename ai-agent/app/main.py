@@ -37,7 +37,7 @@ async def cron_scan():
     before the current deployment are ignored to prevent historical backlog from flooding
     the queue on restart.
 
-    Skips proposals that already have an aiReview attached — regardless of who submitted them.
+    Skips proposals already fully reviewed by the agent service account.
     """
     logger.info("[cron] Scanning for pending proposals...")
     try:
@@ -53,17 +53,16 @@ async def cron_scan():
                 old += 1
                 continue
             proposed_data = p.get("proposedData") or {}
-            if proposed_data.get("aiReview"):
+            if p.get("editorId") == settings.SERVICE_USER_ID and proposed_data.get("aiReview"):
                 skipped += 1
                 continue
             existing_job = runtime.job_store.find_recent_job("proposal_review", p["id"])
-            if existing_job:
-                continue
-            job = runtime.job_store.create_job("proposal_review", p["id"], submit_review=True)
-            await runtime.queue.enqueue(job.job_id)
-            count += 1
+            job = existing_job or runtime.job_store.create_job("proposal_review", p["id"], submit_review=True)
+            enqueued = existing_job is None and await runtime.queue.enqueue(job.job_id)
+            if enqueued:
+                count += 1
         logger.info(
-            "[cron] Enqueued %d new proposals from %d pending (%d pre-startup — ignored, %d already-reviewed — skipped)",
+            "[cron] Enqueued %d new proposals from %d pending (%d pre-startup — ignored, %d agent-submitted — skipped)",
             count, len(proposals), old, skipped,
         )
     except Exception as exc:
