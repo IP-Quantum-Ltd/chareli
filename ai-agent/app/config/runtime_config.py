@@ -75,7 +75,10 @@ class StorageConfig:
 
 @dataclass(frozen=True)
 class QueueConfig:
-    cron_interval_minutes: int
+    cron_schedule_day_of_week: str
+    cron_schedule_month_day: str
+    cron_schedule_hour: int
+    cron_misfire_grace_hours: int
     max_plan_revisions: int
     max_draft_revisions: int
     job_retention_hours: int
