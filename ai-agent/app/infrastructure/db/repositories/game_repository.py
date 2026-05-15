@@ -10,6 +10,32 @@ class GameRepository:
     def __init__(self, provider):
         self._provider = provider
 
+    async def get_game_record(self, game_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch basic game metadata by ID."""
+        pool = await self._provider.get_pool()
+        if pool is None:
+            return None
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow('SELECT * FROM public.games WHERE id = $1', game_id)
+            return dict(row) if row else None
+
+    async def get_public_game_with_thumbnail_by_id(self, game_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch a game record joined with its thumbnail file metadata."""
+        pool = await self._provider.get_pool()
+        if pool is None:
+            return None
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT g.*, f."s3Key", f.variants
+                FROM public.games g
+                LEFT JOIN public.files f ON g."thumbnailFileId" = f.id
+                WHERE g.id = $1
+                """,
+                game_id
+            )
+            return dict(row) if row else None
+
     async def get_next_pending_proposal(self, min_created_at: Optional[datetime.datetime] = None) -> Optional[Dict[str, Any]]:
         """
         Find the next pending proposal and mark it as 'processing'.
@@ -29,12 +55,7 @@ class GameRepository:
 
         async with pool.acquire() as conn:
             async with conn.transaction():
-                # We target PENDING proposals that:
-                # 1. Haven't been started (aiReview is NULL)
-                # 2. Failed or were aborted
-                # 3. Are stuck in 'processing' (watchdog)
-                # CRITICAL: Watchdog only reclaims things created AFTER process start (normalized_start)
-                
+                # Watchdog only reclaims things created AFTER process start (normalized_start)
                 time_filter = ""
                 args = []
                 if normalized_start:
@@ -93,11 +114,7 @@ class GameRepository:
 
     async def get_next_enrichment_candidate_game(self, agent_id: str) -> Optional[Dict[str, Any]]:
         """
-        Find a published game that needs an agent review AND atomically claim it
-        by creating a pending proposal for it.
-        
-        This prevents infinite loops in cron_scan and ensures only one agent 
-        works on a game at a time.
+        Find a published game that needs an agent review AND atomically claim it.
         """
         pool = await self._provider.get_pool()
         if pool is None:
@@ -132,7 +149,6 @@ class GameRepository:
                 game_id = row["id"]
                 
                 # 2. Atomically "claim" it by creating a pending proposal
-                # This ensures subsequent loops (or other agents) won't see this game.
                 initial_proposed_data = {
                     "aiReview": {
                         "pipeline_status": "processing",
@@ -164,7 +180,6 @@ class GameRepository:
             
         async with pool.acquire() as conn:
             try:
-                # 1. Get current data
                 row = await conn.fetchrow('SELECT "proposedData" FROM public.game_proposals WHERE id = $1', proposal_id)
                 if not row:
                     return
@@ -176,7 +191,6 @@ class GameRepository:
                 if "aiReview" not in proposed_data:
                     proposed_data["aiReview"] = {}
                 
-                # 2. Update status
                 proposed_data["aiReview"]["pipeline_status"] = status
                 if error:
                     proposed_data["aiReview"]["error_message"] = error
@@ -184,7 +198,6 @@ class GameRepository:
                 if status == "completed":
                     proposed_data["aiReview"]["completed_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
                 
-                # 3. Write back
                 await conn.execute(
                     'UPDATE public.game_proposals SET "proposedData" = $1, "updatedAt" = NOW() WHERE id = $2',
                     json.dumps(proposed_data),
@@ -194,15 +207,11 @@ class GameRepository:
                 logger.error(f"[repo] Failed to update proposal status for {proposal_id}: {exc}")
 
     async def get_proposal_record(self, proposal_id: str) -> Optional[Dict[str, Any]]:
-        """
-        Fetch a proposal record with joined game, thumbnail, and editor metadata.
-        Replicates the structure previously served by the Arcade API.
-        """
+        """Fetch a proposal record with full joined metadata for the AI workflow."""
         pool = await self._provider.get_pool()
         if pool is None:
             return None
         async with pool.acquire() as conn:
-            # Join with games, files, and users to reconstruct the expected Arcade API payload
             row = await conn.fetchrow(
                 """
                 SELECT 
@@ -229,8 +238,6 @@ class GameRepository:
                 return None
             
             record = dict(row)
-            
-            # Unpack JSONB
             proposed_data = record["proposedData"] or {}
             if isinstance(proposed_data, str):
                 try:
@@ -238,7 +245,6 @@ class GameRepository:
                 except:
                     proposed_data = {}
 
-            # Construct the complex object the AI workflow expects
             return {
                 "id": record["id"],
                 "gameId": record["gameId"],
