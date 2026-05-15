@@ -113,6 +113,10 @@ class GameRepository:
         time_filter = ""
         args = []
         if min_created_at:
+            # Postgres 'timestamp without time zone' columns expect naive datetimes.
+            # If aware, we normalize to UTC and strip the tzinfo.
+            if min_created_at.tzinfo:
+                min_created_at = min_created_at.astimezone(datetime.timezone.utc).replace(tzinfo=None)
             time_filter = 'AND "createdAt" >= $1'
             args.append(min_created_at)
 
@@ -133,7 +137,7 @@ class GameRepository:
                         OR (
                             "proposedData"->'aiReview'->>'pipeline_status' = 'processing'
                             AND (
-                                ("proposedData"->'aiReview'->>'processing_started_at')::timestamp < (NOW() AT TIME ZONE 'UTC' - INTERVAL '30 minutes')
+                                (("proposedData"->'aiReview'->>'processing_started_at')::timestamp AT TIME ZONE 'UTC') < (NOW() AT TIME ZONE 'UTC' - INTERVAL '30 minutes')
                                 OR "proposedData"->'aiReview'->>'processing_started_at' IS NULL
                             )
                         )
@@ -162,6 +166,7 @@ class GameRepository:
                 
                 # Mark as processing immediately within the transaction
                 proposed_data["aiReview"]["pipeline_status"] = "processing"
+                # Use ISO string for JSONB storage to avoid DB-level timezone issues
                 proposed_data["aiReview"]["processing_started_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
                 
                 await conn.execute(
