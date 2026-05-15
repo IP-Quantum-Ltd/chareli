@@ -1,103 +1,14 @@
-import json
 import datetime
+import json
+import logging
 from typing import Any, Dict, List, Optional
 
-from app.infrastructure.db.postgres_provider import PostgresProvider
+logger = logging.getLogger(__name__)
 
 
 class GameRepository:
-    def __init__(self, provider: PostgresProvider):
+    def __init__(self, provider):
         self._provider = provider
-
-    async def get_game_record(self, game_id: str) -> Optional[Dict[str, Any]]:
-        pool = await self._provider.get_pool()
-        if pool is None or not game_id:
-            return None
-        async with pool.acquire() as conn:
-            try:
-                row = await conn.fetchrow('SELECT * FROM public."game" WHERE id = $1 LIMIT 1', game_id)
-            except Exception as exc:
-                if 'relation "public.game" does not exist' not in str(exc):
-                    raise
-                row = await conn.fetchrow('SELECT * FROM public.games WHERE id = $1 LIMIT 1', game_id)
-            if not row:
-                return None
-            record = dict(row)
-            for field in ("metadata", "seoMeta", "config"):
-                val = record.get(field)
-                if isinstance(val, str):
-                    try:
-                        record[field] = json.loads(val)
-                    except (json.JSONDecodeError, ValueError):
-                        record[field] = {}
-            return record
-
-    async def get_public_game_by_offset(self, offset: int = 0) -> Optional[Dict[str, Any]]:
-        pool = await self._provider.get_pool()
-        if pool is None:
-            return None
-        async with pool.acquire() as conn:
-            row = await conn.fetchrow(
-                """
-                SELECT id, title
-                FROM public.games
-                ORDER BY title ASC, id ASC
-                OFFSET $1
-                LIMIT 1
-                """,
-                max(offset, 0),
-            )
-            return dict(row) if row else None
-
-    async def get_public_game_with_thumbnail_by_offset(self, offset: int = 0) -> Optional[Dict[str, Any]]:
-        return await self._fetch_public_game_with_thumbnail(offset=offset)
-
-    async def get_public_game_with_thumbnail_by_id(self, game_id: str) -> Optional[Dict[str, Any]]:
-        return await self._fetch_public_game_with_thumbnail(game_id=game_id)
-
-    async def _fetch_public_game_with_thumbnail(self, game_id: str = "", offset: int = 0) -> Optional[Dict[str, Any]]:
-        pool = await self._provider.get_pool()
-        if pool is None or (not game_id and offset < 0):
-            return None
-        where_clause = "WHERE g.id = $1" if game_id else ""
-        value = game_id if game_id else max(offset, 0)
-        query = f"""
-            SELECT
-                g.id,
-                g.title,
-                g."thumbnailFileId",
-                f."s3Key",
-                f.variants,
-                gf."s3Key" as "gameFileS3Key"
-            FROM public.games g
-            LEFT JOIN public.files f ON f.id = g."thumbnailFileId"
-            LEFT JOIN public.files gf ON gf.id = g."gameFileId"
-            {where_clause}
-            ORDER BY g.title ASC, g.id ASC
-            {"LIMIT 1" if game_id else "OFFSET $1 LIMIT 1"}
-        """
-        async with pool.acquire() as conn:
-            row = await conn.fetchrow(query, value)
-            if not row:
-                return None
-            record = dict(row)
-            variants = record.get("variants")
-            if isinstance(variants, str):
-                try:
-                    record["variants"] = json.loads(variants)
-                except json.JSONDecodeError:
-                    record["variants"] = {}
-            elif variants is None:
-                record["variants"] = {}
-            return record
-
-    async def fetch_rows(self, query: str, *args: Any) -> List[Dict[str, Any]]:
-        pool = await self._provider.get_pool()
-        if pool is None:
-            return []
-        async with pool.acquire() as conn:
-            rows = await conn.fetch(query, *args)
-            return [dict(row) for row in rows]
 
     async def get_next_pending_proposal(self, min_created_at: Optional[datetime.datetime] = None) -> Optional[Dict[str, Any]]:
         """
@@ -249,49 +160,41 @@ class GameRepository:
         """Update the AI processing status in the database."""
         pool = await self._provider.get_pool()
         if pool is None:
-            return None
-        try:
-            async with pool.acquire() as conn:
+            return
+            
+        async with pool.acquire() as conn:
+            try:
+                # 1. Get current data
                 row = await conn.fetchrow('SELECT "proposedData" FROM public.game_proposals WHERE id = $1', proposal_id)
                 if not row:
                     return
+                
                 proposed_data = row["proposedData"] or {}
                 if isinstance(proposed_data, str):
-                    try:
-                        proposed_data = json.loads(proposed_data)
-                    except (json.JSONDecodeError, ValueError):
-                        proposed_data = {}
+                    proposed_data = json.loads(proposed_data)
                 
-                if not isinstance(proposed_data, dict):
-                    proposed_data = {}
-                    
                 if "aiReview" not in proposed_data:
                     proposed_data["aiReview"] = {}
                 
+                # 2. Update status
                 proposed_data["aiReview"]["pipeline_status"] = status
                 if error:
-                    proposed_data["aiReview"]["error"] = error
+                    proposed_data["aiReview"]["error_message"] = error
                 
+                if status == "completed":
+                    proposed_data["aiReview"]["completed_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+                
+                # 3. Write back
                 await conn.execute(
-                    'UPDATE public.game_proposals SET "proposedData" = $1 WHERE id = $2',
+                    'UPDATE public.game_proposals SET "proposedData" = $1, "updatedAt" = NOW() WHERE id = $2',
                     json.dumps(proposed_data),
                     proposal_id
                 )
-        except Exception as exc:
-            logger.error(f"Failed to update AI status for proposal {proposal_id}: {exc}")
+            except Exception as exc:
+                logger.error(f"[repo] Failed to update proposal status for {proposal_id}: {exc}")
 
     async def get_proposal_record(self, proposal_id: str) -> Optional[Dict[str, Any]]:
         """
-        Fetch a full proposal record including joined game and thumbnail metadata.
-        This mimics the Arcade API's /api/game-proposals/:id response contract.
-        """
-        pool = await self._provider.get_pool()
-        if pool is None or not proposal_id:
-            return None
-        query = """
-            SELECT 
-                p.*,
-                g.id as "game_id",
         Fetch a proposal record with joined game, thumbnail, and editor metadata.
         Replicates the structure previously served by the Arcade API.
         """
@@ -325,20 +228,39 @@ class GameRepository:
             if not row:
                 return None
             
-                    }
+            record = dict(row)
+            
+            # Unpack JSONB
+            proposed_data = record["proposedData"] or {}
+            if isinstance(proposed_data, str):
+                try:
+                    proposed_data = json.loads(proposed_data)
+                except:
+                    proposed_data = {}
 
-            # Handle JSON parsing for the fields that might be strings
-            containers = [record]
-            if record.get("game"):
-                containers.append(record["game"])
-                
-            for container in containers:
-                for field in ("proposedData", "metadata", "seoMeta", "variants"):
-                    if field in container:
-                        val = container[field]
-                        if isinstance(val, str):
-                            try:
-                                container[field] = json.loads(val)
-                            except (json.JSONDecodeError, ValueError):
-                                container[field] = {}
-            return record
+            # Construct the complex object the AI workflow expects
+            return {
+                "id": record["id"],
+                "gameId": record["gameId"],
+                "status": record["status"],
+                "type": record["type"],
+                "proposedData": proposed_data,
+                "createdAt": record["createdAt"].isoformat() if record["createdAt"] else None,
+                "updatedAt": record["updatedAt"].isoformat() if record["updatedAt"] else None,
+                "game": {
+                    "id": record["gameId"],
+                    "title": record["game_title"],
+                    "description": record["game_description"],
+                    "metadata": record["game_metadata"],
+                    "status": record["game_status"],
+                    "thumbnailFile": {
+                        "id": record["thumbnail_file_id"],
+                        "s3Key": record["thumbnail_s3Key"],
+                        "variants": record["thumbnail_variants"]
+                    } if record["thumbnail_file_id"] else None
+                },
+                "editor": {
+                    "email": record["editor_email"],
+                    "role": record["editor_role"]
+                } if record["editor_email"] else None
+            }

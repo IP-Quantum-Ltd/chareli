@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -8,150 +9,136 @@ from fastapi import FastAPI
 
 from app.config import get_settings
 from app.runtime import get_runtime, init_runtime, shutdown_runtime
-from app.api import agent, health, jobs, stage0, webhook
-
-from datetime import datetime, timezone
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s — %(message)s")
 logger = logging.getLogger(__name__)
 
-# Set at startup. The cron ignores proposals created before this process started,
-# preventing historical PENDING backlog from flooding the queue on restart.
+# Set at startup. The watchdog in cron_scan ignores stalled proposals created 
+# before this process started, preventing historical "dead" work from flooding the queue.
 _process_start_time: datetime = datetime.now(timezone.utc)
 
 
 async def cron_scan():
     """
-    Automated Library Auditor: Proactively ensures all games have an AI review.
+    Autonomous Job Discoverer.
     
-    The cron queries all active games that don't currently have:
-    1. An approved submission submitted by the agent service account.
-    2. A pending approval that hasn't been approved/rejected yet.
+    1. Safety Net: Finds pending proposals (manual or stalled) and claims them.
+       Respects _process_start_time for the watchdog.
     
-    These IDs are processed sequentially with submit_review set to true. 
-    Subsequent runs will naturally process fewer games as the catalog gets enriched.
+    2. Library Audit: If enabled, finds games missing AI reviews and creates 
+       proposals for them atomically.
+    
+    Sequential processing: Enqueues tasks one by one to avoid overwhelming workers.
     """
-    logger.info("[cron] Starting library audit scan...")
+    settings = get_settings()
+    if not settings.ENABLE_PROACTIVE_ENRICHMENT:
+        logger.info("[cron] Library audit is disabled. Skipping scan.")
+        # We still run the safety net though
+    
+    logger.info("[cron] Starting autonomous scan...")
     try:
         runtime = get_runtime()
-        settings = get_settings()
         
         count = 0
         while True:
-            # Query for the next game that lacks an approved AI review.
-            # We use SKIP LOCKED to ensure safety if multiple instances were to run.
-            game = await runtime.game_repository.get_next_enrichment_candidate_game(
-                agent_id=settings.SERVICE_USER_ID
+            # A. Check for pending/stalled proposals (Safety Net)
+            # This handles webhooks that were missed or crashed jobs.
+            proposal = await runtime.game_repository.get_next_pending_proposal(
+                min_created_at=_process_start_time
             )
             
-            if not game:
-                # Also check for any existing pending proposals that might need a safety-net pickup
-                proposal = await runtime.game_repository.get_next_pending_proposal()
-                if not proposal:
-                    break
-                
-                job = runtime.job_store.create_job("proposal_review", proposal["id"], submit_review=True)
-                await runtime.queue.enqueue(job.job_id)
-                logger.info(f"[cron] Claimed pending proposal {proposal['id']} for processing")
-            else:
-                game_id = game["id"]
+            if proposal:
+                proposal_id = proposal["id"]
                 # Deduplicate against in-memory jobs
-                existing_job = runtime.job_store.find_recent_job("game_review", game_id)
+                existing_job = runtime.job_store.find_recent_job("proposal_review", proposal_id)
                 if existing_job:
-                    logger.info(f"[cron] Game {game_id} already has a recent job record. Status: {existing_job.status}")
+                    logger.info(f"[cron] Proposal {proposal_id} already has a recent job record. Status: {existing_job.status}")
                     continue
 
-                job = runtime.job_store.create_job("game_review", game_id, submit_review=True)
+                job = runtime.job_store.create_job("proposal_review", proposal_id, submit_review=True)
                 await runtime.queue.enqueue(job.job_id)
-                logger.info(f"[cron] Audit: Identified and enqueued game {game_id} ('{game['title']}') for review")
+                logger.info(f"[cron] Claimed pending proposal {proposal_id} for processing")
+                count += 1
+                continue # Priority: clear the proposal queue first
             
-            count += 1
-            # We process them sequentially, so we just enqueue and let the worker handle it.
-            # We break after a reasonable batch to allow the scheduler to breathe, 
-            # or keep looping if you want to drain it all at once.
-            if count >= 100: # Safety break for very large catalogs
+            # B. Check for Library Audit (Proactive Enrichment)
+            if settings.ENABLE_PROACTIVE_ENRICHMENT:
+                # get_next_enrichment_candidate_game atomically creates a proposal
+                # and returns it, so we treat it like a proposal review.
+                audit_proposal = await runtime.game_repository.get_next_enrichment_candidate_game(
+                    agent_id=settings.SERVICE_USER_ID
+                )
+                
+                if audit_proposal:
+                    proposal_id = audit_proposal["id"]
+                    job = runtime.job_store.create_job("proposal_review", proposal_id, submit_review=True)
+                    await runtime.queue.enqueue(job.job_id)
+                    logger.info(f"[cron] Audit: Created and enqueued proposal {proposal_id} for game '{audit_proposal['title']}'")
+                    count += 1
+                    continue
+            
+            # Nothing left to do
+            break
+
+            if count >= 100: # Safety break for very large bursts
+                logger.warning("[cron] Batch limit reached (100). Will continue in next run.")
                 break
 
-        logger.info(f"[cron] Scan complete. Identified {count} games/proposals needing attention.")
+        logger.info(f"[cron] Scan complete. Enqueued {count} tasks.")
     except Exception as exc:
         logger.error(f"[cron] Autonomous scan failed: {exc}", exc_info=True)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Load and validate settings at startup
     settings = get_settings()
-    runtime = init_runtime()
-    # Start queue worker
-    worker_task = asyncio.create_task(runtime.queue.run_worker(runtime.process_job))
-
+    try:
+        settings.validate_setup()
+        logger.info("[startup] Configuration validated successfully.")
+    except ValueError as e:
+        logger.error(f"[startup] FATAL CONFIG ERROR: {e}")
+        # In a real production app, we might exit here.
+        # For now, we log it and continue so the dev can fix .env
+    
+    # Initialize services (DB pools, etc.)
+    init_runtime()
+    
     # Start cron scheduler
     scheduler = AsyncIOScheduler()
+    
+    # Support for both weekly and monthly triggers
+    trigger_kwargs = {
+        "day_of_week": settings.CRON_SCHEDULE_DAY_OF_WEEK,
+        "hour": settings.CRON_SCHEDULE_HOUR,
+        "minute": 0
+    }
+    
+    # If a specific day of the month is set (other than *), it becomes a monthly job
+    if settings.CRON_SCHEDULE_MONTH_DAY != "*":
+        trigger_kwargs["day"] = settings.CRON_SCHEDULE_MONTH_DAY
+        # Remove day_of_week if we are targeting a specific date
+        trigger_kwargs.pop("day_of_week", None)
+        logger.info(f"[cron] Monthly schedule detected: Day {settings.CRON_SCHEDULE_MONTH_DAY} at {settings.CRON_SCHEDULE_HOUR}:00")
+    else:
+        logger.info(f"[cron] Weekly schedule detected: {settings.CRON_SCHEDULE_DAY_OF_WEEK} at {settings.CRON_SCHEDULE_HOUR}:00")
+
     scheduler.add_job(
         cron_scan, 
-        CronTrigger(
-            day_of_week=settings.CRON_SCHEDULE_DAY_OF_WEEK,
-            hour=settings.CRON_SCHEDULE_HOUR,
-            minute=0
-        ),
+        CronTrigger(**trigger_kwargs),
         id="cron_scan",
-        misfire_grace_time=30
+        # Convert hours to seconds for APScheduler
+        misfire_grace_time=settings.CRON_MISFIRE_GRACE_HOURS * 3600
     )
+    
     scheduler.start()
-    logger.info(
-        f"[cron] Scheduler started — Schedule: {settings.CRON_SCHEDULE_DAY_OF_WEEK} at {settings.CRON_SCHEDULE_HOUR}:00, "
-        f"misfire_grace_time: 30s"
-    )
+    logger.info(f"[cron] Scheduler started with {settings.CRON_MISFIRE_GRACE_HOURS}h misfire grace.")
 
     yield
-
-    scheduler.shutdown(wait=False)
-    worker_task.cancel()
+    
+    # Shutdown gracefully
     await shutdown_runtime()
 
 
-app = FastAPI(
-    title="ArcadeBox AI Game Review Agent",
-    description=(
-        "Visual-first AI review service for ArcadeBox game submissions. "
-        "It exposes health and webhook endpoints, then processes proposals asynchronously "
-        "through Stage 0 visual verification, SEO intelligence, and downstream grounding."
-    ),
-    version="1.0.0",
-    lifespan=lifespan,
-    docs_url="/docs",
-    redoc_url="/redoc",
-    openapi_url="/openapi.json",
-    swagger_ui_parameters={
-        "displayRequestDuration": True,
-        "docExpansion": "list",
-        "defaultModelsExpandDepth": 1,
-    },
-    openapi_tags=[
-        {
-            "name": "Health",
-            "description": "Service readiness and liveness endpoints.",
-        },
-        {
-            "name": "Webhook",
-            "description": "Inbound ArcadeBox webhook endpoints for queueing proposal review jobs.",
-        },
-        {
-            "name": "Agent",
-            "description": "Direct agent execution endpoints for running the workflow from a game id.",
-        },
-        {
-            "name": "Jobs",
-            "description": "Queue job tracking and job status inspection endpoints.",
-        },
-        {
-            "name": "Stage 0",
-            "description": "On-demand Stage 0 visual verification and artifact retrieval endpoints.",
-        },
-    ],
-)
-
-app.include_router(health.router)
-app.include_router(webhook.router)
-app.include_router(agent.router)
-app.include_router(jobs.router)
-app.include_router(stage0.router)
+app = FastAPI(lifespan=lifespan)
+# app.include_router(...)
