@@ -9,8 +9,14 @@ from app.config import get_settings
 from app.runtime import get_runtime, init_runtime, shutdown_runtime
 from app.api import agent, health, jobs, stage0, webhook
 
+from datetime import datetime, timezone
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s — %(message)s")
 logger = logging.getLogger(__name__)
+
+# Set at startup. The cron ignores proposals created before this process started,
+# preventing historical PENDING backlog from flooding the queue on restart.
+_process_start_time: datetime = datetime.now(timezone.utc)
 
 
 async def cron_scan():
@@ -21,6 +27,10 @@ async def cron_scan():
     conditions (i.e., those that are pending or have stalled) and sequentially 
     processes them all. This ensures that any backlog is cleared efficiently while 
     remaining safe for future multi-agent concurrency via SKIP LOCKED.
+
+    Only considers proposals created after this process started — proposals that existed
+    before the current deployment are ignored to prevent historical backlog from flooding
+    the queue on restart.
     """
     logger.info("[cron] Scanning database for pending work...")
     try:
@@ -30,8 +40,10 @@ async def cron_scan():
         count = 0
         while True:
             # We pick one task at a time but loop until the DB is drained.
-            # This satisfies the "one at a time" safety while maintaining throughput.
-            proposal = await runtime.game_repository.get_next_pending_proposal()
+            # We respect the process start time to avoid processing old backlog.
+            proposal = await runtime.game_repository.get_next_pending_proposal(
+                min_created_at=_process_start_time
+            )
             if not proposal:
                 break
 

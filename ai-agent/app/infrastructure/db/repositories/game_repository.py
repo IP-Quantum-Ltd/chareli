@@ -98,7 +98,7 @@ class GameRepository:
             rows = await conn.fetch(query, *args)
             return [dict(row) for row in rows]
 
-    async def get_next_pending_proposal(self) -> Optional[Dict[str, Any]]:
+    async def get_next_pending_proposal(self, min_created_at: Optional[datetime.datetime] = None) -> Optional[Dict[str, Any]]:
         """
         Atomically find and claim the next pending proposal for AI review.
         Uses SKIP LOCKED for safe concurrent processing across multiple instances.
@@ -108,17 +108,25 @@ class GameRepository:
         if pool is None:
             return None
         import datetime
+        
+        # Build the dynamic filter for process start time
+        time_filter = ""
+        args = []
+        if min_created_at:
+            time_filter = 'AND "createdAt" >= $1'
+            args.append(min_created_at)
+
         async with pool.acquire() as conn:
             async with conn.transaction():
                 # We target PENDING proposals that:
                 # 1. Haven't been started (aiReview is NULL)
                 # 2. Failed or were aborted
                 # 3. Are stuck in 'processing' for more than 30 minutes (watchdog)
-                row = await conn.fetchrow(
-                    """
+                query = f"""
                     SELECT id, "gameId", "proposedData"
                     FROM public.game_proposals
                     WHERE status = 'pending'
+                      {time_filter}
                       AND (
                         "proposedData"->'aiReview' IS NULL 
                         OR "proposedData"->'aiReview'->>'pipeline_status' NOT IN ('processing', 'completed')
@@ -133,8 +141,8 @@ class GameRepository:
                     ORDER BY "createdAt" ASC
                     LIMIT 1
                     FOR UPDATE SKIP LOCKED
-                    """
-                )
+                """
+                row = await conn.fetchrow(query, *args)
                 if not row:
                     return None
                 
