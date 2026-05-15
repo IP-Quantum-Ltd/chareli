@@ -7,6 +7,11 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from fastapi import FastAPI
 
+from app.api.agent import router as agent_router
+from app.api.health import router as health_router
+from app.api.jobs import router as jobs_router
+from app.api.stage0 import router as stage0_router
+from app.api.webhook import router as webhook_router
 from app.config import get_settings
 from app.runtime import get_runtime, init_runtime, shutdown_runtime
 
@@ -31,18 +36,19 @@ async def cron_scan():
     Sequential processing: Enqueues tasks one by one to avoid overwhelming workers.
     """
     settings = get_settings()
-    if not settings.ENABLE_PROACTIVE_ENRICHMENT:
-        logger.info("[cron] Library audit is disabled. Skipping scan.")
-        # We still run the safety net though
-    
     logger.info("[cron] Starting autonomous scan...")
+    
     try:
         runtime = get_runtime()
-        
         count = 0
+        
         while True:
+            # Safety break for very large bursts
+            if count >= 100:
+                logger.warning("[cron] Batch limit reached (100). Will continue in next run.")
+                break
+
             # A. Check for pending/stalled proposals (Safety Net)
-            # This handles webhooks that were missed or crashed jobs.
             proposal = await runtime.game_repository.get_next_pending_proposal(
                 min_created_at=_process_start_time
             )
@@ -63,8 +69,6 @@ async def cron_scan():
             
             # B. Check for Library Audit (Proactive Enrichment)
             if settings.ENABLE_PROACTIVE_ENRICHMENT:
-                # get_next_enrichment_candidate_game atomically creates a proposal
-                # and returns it, so we treat it like a proposal review.
                 audit_proposal = await runtime.game_repository.get_next_enrichment_candidate_game(
                     agent_id=settings.SERVICE_USER_ID
                 )
@@ -75,16 +79,16 @@ async def cron_scan():
                     await runtime.queue.enqueue(job.job_id)
                     logger.info(f"[cron] Audit: Created and enqueued proposal {proposal_id} for game '{audit_proposal['title']}'")
                     count += 1
+                    
                     # Sequential strategy: break after one to avoid flooding the dashboard.
                     # The next cron tick will pick up the next game.
                     break
+            else:
+                logger.debug("[cron] Library audit is disabled. Skipping enrichment step.")
+                break
             
             # Nothing left to do
             break
-
-            if count >= 100: # Safety break for very large bursts
-                logger.warning("[cron] Batch limit reached (100). Will continue in next run.")
-                break
 
         logger.info(f"[cron] Scan complete. Enqueued {count} tasks.")
     except Exception as exc:
@@ -93,54 +97,69 @@ async def cron_scan():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Load and validate settings at startup
+    # 1. Load and validate settings (Crash early if misconfigured)
     settings = get_settings()
-    try:
-        settings.validate_setup()
-        logger.info("[startup] Configuration validated successfully.")
-    except ValueError as e:
-        logger.error(f"[startup] FATAL CONFIG ERROR: {e}")
-        # In a real production app, we might exit here.
-        # For now, we log it and continue so the dev can fix .env
+    settings.validate_setup()
+    logger.info("[startup] Configuration validated successfully.")
     
-    # Initialize services (DB pools, etc.)
+    # 2. Initialize runtime services
     init_runtime()
+    runtime = get_runtime()
     
-    # Start cron scheduler
+    # 3. Start Background Queue Worker
+    # This is essential for processing the jobs enqueued by webhooks or cron.
+    worker_task = asyncio.create_task(runtime.queue.run_worker(runtime.process_job))
+    logger.info("[startup] Background worker task started.")
+    
+    # 4. Start Cron Scheduler
     scheduler = AsyncIOScheduler()
     
-    # Support for both weekly and monthly triggers
     trigger_kwargs = {
         "day_of_week": settings.CRON_SCHEDULE_DAY_OF_WEEK,
         "hour": settings.CRON_SCHEDULE_HOUR,
         "minute": 0
     }
     
-    # If a specific day of the month is set (other than *), it becomes a monthly job
     if settings.CRON_SCHEDULE_MONTH_DAY != "*":
         trigger_kwargs["day"] = settings.CRON_SCHEDULE_MONTH_DAY
-        # Remove day_of_week if we are targeting a specific date
         trigger_kwargs.pop("day_of_week", None)
-        logger.info(f"[cron] Monthly schedule detected: Day {settings.CRON_SCHEDULE_MONTH_DAY} at {settings.CRON_SCHEDULE_HOUR}:00")
+        logger.info(f"[cron] Monthly schedule: Day {settings.CRON_SCHEDULE_MONTH_DAY} at {settings.CRON_SCHEDULE_HOUR}:00")
     else:
-        logger.info(f"[cron] Weekly schedule detected: {settings.CRON_SCHEDULE_DAY_OF_WEEK} at {settings.CRON_SCHEDULE_HOUR}:00")
+        logger.info(f"[cron] Weekly schedule: {settings.CRON_SCHEDULE_DAY_OF_WEEK} at {settings.CRON_SCHEDULE_HOUR}:00")
 
     scheduler.add_job(
         cron_scan, 
         CronTrigger(**trigger_kwargs),
         id="cron_scan",
-        # Convert hours to seconds for APScheduler
         misfire_grace_time=settings.CRON_MISFIRE_GRACE_HOURS * 3600
     )
     
     scheduler.start()
-    logger.info(f"[cron] Scheduler started with {settings.CRON_MISFIRE_GRACE_HOURS}h misfire grace.")
+    logger.info(f"[cron] Scheduler started (misfire_grace={settings.CRON_MISFIRE_GRACE_HOURS}h).")
 
     yield
     
     # Shutdown gracefully
+    logger.info("[shutdown] Stopping worker and scheduler...")
+    scheduler.shutdown()
+    worker_task.cancel()
+    try:
+        await worker_task
+    except (asyncio.CancelledError, Exception):
+        pass
     await shutdown_runtime()
 
 
-app = FastAPI(lifespan=lifespan)
-# app.include_router(...)
+app = FastAPI(
+    title="ArcadeBox AI Agent",
+    description="Autonomous SEO and Metadata Enrichment Agent",
+    version="1.0.0",
+    lifespan=lifespan
+)
+
+# Attach Routers with correct prefixing to avoid double-nesting
+app.include_router(health_router)
+app.include_router(webhook_router, prefix="/api")
+app.include_router(agent_router, prefix="/api")
+app.include_router(jobs_router, prefix="/api")
+app.include_router(stage0_router, prefix="/api")
