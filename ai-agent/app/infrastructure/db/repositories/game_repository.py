@@ -108,7 +108,6 @@ class GameRepository:
         pool = await self._provider.get_pool()
         if pool is None:
             return None
-        import datetime
         
         # Build the dynamic filter for process start time
         time_filter = ""
@@ -202,7 +201,7 @@ class GameRepository:
         """Update the AI processing status in the database."""
         pool = await self._provider.get_pool()
         if pool is None:
-            return
+            return None
         try:
             async with pool.acquire() as conn:
                 row = await conn.fetchrow('SELECT "proposedData" FROM public.game_proposals WHERE id = $1', proposal_id)
