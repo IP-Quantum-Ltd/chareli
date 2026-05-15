@@ -91,6 +91,7 @@ class QueueConfig:
     stage0_candidate_capture_timeout_seconds: int
     stage0_medium_confidence_threshold: int
     stage0_high_confidence_threshold: int
+    enable_proactive_enrichment: bool
 
 
 @dataclass(frozen=True)

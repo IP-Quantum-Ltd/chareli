@@ -78,6 +78,7 @@ class AppSettings(BaseSettings):
     STAGE0_CANDIDATE_CAPTURE_TIMEOUT_SECONDS: int = 30
     STAGE0_MEDIUM_CONFIDENCE_THRESHOLD: int = 75
     STAGE0_HIGH_CONFIDENCE_THRESHOLD: int = 90
+    ENABLE_PROACTIVE_ENRICHMENT: bool = False
 
 
 @lru_cache(maxsize=1)

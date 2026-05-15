@@ -15,45 +15,59 @@ logger = logging.getLogger(__name__)
 
 async def cron_scan():
     """
-    Automated approach: Communicates directly with the DB to find work.
-    1. Checks for pending proposals that need AI review.
-    2. If none, checks for published games that need SEO/metadata enrichment.
-    Uses SKIP LOCKED for safe concurrent execution across multiple instances.
+    Automated approach: Communicates directly with the DB to identify and process work.
+    
+    The cron queries all jobs that don't currently fit our 'completed' or 'processing' 
+    conditions (i.e., those that are pending or have stalled) and sequentially 
+    processes them all. This ensures that any backlog is cleared efficiently while 
+    remaining safe for future multi-agent concurrency via SKIP LOCKED.
     """
-    logger.info("[cron] Scanning database for next task...")
+    logger.info("[cron] Scanning database for pending work...")
     try:
         runtime = get_runtime()
+        config = runtime.config.queue
         
-        # Step 1: Look for pending proposals (highest priority)
-        proposal = await runtime.game_repository.get_next_pending_proposal()
-        if proposal:
+        count = 0
+        while True:
+            # We pick one task at a time but loop until the DB is drained.
+            # This satisfies the "one at a time" safety while maintaining throughput.
+            proposal = await runtime.game_repository.get_next_pending_proposal()
+            if not proposal:
+                break
+
             proposal_id = proposal["id"]
-            # Check if we already have an active job for this to avoid redundant memory usage
-            existing_job = runtime.job_store.find_active_job("proposal_review", proposal_id)
+            # Deduplicate against in-memory jobs
+            existing_job = runtime.job_store.find_recent_job("proposal_review", proposal_id)
             if existing_job:
-                logger.info(f"[cron] Proposal {proposal_id} is already being processed in-memory.")
-                return
+                logger.info(f"[cron] Proposal {proposal_id} already has a recent job record. Status: {existing_job.status}")
+                continue
 
             job = runtime.job_store.create_job("proposal_review", proposal_id, submit_review=True)
             await runtime.queue.enqueue(job.job_id)
-            logger.info(f"[cron] Claimed proposal {proposal_id} from DB for concurrent processing")
-            return
+            logger.info(f"[cron] Claimed and enqueued proposal {proposal_id}")
+            count += 1
 
-        # Step 2: Look for games needing enrichment (proactive approach)
-        game = await runtime.game_repository.get_next_enrichment_candidate_game()
-        if game:
-            game_id = game["id"]
-            existing_job = runtime.job_store.find_active_job("game_review", game_id)
-            if existing_job:
-                logger.info(f"[cron] Game {game_id} is already being processed in-memory.")
-                return
+        # Proactive enrichment (if enabled and proposal queue is empty)
+        if count == 0 and config.enable_proactive_enrichment:
+            while True:
+                game = await runtime.game_repository.get_next_enrichment_candidate_game()
+                if not game:
+                    break
+                
+                game_id = game["id"]
+                existing_job = runtime.job_store.find_recent_job("game_review", game_id)
+                if existing_job:
+                    continue
 
-            job = runtime.job_store.create_job("game_review", game_id, submit_review=True)
-            await runtime.queue.enqueue(job.job_id)
-            logger.info(f"[cron] Claimed game {game_id} ('{game['title']}') from DB for proactive enrichment")
-            return
+                job = runtime.job_store.create_job("game_review", game_id, submit_review=True)
+                await runtime.queue.enqueue(job.job_id)
+                logger.info(f"[cron] Claimed and enqueued game {game_id} for enrichment")
+                count += 1
+                # Limit proactive enrichment to avoid huge bursts
+                if count >= 10: 
+                    break
 
-        logger.info("[cron] No pending work found in database.")
+        logger.info(f"[cron] Scan complete. Enqueued {count} tasks.")
     except Exception as exc:
         logger.error(f"[cron] Autonomous scan failed: {exc}", exc_info=True)
 
@@ -67,9 +81,15 @@ async def lifespan(app: FastAPI):
 
     # Start cron scheduler
     scheduler = AsyncIOScheduler()
-    scheduler.add_job(cron_scan, "interval", minutes=settings.CRON_INTERVAL_MINUTES, id="cron_scan")
+    scheduler.add_job(
+        cron_scan, 
+        "interval", 
+        minutes=settings.CRON_INTERVAL_MINUTES, 
+        id="cron_scan",
+        misfire_grace_time=30
+    )
     scheduler.start()
-    logger.info(f"[cron] Scheduler started — interval: {settings.CRON_INTERVAL_MINUTES} min")
+    logger.info(f"[cron] Scheduler started — interval: {settings.CRON_INTERVAL_MINUTES} min, misfire_grace_time: 30s")
 
     yield
 

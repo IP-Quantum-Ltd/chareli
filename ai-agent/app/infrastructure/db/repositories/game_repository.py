@@ -102,14 +102,18 @@ class GameRepository:
         """
         Atomically find and claim the next pending proposal for AI review.
         Uses SKIP LOCKED for safe concurrent processing across multiple instances.
+        Includes a 30-minute watchdog timeout to allow re-claiming stalled jobs.
         """
         pool = await self._provider.get_pool()
         if pool is None:
             return None
+        import datetime
         async with pool.acquire() as conn:
             async with conn.transaction():
-                # We target PENDING proposals that aren't already being worked on by an agent.
-                # We check proposedData->'aiReview'->'pipeline_status' to avoid duplicate work.
+                # We target PENDING proposals that:
+                # 1. Haven't been started (aiReview is NULL)
+                # 2. Failed or were aborted
+                # 3. Are stuck in 'processing' for more than 30 minutes (watchdog)
                 row = await conn.fetchrow(
                     """
                     SELECT id, "gameId", "proposedData"
@@ -118,6 +122,13 @@ class GameRepository:
                       AND (
                         "proposedData"->'aiReview' IS NULL 
                         OR "proposedData"->'aiReview'->>'pipeline_status' NOT IN ('processing', 'completed')
+                        OR (
+                            "proposedData"->'aiReview'->>'pipeline_status' = 'processing'
+                            AND (
+                                ("proposedData"->'aiReview'->>'processing_started_at')::timestamp < (NOW() AT TIME ZONE 'UTC' - INTERVAL '30 minutes')
+                                OR "proposedData"->'aiReview'->>'processing_started_at' IS NULL
+                            )
+                        )
                       )
                     ORDER BY "createdAt" ASC
                     LIMIT 1
@@ -143,6 +154,7 @@ class GameRepository:
                 
                 # Mark as processing immediately within the transaction
                 proposed_data["aiReview"]["pipeline_status"] = "processing"
+                proposed_data["aiReview"]["processing_started_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
                 
                 await conn.execute(
                     'UPDATE public.game_proposals SET "proposedData" = $1 WHERE id = $2',
@@ -182,47 +194,98 @@ class GameRepository:
         pool = await self._provider.get_pool()
         if pool is None:
             return
-        async with pool.acquire() as conn:
-            row = await conn.fetchrow('SELECT "proposedData" FROM public.game_proposals WHERE id = $1', proposal_id)
-            if not row:
-                return
-            proposed_data = row["proposedData"] or {}
-            if isinstance(proposed_data, str):
-                try:
-                    proposed_data = json.loads(proposed_data)
-                except (json.JSONDecodeError, ValueError):
-                    proposed_data = {}
-            
-            if not isinstance(proposed_data, dict):
-                proposed_data = {}
+        try:
+            async with pool.acquire() as conn:
+                row = await conn.fetchrow('SELECT "proposedData" FROM public.game_proposals WHERE id = $1', proposal_id)
+                if not row:
+                    return
+                proposed_data = row["proposedData"] or {}
+                if isinstance(proposed_data, str):
+                    try:
+                        proposed_data = json.loads(proposed_data)
+                    except (json.JSONDecodeError, ValueError):
+                        proposed_data = {}
                 
-            if "aiReview" not in proposed_data:
-                proposed_data["aiReview"] = {}
-            
-            proposed_data["aiReview"]["pipeline_status"] = status
-            if error:
-                proposed_data["aiReview"]["error"] = error
-            
-            await conn.execute(
-                'UPDATE public.game_proposals SET "proposedData" = $1 WHERE id = $2',
-                json.dumps(proposed_data),
-                proposal_id
-            )
+                if not isinstance(proposed_data, dict):
+                    proposed_data = {}
+                    
+                if "aiReview" not in proposed_data:
+                    proposed_data["aiReview"] = {}
+                
+                proposed_data["aiReview"]["pipeline_status"] = status
+                if error:
+                    proposed_data["aiReview"]["error"] = error
+                
+                await conn.execute(
+                    'UPDATE public.game_proposals SET "proposedData" = $1 WHERE id = $2',
+                    json.dumps(proposed_data),
+                    proposal_id
+                )
+        except Exception as exc:
+            logger.error(f"Failed to update AI status for proposal {proposal_id}: {exc}")
 
     async def get_proposal_record(self, proposal_id: str) -> Optional[Dict[str, Any]]:
-        """Fetch a full proposal record from the database."""
+        """
+        Fetch a full proposal record including joined game and thumbnail metadata.
+        This mimics the Arcade API's /api/game-proposals/:id response contract.
+        """
         pool = await self._provider.get_pool()
         if pool is None or not proposal_id:
             return None
+        query = """
+            SELECT 
+                p.*,
+                g.id as "game_id",
+                g.title as "game_title",
+                g.status as "game_status",
+                g.metadata as "game_metadata",
+                g."seoMeta" as "game_seoMeta",
+                g."thumbnailFileId" as "game_thumbnailFileId",
+                f."s3Key" as "game_thumbnail_s3Key",
+                f.variants as "game_thumbnail_variants"
+            FROM public.game_proposals p
+            LEFT JOIN public.games g ON g.id = p."gameId"
+            LEFT JOIN public.files f ON f.id = g."thumbnailFileId"
+            WHERE p.id = $1
+            LIMIT 1
+        """
         async with pool.acquire() as conn:
-            row = await conn.fetchrow('SELECT * FROM public.game_proposals WHERE id = $1 LIMIT 1', proposal_id)
+            row = await conn.fetchrow(query, proposal_id)
             if not row:
                 return None
-            record = dict(row)
-            # asyncpg might return JSONB as a dict already, but let's be safe
-            if isinstance(record.get("proposedData"), str):
-                try:
-                    record["proposedData"] = json.loads(record["proposedData"])
-                except (json.JSONDecodeError, ValueError):
-                    record["proposedData"] = {}
+            
+            raw = dict(row)
+            # Reconstruct the nested structure expected by downstream nodes
+            record = {k: v for k, v in raw.items() if not k.startswith("game_")}
+            
+            if raw.get("game_id"):
+                record["game"] = {
+                    "id": raw["game_id"],
+                    "title": raw["game_title"],
+                    "status": raw["game_status"],
+                    "metadata": raw["game_metadata"],
+                    "seoMeta": raw["game_seoMeta"],
+                    "thumbnailFileId": raw["game_thumbnailFileId"],
+                }
+                if raw.get("game_thumbnail_s3Key"):
+                    record["game"]["thumbnailFile"] = {
+                        "id": raw["game_thumbnailFileId"],
+                        "s3Key": raw["game_thumbnail_s3Key"],
+                        "variants": raw["game_thumbnail_variants"],
+                    }
+
+            # Handle JSON parsing for the fields that might be strings
+            containers = [record]
+            if record.get("game"):
+                containers.append(record["game"])
+                
+            for container in containers:
+                for field in ("proposedData", "metadata", "seoMeta", "variants"):
+                    if field in container:
+                        val = container[field]
+                        if isinstance(val, str):
+                            try:
+                                container[field] = json.loads(val)
+                            except (json.JSONDecodeError, ValueError):
+                                container[field] = {}
             return record

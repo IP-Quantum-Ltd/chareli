@@ -115,6 +115,7 @@ def build_runtime_config(app_settings: AppSettings) -> RuntimeConfig:
             stage0_candidate_capture_timeout_seconds=max(5, app_settings.STAGE0_CANDIDATE_CAPTURE_TIMEOUT_SECONDS),
             stage0_medium_confidence_threshold=max(0, min(app_settings.STAGE0_MEDIUM_CONFIDENCE_THRESHOLD, 100)),
             stage0_high_confidence_threshold=max(0, min(app_settings.STAGE0_HIGH_CONFIDENCE_THRESHOLD, 100)),
+            enable_proactive_enrichment=app_settings.ENABLE_PROACTIVE_ENRICHMENT,
         ),
         storage=_build_storage_config(app_settings),
     )
