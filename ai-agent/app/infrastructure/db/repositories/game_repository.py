@@ -189,9 +189,22 @@ class GameRepository:
             return None
         async with pool.acquire() as conn:
             async with conn.transaction():
-                # Candidates: games with no pending proposal AND no approved proposal by the agent.
-                row = await conn.fetchrow(
+                # Candidates: games with no pending proposal.
+                # If agent_id is provided, we also check that no approved proposal by this agent exists.
+                agent_filter = ""
+                args = []
+                if agent_id and len(agent_id) >= 32:
+                    agent_filter = """
+                      AND NOT EXISTS (
+                          SELECT 1 FROM public.game_proposals p 
+                          WHERE p."gameId" = g.id 
+                            AND p.status = 'approved' 
+                            AND p."editorId" = $1
+                      )
                     """
+                    args.append(agent_id)
+
+                query = f"""
                     SELECT g.id, g.title
                     FROM public.games g
                     WHERE g.status = 'active'
@@ -199,18 +212,12 @@ class GameRepository:
                           SELECT 1 FROM public.game_proposals p 
                           WHERE p."gameId" = g.id AND p.status = 'pending'
                       )
-                      AND NOT EXISTS (
-                          SELECT 1 FROM public.game_proposals p 
-                          WHERE p."gameId" = g.id 
-                            AND p.status = 'approved' 
-                            AND p."editorId" = $1
-                      )
+                      {agent_filter}
                     ORDER BY g."createdAt" ASC
                     LIMIT 1
                     FOR UPDATE OF g SKIP LOCKED
-                    """,
-                    agent_id
-                )
+                """
+                row = await conn.fetchrow(query, *args)
                 return dict(row) if row else None
 
     async def update_proposal_ai_status(self, proposal_id: str, status: str, error: Optional[str] = None) -> None:
