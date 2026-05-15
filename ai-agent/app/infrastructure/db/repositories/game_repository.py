@@ -97,3 +97,114 @@ class GameRepository:
         async with pool.acquire() as conn:
             rows = await conn.fetch(query, *args)
             return [dict(row) for row in rows]
+
+    async def get_next_pending_proposal(self) -> Optional[Dict[str, Any]]:
+        """
+        Atomically find and claim the next pending proposal for AI review.
+        Uses SKIP LOCKED for safe concurrent processing across multiple instances.
+        """
+        pool = await self._provider.get_pool()
+        if pool is None:
+            return None
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                # We target PENDING proposals that aren't already being worked on by an agent.
+                # We check proposedData->'aiReview'->'pipeline_status' to avoid duplicate work.
+                row = await conn.fetchrow(
+                    """
+                    SELECT id, "gameId", "proposedData"
+                    FROM public.game_proposals
+                    WHERE status = 'pending'
+                      AND (
+                        "proposedData"->'aiReview' IS NULL 
+                        OR "proposedData"->'aiReview'->>'pipeline_status' NOT IN ('processing', 'completed')
+                      )
+                    ORDER BY "createdAt" ASC
+                    LIMIT 1
+                    FOR UPDATE SKIP LOCKED
+                    """
+                )
+                if not row:
+                    return None
+                
+                record = dict(row)
+                proposed_data = record["proposedData"] or {}
+                if "aiReview" not in proposed_data:
+                    proposed_data["aiReview"] = {}
+                
+                # Mark as processing immediately within the transaction
+                proposed_data["aiReview"]["pipeline_status"] = "processing"
+                
+                await conn.execute(
+                    'UPDATE public.game_proposals SET "proposedData" = $1 WHERE id = $2',
+                    json.dumps(proposed_data),
+                    record["id"]
+                )
+                return record
+
+    async def get_next_enrichment_candidate_game(self) -> Optional[Dict[str, Any]]:
+        """
+        Find a published game that lacks SEO metadata and has no active proposal.
+        Allows the agent to proactively enrich the catalog.
+        """
+        pool = await self._provider.get_pool()
+        if pool is None:
+            return None
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                # Candidates: games with no seoMeta AND no pending proposal.
+                row = await conn.fetchrow(
+                    """
+                    SELECT g.id, g.title
+                    FROM public.games g
+                    LEFT JOIN public.game_proposals p ON p."gameId" = g.id AND p.status = 'pending'
+                    WHERE g.status = 'active'
+                      AND p.id IS NULL
+                      AND (g."seoMeta" IS NULL OR g."seoMeta" = '{}'::jsonb)
+                    ORDER BY g."createdAt" DESC
+                    LIMIT 1
+                    FOR UPDATE OF g SKIP LOCKED
+                    """
+                )
+                return dict(row) if row else None
+
+    async def update_proposal_ai_status(self, proposal_id: str, status: str, error: Optional[str] = None) -> None:
+        """Update the AI processing status in the database."""
+        pool = await self._provider.get_pool()
+        if pool is None:
+            return
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow('SELECT "proposedData" FROM public.game_proposals WHERE id = $1', proposal_id)
+            if not row:
+                return
+            proposed_data = row["proposedData"] or {}
+            if "aiReview" not in proposed_data:
+                proposed_data["aiReview"] = {}
+            
+            proposed_data["aiReview"]["pipeline_status"] = status
+            if error:
+                proposed_data["aiReview"]["error"] = error
+            
+            await conn.execute(
+                'UPDATE public.game_proposals SET "proposedData" = $1 WHERE id = $2',
+                json.dumps(proposed_data),
+                proposal_id
+            )
+
+    async def get_proposal_record(self, proposal_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch a full proposal record from the database."""
+        pool = await self._provider.get_pool()
+        if pool is None or not proposal_id:
+            return None
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow('SELECT * FROM public.game_proposals WHERE id = $1 LIMIT 1', proposal_id)
+            if not row:
+                return None
+            record = dict(row)
+            # asyncpg might return JSONB as a dict already, but let's be safe
+            if isinstance(record.get("proposedData"), str):
+                try:
+                    record["proposedData"] = json.loads(record["proposedData"])
+                except (json.JSONDecodeError, ValueError):
+                    record["proposedData"] = {}
+            return record

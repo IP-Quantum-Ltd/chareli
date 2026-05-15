@@ -15,23 +15,47 @@ logger = logging.getLogger(__name__)
 
 async def cron_scan():
     """
-    Fallback scan: fetches all PENDING proposals and enqueues any not already queued.
-    Runs every CRON_INTERVAL_MINUTES minutes as a safety net for missed webhooks.
+    Automated approach: Communicates directly with the DB to find work.
+    1. Checks for pending proposals that need AI review.
+    2. If none, checks for published games that need SEO/metadata enrichment.
+    Uses SKIP LOCKED for safe concurrent execution across multiple instances.
     """
-    logger.info("[cron] Scanning for pending proposals...")
+    logger.info("[cron] Scanning database for next task...")
     try:
         runtime = get_runtime()
-        proposals = await runtime.arcade_client.get_pending_proposals()
-        count = 0
-        for p in proposals:
-            existing_job = runtime.job_store.find_active_job("proposal_review", p["id"])
-            job = existing_job or runtime.job_store.create_job("proposal_review", p["id"], submit_review=True)
-            enqueued = existing_job is None and await runtime.queue.enqueue(job.job_id)
-            if enqueued:
-                count += 1
-        logger.info(f"[cron] Enqueued {count} new proposals from {len(proposals)} pending")
+        
+        # Step 1: Look for pending proposals (highest priority)
+        proposal = await runtime.game_repository.get_next_pending_proposal()
+        if proposal:
+            proposal_id = proposal["id"]
+            # Check if we already have an active job for this to avoid redundant memory usage
+            existing_job = runtime.job_store.find_active_job("proposal_review", proposal_id)
+            if existing_job:
+                logger.info(f"[cron] Proposal {proposal_id} is already being processed in-memory.")
+                return
+
+            job = runtime.job_store.create_job("proposal_review", proposal_id, submit_review=True)
+            await runtime.queue.enqueue(job.job_id)
+            logger.info(f"[cron] Claimed proposal {proposal_id} from DB for concurrent processing")
+            return
+
+        # Step 2: Look for games needing enrichment (proactive approach)
+        game = await runtime.game_repository.get_next_enrichment_candidate_game()
+        if game:
+            game_id = game["id"]
+            existing_job = runtime.job_store.find_active_job("game_review", game_id)
+            if existing_job:
+                logger.info(f"[cron] Game {game_id} is already being processed in-memory.")
+                return
+
+            job = runtime.job_store.create_job("game_review", game_id, submit_review=True)
+            await runtime.queue.enqueue(job.job_id)
+            logger.info(f"[cron] Claimed game {game_id} ('{game['title']}') from DB for proactive enrichment")
+            return
+
+        logger.info("[cron] No pending work found in database.")
     except Exception as exc:
-        logger.error(f"[cron] Scan failed: {exc}", exc_info=True)
+        logger.error(f"[cron] Autonomous scan failed: {exc}", exc_info=True)
 
 
 @asynccontextmanager

@@ -20,7 +20,9 @@ class InitializeAgentNode:
         try:
             if proposal_id:
                 logger.info("Node: Initialize | Proposal: %s", proposal_id)
-                proposal = await self.arcade_client.get_proposal(proposal_id)
+                proposal = await self.game_repository.get_proposal_record(proposal_id)
+                if not proposal:
+                    raise ValueError(f"Proposal {proposal_id} not found in database.")
                 proposal_type = str(proposal.get("type") or "update").lower()
                 derived_game_id = self.proposal_context_builder.extract_game_id(proposal)
 

@@ -137,11 +137,21 @@ class ApplicationRuntime:
                 result = await self.agent_workflow.run_game(job.target_id, submit_review=job.submit_review)
             else:
                 result = await self.agent_workflow.run_proposal(job.target_id, submit_review=job.submit_review)
+            
+            # Sync status back to DB for autonomous tracking
+            if job.job_type != "game_review":
+                status = "completed" if result.get("status") != "failed" else "failed"
+                error = result.get("error_message") if status == "failed" else None
+                await self.game_repository.update_proposal_ai_status(job.target_id, status, error)
+
             if result.get("status") == "failed":
                 self.job_store.mark_failed(job_id, result.get("error_message", "Job failed."), result=result)
             else:
                 self.job_store.mark_completed(job_id, result)
         except Exception as exc:
+            # Also sync failure to DB if possible
+            if job.job_type != "game_review":
+                await self.game_repository.update_proposal_ai_status(job.target_id, "failed", str(exc))
             self.job_store.mark_failed(job_id, str(exc))
             raise
 
