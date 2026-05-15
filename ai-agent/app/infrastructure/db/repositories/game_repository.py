@@ -101,31 +101,35 @@ class GameRepository:
 
     async def get_next_pending_proposal(self, min_created_at: Optional[datetime.datetime] = None) -> Optional[Dict[str, Any]]:
         """
-        Atomically find and claim the next pending proposal for AI review.
-        Uses SKIP LOCKED for safe concurrent processing across multiple instances.
-        Includes a 30-minute watchdog timeout to allow re-claiming stalled jobs.
+        Find the next pending proposal and mark it as 'processing'.
+        Atomic operation using SKIP LOCKED.
         """
         pool = await self._provider.get_pool()
         if pool is None:
             return None
         
-        # Build the dynamic filter for process start time
-        time_filter = ""
-        args = []
+        # Normalize min_created_at for Postgres
+        normalized_start = None
         if min_created_at:
-            # Postgres 'timestamp without time zone' columns expect naive datetimes.
-            # If aware, we normalize to UTC and strip the tzinfo.
             if min_created_at.tzinfo:
-                min_created_at = min_created_at.astimezone(datetime.timezone.utc).replace(tzinfo=None)
-            time_filter = 'AND "createdAt" >= $1'
-            args.append(min_created_at)
+                normalized_start = min_created_at.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+            else:
+                normalized_start = min_created_at
 
         async with pool.acquire() as conn:
             async with conn.transaction():
                 # We target PENDING proposals that:
                 # 1. Haven't been started (aiReview is NULL)
                 # 2. Failed or were aborted
-                # 3. Are stuck in 'processing' for more than 30 minutes (watchdog)
+                # 3. Are stuck in 'processing' (watchdog)
+                # CRITICAL: Watchdog only reclaims things created AFTER process start (normalized_start)
+                
+                time_filter = ""
+                args = []
+                if normalized_start:
+                    time_filter = 'AND "createdAt" >= $1'
+                    args.append(normalized_start)
+
                 query = f"""
                     SELECT id, "gameId", "proposedData"
                     FROM public.game_proposals
@@ -166,45 +170,32 @@ class GameRepository:
                 
                 # Mark as processing immediately within the transaction
                 proposed_data["aiReview"]["pipeline_status"] = "processing"
-                # Use ISO string for JSONB storage to avoid DB-level timezone issues
                 proposed_data["aiReview"]["processing_started_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
                 
                 await conn.execute(
-                    'UPDATE public.game_proposals SET "proposedData" = $1 WHERE id = $2',
+                    'UPDATE public.game_proposals SET "proposedData" = $1, "updatedAt" = NOW() WHERE id = $2',
                     json.dumps(proposed_data),
                     record["id"]
                 )
+                
                 return record
 
     async def get_next_enrichment_candidate_game(self, agent_id: str) -> Optional[Dict[str, Any]]:
         """
-        Find a published game that needs an agent review.
-        Conditions:
-        1. Game is active.
-        2. No pending proposals exist for this game (prevents duplicates).
-        3. No approved proposals submitted by the agent exist for this game.
+        Find a published game that needs an agent review AND atomically claim it
+        by creating a pending proposal for it.
+        
+        This prevents infinite loops in cron_scan and ensures only one agent 
+        works on a game at a time.
         """
         pool = await self._provider.get_pool()
         if pool is None:
             return None
         async with pool.acquire() as conn:
             async with conn.transaction():
-                # Candidates: games with no pending proposal.
-                # If agent_id is provided, we also check that no approved proposal by this agent exists.
-                agent_filter = ""
-                args = []
-                if agent_id and len(agent_id) >= 32:
-                    agent_filter = """
-                      AND NOT EXISTS (
-                          SELECT 1 FROM public.game_proposals p 
-                          WHERE p."gameId" = g.id 
-                            AND p.status = 'approved' 
-                            AND p."editorId" = $1
-                      )
+                # 1. Find the candidate game
+                row = await conn.fetchrow(
                     """
-                    args.append(agent_id)
-
-                query = f"""
                     SELECT g.id, g.title
                     FROM public.games g
                     WHERE g.status = 'active'
@@ -212,13 +203,47 @@ class GameRepository:
                           SELECT 1 FROM public.game_proposals p 
                           WHERE p."gameId" = g.id AND p.status = 'pending'
                       )
-                      {agent_filter}
+                      AND NOT EXISTS (
+                          SELECT 1 FROM public.game_proposals p 
+                          WHERE p."gameId" = g.id 
+                            AND p.status = 'approved' 
+                            AND p."editorId" = $1
+                      )
                     ORDER BY g."createdAt" ASC
                     LIMIT 1
                     FOR UPDATE OF g SKIP LOCKED
-                """
-                row = await conn.fetchrow(query, *args)
-                return dict(row) if row else None
+                    """,
+                    agent_id
+                )
+                if not row:
+                    return None
+                
+                game_id = row["id"]
+                
+                # 2. Atomically "claim" it by creating a pending proposal
+                # This ensures subsequent loops (or other agents) won't see this game.
+                initial_proposed_data = {
+                    "aiReview": {
+                        "pipeline_status": "processing",
+                        "processing_started_at": datetime.datetime.now(datetime.timezone.utc).isoformat()
+                    }
+                }
+                
+                proposal_row = await conn.fetchrow(
+                    """
+                    INSERT INTO public.game_proposals (
+                        "gameId", "editorId", "status", "type", "proposedData", "createdAt", "updatedAt"
+                    ) VALUES ($1, $2, 'pending', 'update', $3, NOW(), NOW())
+                    RETURNING id
+                    """,
+                    game_id, agent_id, json.dumps(initial_proposed_data)
+                )
+                
+                return {
+                    "id": proposal_row["id"],
+                    "gameId": game_id,
+                    "title": row["title"]
+                }
 
     async def update_proposal_ai_status(self, proposal_id: str, status: str, error: Optional[str] = None) -> None:
         """Update the AI processing status in the database."""
@@ -267,42 +292,39 @@ class GameRepository:
             SELECT 
                 p.*,
                 g.id as "game_id",
-                g.title as "game_title",
-                g.status as "game_status",
-                g.metadata as "game_metadata",
-                g."seoMeta" as "game_seoMeta",
-                g."thumbnailFileId" as "game_thumbnailFileId",
-                f."s3Key" as "game_thumbnail_s3Key",
-                f.variants as "game_thumbnail_variants"
-            FROM public.game_proposals p
-            LEFT JOIN public.games g ON g.id = p."gameId"
-            LEFT JOIN public.files f ON f.id = g."thumbnailFileId"
-            WHERE p.id = $1
-            LIMIT 1
+        Fetch a proposal record with joined game, thumbnail, and editor metadata.
+        Replicates the structure previously served by the Arcade API.
         """
+        pool = await self._provider.get_pool()
+        if pool is None:
+            return None
         async with pool.acquire() as conn:
-            row = await conn.fetchrow(query, proposal_id)
+            # Join with games, files, and users to reconstruct the expected Arcade API payload
+            row = await conn.fetchrow(
+                """
+                SELECT 
+                    p.id, p."gameId", p.status, p.type, p."proposedData",
+                    p."createdAt", p."updatedAt",
+                    g.title as "game_title",
+                    g.description as "game_description",
+                    g.metadata as "game_metadata",
+                    g.status as "game_status",
+                    f.id as "thumbnail_file_id",
+                    f."s3Key" as "thumbnail_s3Key",
+                    f.variants as "thumbnail_variants",
+                    u.email as "editor_email",
+                    u.role as "editor_role"
+                FROM public.game_proposals p
+                JOIN public.games g ON p."gameId" = g.id
+                LEFT JOIN public.files f ON g."thumbnailFileId" = f.id
+                LEFT JOIN public.users u ON p."editorId" = u.id
+                WHERE p.id = $1
+                """,
+                proposal_id
+            )
             if not row:
                 return None
             
-            raw = dict(row)
-            # Reconstruct the nested structure expected by downstream nodes
-            record = {k: v for k, v in raw.items() if not k.startswith("game_")}
-            
-            if raw.get("game_id"):
-                record["game"] = {
-                    "id": raw["game_id"],
-                    "title": raw["game_title"],
-                    "status": raw["game_status"],
-                    "metadata": raw["game_metadata"],
-                    "seoMeta": raw["game_seoMeta"],
-                    "thumbnailFileId": raw["game_thumbnailFileId"],
-                }
-                if raw.get("game_thumbnail_s3Key"):
-                    record["game"]["thumbnailFile"] = {
-                        "id": raw["game_thumbnailFileId"],
-                        "s3Key": raw["game_thumbnail_s3Key"],
-                        "variants": raw["game_thumbnail_variants"],
                     }
 
             # Handle JSON parsing for the fields that might be strings

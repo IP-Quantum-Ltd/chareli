@@ -62,9 +62,10 @@ class AppSettings(BaseSettings):
     AI_AGENT_S3_PREFIX: str = "ai-agent/stage0"
 
     WEBHOOK_SECRET: str = ""
-    CRON_INTERVAL_MINUTES: int = Field(default=15)
-    CRON_SCHEDULE_DAY_OF_WEEK: str = Field(default="sun")  # mon, tue, wed, thu, fri, sat, sun or *
-    CRON_SCHEDULE_HOUR: int = Field(default=3)            # 0-23
+    CRON_SCHEDULE_DAY_OF_WEEK: str = Field(default="sun")    # mon, tue, wed, thu, fri, sat, sun or *
+    CRON_SCHEDULE_MONTH_DAY: str = Field(default="*")       # 1-31 or *
+    CRON_SCHEDULE_HOUR: int = Field(default=3)              # 0-23
+    CRON_MISFIRE_GRACE_HOURS: int = Field(default=1)        # How long to wait before skipping a missed run
     MAX_PLAN_REVISIONS: int = 2
     MAX_DRAFT_REVISIONS: int = 2
     JOB_RETENTION_HOURS: int = 24
@@ -81,6 +82,16 @@ class AppSettings(BaseSettings):
     STAGE0_MEDIUM_CONFIDENCE_THRESHOLD: int = 75
     STAGE0_HIGH_CONFIDENCE_THRESHOLD: int = 90
     ENABLE_PROACTIVE_ENRICHMENT: bool = False
+
+    def validate_setup(self):
+        """Strict validation of critical settings at startup."""
+        if not self.SERVICE_USER_ID or len(self.SERVICE_USER_ID) < 32:
+            raise ValueError(
+                "CRITICAL: SERVICE_USER_ID (or USER_ID in .env) is missing or malformed. "
+                "The agent cannot safely filter its own submissions without a valid UUID."
+            )
+        if not self.DATABASE_URL and not self.DB_HOST:
+            raise ValueError("DATABASE_URL or DB_HOST must be provided for direct DB ownership mode.")
 
 
 @lru_cache(maxsize=1)
