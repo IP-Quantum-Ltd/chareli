@@ -25,8 +25,7 @@ async def cron_scan():
     
     The cron queries all jobs that don't currently fit our 'completed' or 'processing' 
     conditions (i.e., those that are pending or have stalled) and sequentially 
-    processes them all. This ensures that any backlog is cleared efficiently while 
-    remaining safe for future multi-agent concurrency via SKIP LOCKED.
+    processes them all. This ensures that any backlog is cleared efficiently.
 
     Only considers proposals created after this process started — proposals that existed
     before the current deployment are ignored to prevent historical backlog from flooding
@@ -39,8 +38,8 @@ async def cron_scan():
         
         count = 0
         while True:
-            # We pick one task at a time but loop until the DB is drained.
-            # We respect the process start time to avoid processing old backlog.
+            # Pick one task and mark it as 'processing' in the DB.
+            # We loop until no more available work is found in the database.
             proposal = await runtime.game_repository.get_next_pending_proposal(
                 min_created_at=_process_start_time
             )
