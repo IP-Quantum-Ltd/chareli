@@ -20,6 +20,7 @@ class Stage0RunRequest(BaseModel):
 class AgentRunRequest(BaseModel):
     game_id: str
     submit_review: bool = False
+    override: bool = False
 
 
 class AgentRunResponse(BaseModel):
