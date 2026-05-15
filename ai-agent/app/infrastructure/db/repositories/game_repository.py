@@ -176,29 +176,40 @@ class GameRepository:
                 )
                 return record
 
-    async def get_next_enrichment_candidate_game(self) -> Optional[Dict[str, Any]]:
+    async def get_next_enrichment_candidate_game(self, agent_id: str) -> Optional[Dict[str, Any]]:
         """
-        Find a published game that lacks SEO metadata and has no active proposal.
-        Allows the agent to proactively enrich the catalog.
+        Find a published game that needs an agent review.
+        Conditions:
+        1. Game is active.
+        2. No pending proposals exist for this game (prevents duplicates).
+        3. No approved proposals submitted by the agent exist for this game.
         """
         pool = await self._provider.get_pool()
         if pool is None:
             return None
         async with pool.acquire() as conn:
             async with conn.transaction():
-                # Candidates: games with no seoMeta AND no pending proposal.
+                # Candidates: games with no pending proposal AND no approved proposal by the agent.
                 row = await conn.fetchrow(
                     """
                     SELECT g.id, g.title
                     FROM public.games g
-                    LEFT JOIN public.game_proposals p ON p."gameId" = g.id AND p.status = 'pending'
                     WHERE g.status = 'active'
-                      AND p.id IS NULL
-                      AND (g."seoMeta" IS NULL OR g."seoMeta" = '{}'::jsonb)
-                    ORDER BY g."createdAt" DESC
+                      AND NOT EXISTS (
+                          SELECT 1 FROM public.game_proposals p 
+                          WHERE p."gameId" = g.id AND p.status = 'pending'
+                      )
+                      AND NOT EXISTS (
+                          SELECT 1 FROM public.game_proposals p 
+                          WHERE p."gameId" = g.id 
+                            AND p.status = 'approved' 
+                            AND p."editorId" = $1
+                      )
+                    ORDER BY g."createdAt" ASC
                     LIMIT 1
                     FOR UPDATE OF g SKIP LOCKED
-                    """
+                    """,
+                    agent_id
                 )
                 return dict(row) if row else None
 

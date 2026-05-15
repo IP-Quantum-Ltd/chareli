@@ -62,7 +62,9 @@ class AppSettings(BaseSettings):
     AI_AGENT_S3_PREFIX: str = "ai-agent/stage0"
 
     WEBHOOK_SECRET: str = ""
-    CRON_INTERVAL_MINUTES: int = 15
+    CRON_INTERVAL_MINUTES: int = Field(default=15)
+    CRON_SCHEDULE_DAY_OF_WEEK: str = Field(default="sun")  # mon, tue, wed, thu, fri, sat, sun or *
+    CRON_SCHEDULE_HOUR: int = Field(default=3)            # 0-23
     MAX_PLAN_REVISIONS: int = 2
     MAX_DRAFT_REVISIONS: int = 2
     JOB_RETENTION_HOURS: int = 24
