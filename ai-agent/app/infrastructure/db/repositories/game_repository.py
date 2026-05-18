@@ -90,6 +90,49 @@ class GameRepository:
                 record["variants"] = {}
             return record
 
+    async def get_unreviewed_game_ids(self, service_user_id: str = "") -> List[str]:
+        """Return IDs of games that have no PENDING or APPROVED proposal from the agent.
+
+        When service_user_id is set, the filter is scoped to proposals submitted by
+        that account.  Without it we fall back to checking for an 'aiReview' key in
+        proposedData so the sweep still works in envs where the ID isn't configured.
+        """
+        pool = await self._provider.get_pool()
+        if pool is None:
+            return []
+
+        if service_user_id:
+            query = """
+                SELECT g.id
+                FROM public.games g
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM public.game_proposals gp
+                    WHERE gp."gameId" = g.id
+                      AND gp."editorId" = $1::uuid
+                      AND gp.status IN ('pending', 'approved')
+                )
+                ORDER BY g."createdAt" ASC
+            """
+            args_tuple: tuple = (service_user_id,)
+        else:
+            query = """
+                SELECT g.id
+                FROM public.games g
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM public.game_proposals gp
+                    WHERE gp."gameId" = g.id
+                      AND gp.status IN ('pending', 'approved')
+                      AND (gp."proposedData" ? 'aiReview')
+                )
+                ORDER BY g."createdAt" ASC
+            """
+            args_tuple = ()
+
+        rows = await self.fetch_rows(query, *args_tuple)
+        return [str(row["id"]) for row in rows]
+
     async def fetch_rows(self, query: str, *args: Any) -> List[Dict[str, Any]]:
         pool = await self._provider.get_pool()
         if pool is None:

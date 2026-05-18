@@ -99,7 +99,6 @@ def build_runtime_config(app_settings: AppSettings) -> RuntimeConfig:
             evaluation_collection=app_settings.MONGODB_EVALUATION_COLLECTION,
         ),
         queue=QueueConfig(
-            cron_interval_minutes=app_settings.CRON_INTERVAL_MINUTES,
             max_plan_revisions=app_settings.MAX_PLAN_REVISIONS,
             max_draft_revisions=app_settings.MAX_DRAFT_REVISIONS,
             job_retention_hours=app_settings.JOB_RETENTION_HOURS,

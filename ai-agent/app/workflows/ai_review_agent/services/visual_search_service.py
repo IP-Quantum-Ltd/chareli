@@ -2,6 +2,8 @@ import json
 import logging
 from typing import Any, Dict, List
 
+from langsmith import traceable
+
 from app.infrastructure.llm.ai_executor import AIExecutor
 
 logger = logging.getLogger(__name__)
@@ -18,6 +20,7 @@ class VisualSearchService:
             if url
         ]
 
+    @traceable(run_type="chain", name="Web Search Candidate Discovery")
     async def search_candidates(self, title: str, internal_images: List[str], search_query: str, exact_identity: Dict[str, Any], count: int = 10) -> Dict[str, Any]:
         if not internal_images:
             return {"engine": "openai_responses_web_search", "model": self._ai.llm_config.web_search_model, "query": search_query, "candidates": [], "sources": [], "error": "No internal images provided."}

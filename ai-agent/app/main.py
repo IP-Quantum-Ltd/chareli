@@ -1,7 +1,6 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI
@@ -13,60 +12,76 @@ from app.api import agent, health, jobs, stage0, webhook
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s — %(message)s")
 logger = logging.getLogger(__name__)
 
-# Set at startup. The cron ignores proposals created before this process started,
-# preventing historical PENDING backlog from flooding the queue on restart.
-_process_start_time: datetime = datetime.now(timezone.utc)
 
-
-def _parse_proposal_created_at(p: dict) -> datetime | None:
-    raw = p.get("createdAt")
-    if not raw:
-        return None
-    try:
-        return datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
-    except (ValueError, TypeError):
-        return None
-
-
-async def cron_scan():
+async def cron_game_sweep():
     """
-    Fallback scan: fetches all PENDING proposals and enqueues any not already queued.
-    Runs every CRON_INTERVAL_MINUTES minutes as a safety net for missed webhooks.
+    Periodic sweep: finds all games that the agent has not yet reviewed and
+    enqueues them as game_review jobs with submit_review=True.
 
-    Only considers proposals created after this process started — proposals that existed
-    before the current deployment are ignored to prevent historical backlog from flooding
-    the queue on restart.
+    A game is considered already handled when it has at least one PENDING or
+    APPROVED proposal submitted by the agent (SERVICE_USER_ID).  Games whose
+    proposals were declined — or that never had one — are included so the agent
+    gets another pass.
 
-    Skips proposals already fully reviewed by the agent service account.
+    Jobs are queued into the existing single-worker queue, so games are processed
+    one at a time (no parallel token spend).  Subsequent sweep runs will naturally
+    find fewer games as approvals accumulate.
     """
-    logger.info("[cron] Scanning for pending proposals...")
+    logger.info("[game-sweep] Starting game sweep scan...")
     try:
         settings = get_settings()
         runtime = get_runtime()
-        proposals = await runtime.arcade_client.get_pending_proposals()
-        count = 0
+        game_ids = await runtime.game_repository.get_unreviewed_game_ids(
+            service_user_id=settings.SERVICE_USER_ID,
+        )
+        logger.info("[game-sweep] Found %d games without an active agent review", len(game_ids))
+
+        enqueued = 0
         skipped = 0
-        old = 0
-        for p in proposals:
-            created_at = _parse_proposal_created_at(p)
-            if created_at is not None and created_at < _process_start_time:
-                old += 1
-                continue
-            proposed_data = p.get("proposedData") or {}
-            if p.get("editorId") == settings.SERVICE_USER_ID and proposed_data.get("aiReview"):
+        for game_id in game_ids:
+            existing = runtime.job_store.find_recent_job("game_review", game_id)
+            if existing is not None:
                 skipped += 1
                 continue
-            existing_job = runtime.job_store.find_recent_job("proposal_review", p["id"])
-            job = existing_job or runtime.job_store.create_job("proposal_review", p["id"], submit_review=True)
-            enqueued = existing_job is None and await runtime.queue.enqueue(job.job_id)
-            if enqueued:
-                count += 1
+            job = runtime.job_store.create_job("game_review", game_id, submit_review=True)
+            if await runtime.queue.enqueue(job.job_id):
+                enqueued += 1
+
         logger.info(
-            "[cron] Enqueued %d new proposals from %d pending (%d pre-startup — ignored, %d agent-submitted — skipped)",
-            count, len(proposals), old, skipped,
+            "[game-sweep] Enqueued %d games (%d already in queue — skipped)",
+            enqueued, skipped,
         )
     except Exception as exc:
-        logger.error(f"[cron] Scan failed: {exc}", exc_info=True)
+        logger.error("[game-sweep] Sweep failed: %s", exc, exc_info=True)
+
+
+def _register_game_sweep(scheduler: AsyncIOScheduler, settings) -> None:
+    """Add the game-sweep job to the scheduler using the configured schedule."""
+    schedule = (settings.GAME_SWEEP_SCHEDULE or "weekly").lower().strip()
+    day_value = (settings.GAME_SWEEP_DAY or "sun").strip()
+
+    if schedule == "monthly":
+        day_kwargs = {"day": day_value}
+        desc = f"monthly on day {day_value}"
+    else:
+        day_kwargs = {"day_of_week": day_value}
+        desc = f"weekly on {day_value}"
+
+    scheduler.add_job(
+        cron_game_sweep,
+        "cron",
+        **day_kwargs,
+        hour=settings.GAME_SWEEP_HOUR,
+        minute=settings.GAME_SWEEP_MINUTE,
+        id="cron_game_sweep",
+        misfire_grace_time=300,
+    )
+    logger.info(
+        "[game-sweep] Scheduled %s at %02d:%02d UTC",
+        desc,
+        settings.GAME_SWEEP_HOUR,
+        settings.GAME_SWEEP_MINUTE,
+    )
 
 
 @asynccontextmanager
@@ -78,9 +93,14 @@ async def lifespan(app: FastAPI):
 
     # Start cron scheduler
     scheduler = AsyncIOScheduler()
-    scheduler.add_job(cron_scan, "interval", minutes=settings.CRON_INTERVAL_MINUTES, id="cron_scan", misfire_grace_time=30)
+
+    if settings.GAME_SWEEP_ENABLED:
+        _register_game_sweep(scheduler, settings)
+    else:
+        logger.info("[game-sweep] Disabled (set GAME_SWEEP_ENABLED=true to activate)")
+
     scheduler.start()
-    logger.info(f"[cron] Scheduler started — interval: {settings.CRON_INTERVAL_MINUTES} min")
+    logger.info("[cron] Scheduler started")
 
     yield
 
