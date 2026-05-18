@@ -12,7 +12,8 @@ import logger from './utils/logger';
 import { specs } from './config/swagger';
 import config from './config/config';
 import { redisService } from './services/redis.service';
-
+import fs from 'fs';
+import path from 'path';
 
 const app: Express = express();
 
@@ -68,8 +69,8 @@ const corsOptions = {
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: [
-    'Content-Type', 
-    'Authorization', 
+    'Content-Type',
+    'Authorization',
     'X-Requested-With',
     'X-Webhook-Secret',      // For Cloudflare Worker webhooks
     'X-Idempotency-Key',     // For webhook idempotency
@@ -106,7 +107,18 @@ app.use(sanitizeInput);
 
 
 // Swagger documentation
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs, {
+let swaggerSpecs = specs;
+try {
+  const swaggerPath = path.join(__dirname, 'swagger.json');
+  if (fs.existsSync(swaggerPath)) {
+    swaggerSpecs = JSON.parse(fs.readFileSync(swaggerPath, 'utf8'));
+    logger.info('Loaded static swagger.json documentation');
+  }
+} catch (error) {
+  logger.warn('Failed to load static swagger.json, using dynamic specs', error);
+}
+
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs, {
   explorer: true,
   customCss: '.swagger-ui .topbar { display: none }',
   swaggerOptions: {

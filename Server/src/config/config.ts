@@ -113,6 +113,7 @@ interface Config {
   loadTestBypassToken: string;
   aiAgent: {
     webhookUrl: string;
+    webhookSecret: string;
   };
 }
 
@@ -254,6 +255,7 @@ const config: Config = {
   loadTestBypassToken: process.env.LOAD_TEST_BYPASS_TOKEN || '',
   aiAgent: {
     webhookUrl: process.env.AI_AGENT_WEBHOOK_URL || '',
+    webhookSecret: process.env.AI_AGENT_WEBHOOK_SECRET || '',
   },
 };
 

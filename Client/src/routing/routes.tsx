@@ -87,6 +87,9 @@ export const routes = [
           { path: 'gameplay/:categorySlug/:gameSlug', element: <SuspenseWrapper><GamePlay /></SuspenseWrapper> },
           { path: 'terms', element: <SuspenseWrapper><Terms /></SuspenseWrapper> },
           { path: 'privacy', element: <SuspenseWrapper><Privacy /></SuspenseWrapper> },
+          // Root-level category slug — homepage filtered to that category.
+          // MUST stay last among MainLayout children so named routes win.
+          { path: ':slug', element: <SuspenseWrapper><Home /></SuspenseWrapper> },
         ],
       },
 
