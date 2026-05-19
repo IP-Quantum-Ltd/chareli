@@ -10,6 +10,7 @@ interface Config {
   storageProvider: 'r2' | 's3' | 'local';
   app: {
     clientUrl: string;
+    appUrl:string;
   };
   database: {
     host: string;
@@ -138,7 +139,7 @@ function getEnv(key: string, defaultValue?: string): string {
 
 const config: Config = {
   env: getEnv('NODE_ENV', 'development'),
-  app: { clientUrl: getEnv('CLIENT_URL', 'http://localhost:5173') },
+  app: { clientUrl: getEnv('CLIENT_URL', 'http://localhost:5173'),appUrl: getEnv('APP_URL','http:localhost:5000/api') },
   storageProvider: getEnv('STORAGE_PROVIDER', 's3') as 'r2' | 's3' | 'local',
   port: parseInt(getEnv('PORT', '5000'), 10),
   database: {
