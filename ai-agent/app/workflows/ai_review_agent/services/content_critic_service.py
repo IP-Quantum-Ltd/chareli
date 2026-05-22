@@ -71,7 +71,9 @@ class ContentCriticService:
                     "role": "system",
                     "content": (
                         "You are the Stage 4 Critic for ArcadeBox. Reject plans that omit grounded facts, user intent, FAQ coverage, "
-                        "or entity coverage. Respond only with JSON."
+                        "or entity coverage. Only require coverage of facts that are explicitly present in the grounded context — "
+                        "do not penalize the plan for information that is absent from the research data. "
+                        "Respond only with JSON."
                     ),
                 },
                 {

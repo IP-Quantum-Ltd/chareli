@@ -1,6 +1,7 @@
 import json
 import logging
-from typing import Any, Dict
+import re
+from typing import Any, Dict, Optional
 
 from app.domain.schemas.llm_outputs import ProposedGameDataOutput
 from app.infrastructure.llm.ai_executor import AIExecutor
@@ -11,6 +12,26 @@ from app.workflows.ai_review_agent.services.submission_reconciler import (
 )
 
 logger = logging.getLogger(__name__)
+
+_H2_SPLIT = re.compile(r'(?=<h2[\s>])', re.IGNORECASE)
+
+
+_H2_TAG = re.compile(r'^<h2[^>]*>.*?</h2>\s*', re.IGNORECASE | re.DOTALL)
+
+
+def _split_article_sections(article: str) -> dict[str, tuple[str, str]]:
+    """Return a dict of lowercased section title → (full block with h2, body without h2)."""
+    sections: dict[str, tuple[str, str]] = {}
+    for block in _H2_SPLIT.split(article):
+        block = block.strip()
+        if not block:
+            continue
+        title_match = re.match(r'<h2[^>]*>(.*?)</h2>', block, re.IGNORECASE | re.DOTALL)
+        if title_match:
+            title = re.sub(r'<[^>]+>', '', title_match.group(1)).strip().lower()
+            body = _H2_TAG.sub('', block).strip()
+            sections[title] = (block, body)
+    return sections
 
 
 class FormatProposedDataNode:
@@ -122,7 +143,7 @@ Return ONLY valid JSON matching this exact structure:
 }}
 
 Rules:
-- description MUST be the full article text exactly as written — preserve all HTML tags, NO markdown
+- description MUST contain only the Overview and Strategy sections from the article — preserve all HTML tags, NO markdown; do NOT include How to Play or FAQ content in description
 - use existing_game as the current source of truth; if the new evidence is weak, empty, placeholder-like, or instruction-like, keep the existing value instead of inventing one
 - preserve existing_game.categoryId exactly when it exists
 - howToPlay must be comprehensive HTML — include: objective, step-by-step controls for PC AND mobile separately, gameplay rules, power-up/bonus tips; use <h3>, <p>, <ul>, <li>, <strong> tags; NO markdown, only HTML
@@ -154,10 +175,24 @@ Rules:
                 },
                 metadata={"stage": "format_proposed_data"},
             )
-            # Always use the full article — LLM may have truncated it in description
+            # Split article into sections and route each to the correct field.
+            # description gets Overview + Strategy only; dedicated fields get How to Play and FAQ.
             if isinstance(result, dict):
-                result["description"] = article
+                sections = _split_article_sections(article)
+                # description keeps h2 headings; dedicated fields strip them (page renders its own heading)
+                overview_full = sections.get("overview", ("", ""))[0]
+                strategy_full = sections.get("strategy", ("", ""))[0]
+                result["description"] = (
+                    (overview_full + "\n" + strategy_full).strip() or article
+                )
                 result["title"] = game_title
+                meta = result.setdefault("metadata", {})
+                how_to_play_body = sections.get("how to play", ("", ""))[1]
+                faq_body = sections.get("faq", ("", ""))[1]
+                if how_to_play_body:
+                    meta["howToPlay"] = how_to_play_body
+                if faq_body:
+                    meta["faqOverride"] = faq_body
             reconciled_game_data, reconciled_seo = self._submission_reconciler.reconcile(
                 result,
                 state.get("seo_meta") or {},

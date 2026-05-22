@@ -4,6 +4,36 @@ Tracks significant architectural changes made to the chareli monorepo. Add an en
 
 ---
 
+## [2026-05-22] Locked article section structure and content scoping
+
+**Decision:** Locked the four article section titles to `Overview`, `How to Play`, `Strategy`, `FAQ` in `content_planning_service.py`. Added explicit scoping rules to `content_drafting_service.py`: sections must appear in that exact order; controls and gameplay instructions are restricted to `How to Play` only; FAQ-style Q&A is restricted to `FAQ` only; no extra sections may be added; source content may not be reproduced verbatim.
+
+**Why:** Charlie's content requirements specified that FAQ should only exist at the end of the page, that controls/how-to-play content was being repeated across Description, How to Play, and FAQ sections, and that the section order must be Overview → How to Play → Strategy → FAQ. The LLM was previously free to invent section titles and place content anywhere.
+
+**Impact:** The planner always generates exactly four sections with fixed titles. The drafter enforces order and content scoping. The critic's system prompt was left unchanged to avoid over-constraining it — structural enforcement sits in the planner and drafter only.
+
+---
+
+## [2026-05-22] Article sections routed to dedicated server fields
+
+**Decision:** Added `_split_article_sections` in `format_proposed_data.py` to parse the generated HTML article by `<h2>` boundaries. `description` now receives only the Overview and Strategy sections (with headings). `metadata.howToPlay` receives the How to Play body (heading stripped). `metadata.faqOverride` receives the FAQ body (heading stripped).
+
+**Why:** The pipeline was writing the full four-section article into `description`, while `howToPlay` and `faqOverride` were also being generated separately from research context. This caused controls and FAQ content to appear multiple times on the rendered game page.
+
+**Impact:** Each content field on the server receives exactly the content intended for it. Headings are stripped from `howToPlay` and `faqOverride` since the page template renders its own field heading. The `SubmissionReconciler` continues to merge `faqOverride` with existing FAQ entries as before.
+
+---
+
+## [2026-05-22] Stage 0 candidate capture timeout raised to 90s
+
+**Decision:** Raised `STAGE0_CANDIDATE_CAPTURE_TIMEOUT_SECONDS` from 30 to 90 in `settings.py`, `.env`, and `.env.example`. Also added a `logger.warning` to the bare `except Exception` in `external_capture.py` so capture failures are diagnosable.
+
+**Why:** Manual testing showed that game hosting sites (gamepix, primarygames, game-game) take 32–63 seconds to fully render an iframe game surface. The previous 30s outer timeout killed all useful captures before a screenshot could be taken, leaving only fast page-fallback captures that scored poorly in visual correlation. The root cause of the original working behaviour was a now-overridden `=120` entry in `.env` that had been silently shadowed by a duplicate `=30` entry added later.
+
+**Impact:** Iframe game captures now complete successfully. The `external_page_timeout_ms` value (45s) is now correctly shorter than the outer timeout, so the inner goto timeout is the operative limit.
+
+---
+
 ## [2026-05-04] Two-tier critic coverage score thresholds
 
 **Decision:** Replaced the single `min_coverage_score=70` threshold in `CriticPlanNode` with two tiers: `min_coverage_score=60` (floor) and `best_coverage_score=70` (auto-approve).

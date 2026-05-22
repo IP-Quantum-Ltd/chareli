@@ -1,7 +1,10 @@
 import asyncio
+import logging
 import tempfile
 from pathlib import Path
 from typing import Any, Dict, Optional
+
+logger = logging.getLogger(__name__)
 
 from app.config import BrowserConfig
 from app.infrastructure.browser.browser_session_factory import BrowserSessionFactory
@@ -82,7 +85,8 @@ class ExternalCaptureService:
 
             screenshot_bytes = await asyncio.to_thread(tmp_path.read_bytes)
 
-        except Exception:
+        except Exception as exc:
+            logger.warning("External capture failed | url=%s error=%s", url, exc)
             return None
         finally:
             for coro in (context.close(), browser.close(), playwright.stop()):
