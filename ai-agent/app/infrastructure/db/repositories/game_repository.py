@@ -1,4 +1,5 @@
 import json
+import uuid
 from typing import Any, Dict, List, Optional
 
 from app.infrastructure.db.postgres_provider import PostgresProvider
@@ -22,6 +23,9 @@ class GameRepository:
             if not row:
                 return None
             record = dict(row)
+            for key, val in record.items():
+                if isinstance(val, uuid.UUID):
+                    record[key] = str(val)
             for field in ("metadata", "seoMeta", "config"):
                 val = record.get(field)
                 if isinstance(val, str):

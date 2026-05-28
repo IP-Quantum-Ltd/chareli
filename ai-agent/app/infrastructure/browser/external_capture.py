@@ -94,7 +94,10 @@ class ExternalCaptureService:
                     await coro
                 except Exception:
                     pass
-            await asyncio.to_thread(tmp_path.unlink, True)
+            try:
+                await asyncio.to_thread(tmp_path.unlink, True)
+            except OSError:
+                pass
 
         png_key = self._s3.proposal_key(proposal_id, "external", f"candidate_{index:02d}_render.png")
         json_key = self._s3.proposal_key(proposal_id, "external", f"candidate_{index:02d}_render.json")
