@@ -9,25 +9,25 @@ Monorepo with two independent Node projects at the root:
 - `Client/` — React 19 + Vite + TypeScript SPA (Redux Toolkit, React Query, Tailwind 4, Radix UI, Socket.io-client, Vitest).
 - `Server/` — Express + TypeScript REST API (TypeORM/PostgreSQL, Redis + BullMQ, Jest + Supertest, Swagger).
 
-Each has its own `package.json`; there is no root workspace manifest. Always `cd` into the relevant project before running commands.
+Each has its own `package.json`; there is no root workspace manifest. Always `cd` into the relevant project before running commands. This project uses **pnpm** as the package manager.
 
 ## Commands
 
 ### Server (`cd Server`)
 
 ```bash
-npm run dev                # nodemon + ts-node on src/index.ts (port 5000)
-npm run build              # tsc -> dist/ (plus postbuild swagger gen)
-npm test                   # jest --runInBand
-npm run test:watch
-npm run test:coverage
-npm run test:ci            # jest --runInBand --forceExit --detectOpenHandles
-npx jest path/to/file.test.ts          # single file
-npx jest -t "test name substring"      # single test by name
-npx tsc --noEmit           # typecheck only
-npm run migration:generate -- src/migrations/NAME
-npm run migration:run
-npm run migration:revert
+pnpm run dev               # nodemon + ts-node on src/index.ts (port 5000)
+pnpm run build             # tsc -> dist/ (plus postbuild swagger gen)
+pnpm test                  # jest --runInBand
+pnpm run test:watch
+pnpm run test:coverage
+pnpm run test:ci           # jest --runInBand --forceExit --detectOpenHandles
+pnpm exec jest path/to/file.test.ts    # single file
+pnpm exec jest -t "test name substring" # single test by name
+pnpm exec tsc --noEmit     # typecheck only
+pnpm run migration:generate -- src/migrations/NAME
+pnpm run migration:run
+pnpm run migration:revert
 ```
 
 Swagger UI is served at `http://localhost:5000/api-docs` in dev.
@@ -35,14 +35,14 @@ Swagger UI is served at `http://localhost:5000/api-docs` in dev.
 ### Client (`cd Client`)
 
 ```bash
-npm run dev                # vite (port 5173)
-npm run build              # tsc -b && vite build
-npm run build:staging
-npm run lint               # eslint .
-npm test                   # vitest (watch)
-npm run test:run           # vitest run (once)
-npm run test:coverage
-npx vitest run path/to/file.test.ts    # single file
+pnpm run dev               # vite (port 5173)
+pnpm run build             # tsc -b && vite build
+pnpm run build:staging
+pnpm run lint              # eslint .
+pnpm test                  # vitest (watch)
+pnpm run test:run          # vitest run (once)
+pnpm run test:coverage
+pnpm exec vitest run path/to/file.test.ts  # single file
 ```
 
 No lint script exists for `Server/`.
