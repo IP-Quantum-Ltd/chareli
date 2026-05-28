@@ -11,7 +11,7 @@ RUN apk add --no-cache g++ make python3
 RUN corepack enable && corepack prepare pnpm@11.4.0 --activate
 
 # Copy package files
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY package.json pnpm-lock.yaml ./
 
 # Install all dependencies
 RUN pnpm install --frozen-lockfile
@@ -33,6 +33,9 @@ WORKDIR /app
 
 # Set node environment to production
 ENV NODE_ENV=production
+
+# Enable pnpm so it's available for migrations and warm-cache
+RUN corepack enable && corepack prepare pnpm@11.4.0 --activate
 
 # Copy built application from the builder stage
 COPY --from=builder /app/dist ./dist
