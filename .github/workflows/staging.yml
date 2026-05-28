@@ -321,7 +321,7 @@ jobs:
           cat wrangler.toml  # Print for debugging
 
           echo "🚀 Deploying worker via wrangler..."
-          npx wrangler deploy
+          pnpm exec wrangler deploy
 
           echo "✅ Worker deployed successfully"
 
