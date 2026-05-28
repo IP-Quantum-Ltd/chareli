@@ -18,3 +18,5 @@ stage0_artifacts/
 research_findings_*.json
 .langgraph_api/
 ai-agent\.langgraph_api
+
+docs/cost-tracking-gaps.md
