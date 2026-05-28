@@ -56,25 +56,30 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 11.4.0
+
       - name: Setup Node.js for Backend
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
-          cache: "npm"
-          cache-dependency-path: Server/package-lock.json
+          cache: "pnpm"
+          cache-dependency-path: Server/pnpm-lock.yaml
 
       - name: Install Backend Dependencies
         working-directory: ./Server
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Lint Backend
         working-directory: ./Server
-        run: npm run lint
+        run: pnpm run lint
         continue-on-error: true
 
       - name: Test Backend
         working-directory: ./Server
-        run: npm test
+        run: pnpm test
         continue-on-error: true
 
   build-and-test-frontend:
@@ -91,34 +96,30 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 11.4.0
+
       - name: Setup Node.js for Frontend
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
+          cache: "pnpm"
+          cache-dependency-path: Client/pnpm-lock.yaml
 
-      - name: Cache node modules
-        uses: actions/cache@v4
-        with:
-          path: ./Client/node_modules
-          key: ${{ runner.os }}-node-${{ hashFiles('Server/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
-
-      - name: Clean node_modules
-        working-directory: ./Client
-        run: rm -rf node_modules
       - name: Install Frontend Dependencies
         working-directory: ./Client
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Lint Frontend
         working-directory: ./Client
-        run: npm run lint
+        run: pnpm run lint
         continue-on-error: true
 
       - name: Test Frontend
         working-directory: ./Client
-        run: npm test
+        run: pnpm test
         continue-on-error: true
 
       - name: Build Frontend
@@ -132,7 +133,7 @@ jobs:
           VITE_ENABLE_CACHE_DASHBOARD: "true"
           VITE_CDN_ENABLED: ${{ vars.VITE_CDN_ENABLED }}
           VITE_CDN_BASE_URL: ${{ vars.VITE_CDN_BASE_URL }}
-        run: npm run build
+        run: pnpm run build
 
       - name: Archive Frontend Build
         uses: actions/upload-artifact@v4
@@ -228,7 +229,7 @@ jobs:
             --task $TASK_ARN \
             --container ${{ env.CONTAINER_NAME }} \
             --interactive \
-            --command "npm run warm-cache" || echo "⚠️ Cache warming failed (non-critical)"
+            --command "pnpm run warm-cache" || echo "⚠️ Cache warming failed (non-critical)"
 
           echo "✅ Cache warming completed"
         continue-on-error: true
@@ -281,9 +282,14 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.4.0
+
       - name: Install dependencies
         working-directory: Server/workers/game-zip-processor
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Build & Deploy Worker Script (Content Only)
         working-directory: Server/workers/game-zip-processor

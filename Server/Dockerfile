@@ -7,24 +7,23 @@ WORKDIR /app
 # Install dependencies for native builds if needed
 RUN apk add --no-cache g++ make python3
 
-# Copy package files
-COPY package*.json ./
-# Try to copy package-lock.json if it exists (won't fail if missing)
-COPY package-lock.json* ./
+# Enable pnpm via corepack
+RUN corepack enable && corepack prepare pnpm@11.4.0 --activate
 
-# Install dependencies
-# Use npm ci for reproducible builds
-RUN npm ci
+# Copy package files
+COPY package.json pnpm-lock.yaml ./
+
+# Install all dependencies
+RUN pnpm install --frozen-lockfile
 
 # Copy source code
 COPY . .
 
 # Build the application
-RUN npm run build
+RUN pnpm run build
 
 # Install only production dependencies in a clean node_modules
-# This ensures all production deps including @sendgrid/mail are present
-RUN npm ci --omit=dev
+RUN pnpm install --frozen-lockfile --prod
 
 # Production stage
 FROM node:24-alpine AS production
@@ -59,4 +58,4 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
   CMD ["/usr/local/bin/healthcheck.sh"]
 
 # Run migrations and start the app with PM2
-CMD ["sh", "-c", "npm run typeorm migration:run -- -d dist/config/database.js && npx pm2-runtime start dist/index.js -i max"]
+CMD ["sh", "-c", "pnpm run typeorm migration:run -- -d dist/config/database.js && npx pm2-runtime start dist/index.js -i max"]

@@ -1,6 +1,7 @@
 {
   "name": "server",
   "version": "1.0.0",
+  "packageManager": "pnpm@11.4.0",
   "main": "dist/index.js",
   "scripts": {
     "start": "npm run warm-cache && node dist/index.js",
