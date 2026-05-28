@@ -33,8 +33,6 @@ WORKDIR /app
 
 # Set node environment to production
 ENV NODE_ENV=production
-# Tell pnpm it's running in CI so it doesn't require a TTY to confirm module purges
-ENV CI=true
 
 # Enable pnpm so it's available for migrations and warm-cache
 RUN corepack enable && corepack prepare pnpm@11.4.0 --activate
@@ -63,4 +61,4 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
   CMD ["/usr/local/bin/healthcheck.sh"]
 
 # Run migrations and start the app with PM2
-CMD ["sh", "-c", "pnpm run typeorm migration:run -- -d dist/config/database.js && npx pm2-runtime start dist/index.js -i max"]
+CMD ["sh", "-c", "node_modules/.bin/typeorm migration:run -d dist/config/database.js && npx pm2-runtime start dist/index.js -i max"]
