@@ -373,6 +373,11 @@ export const updateProposal = async (req: Request, res: Response, next: NextFunc
 
     websocketService.emitProposalUpdate('update', proposal);
 
+    // Detect AI agent review submission and notify frontend via WebSocket
+    if (proposedData?.aiReview && proposal.gameId) {
+      websocketService.emitAgentSeoComplete(proposal.gameId, proposal.id);
+    }
+
     res.status(200).json({ success: true, data: proposal, message: 'Proposal updated successfully' });
   } catch (error) {
     next(error);

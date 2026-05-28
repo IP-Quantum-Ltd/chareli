@@ -529,6 +529,13 @@ export const useGameProcessingStatus = (gameId: string) => {
   });
 };
 
+export const useRunAgentSeo = () => {
+  return useMutation({
+    mutationFn: (gameId?: string) =>
+      backendService.post(gameId ? `/api/games/${gameId}/run-agent-seo` : '/api/games/run-agent-seo-all'),
+  });
+};
+
 export const useRetryGameProcessing = () => {
   const queryClient = useQueryClient();
   return useMutation({

@@ -116,6 +116,41 @@ class WebSocketService {
   }
 
   /**
+   * Emit agent SEO started event
+   */
+  emitAgentSeoStarted(gameId: string): void {
+    if (!this.io) {
+      logger.warn('WebSocket service not initialized, cannot emit agent SEO started');
+      return;
+    }
+
+    this.io.emit('agent-seo-started', {
+      gameId,
+      timestamp: new Date().toISOString(),
+    });
+
+    logger.info(`Emitted agent SEO started for game ${gameId}`);
+  }
+
+  /**
+   * Emit agent SEO complete event
+   */
+  emitAgentSeoComplete(gameId: string, proposalId: string): void {
+    if (!this.io) {
+      logger.warn('WebSocket service not initialized, cannot emit agent SEO complete');
+      return;
+    }
+
+    this.io.emit('agent-seo-complete', {
+      gameId,
+      proposalId,
+      timestamp: new Date().toISOString(),
+    });
+
+    logger.info(`Emitted agent SEO complete for game ${gameId} via proposal ${proposalId}`);
+  }
+
+  /**
    * Get Socket.io server instance
    */
   getIO(): SocketIOServer | null {

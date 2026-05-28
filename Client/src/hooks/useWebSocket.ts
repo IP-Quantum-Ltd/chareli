@@ -123,6 +123,17 @@ export const useWebSocket = () => {
         queryClient.invalidateQueries({ queryKey: [BackendRoute.GAMES] });
     });
 
+    socketRef.current.on('agent-seo-complete', (data: { gameId: string; proposalId: string }) => {
+      console.log('📡 [WebSocket] Agent SEO complete:', data);
+
+      // Invalidate games analytics to reflect new proposal
+      queryClient.invalidateQueries({ queryKey: [BackendRoute.ADMIN_GAMES_ANALYTICS] });
+      queryClient.invalidateQueries({ queryKey: [BackendRoute.GAME_PROPOSALS] });
+
+      // Dispatch custom event so page components can react (e.g. GameManagement toast)
+      window.dispatchEvent(new CustomEvent('agent-seo-complete', { detail: data }));
+    });
+
     socketRef.current.on('game-processing-progress', (data: GameProcessingProgress) => {
       console.log('📊 [WebSocket] Processing progress:', data);
 

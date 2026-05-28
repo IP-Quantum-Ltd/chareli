@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import {
   useAllPositionHistory,
   useDeleteGame,
+  useRunAgentSeo,
 } from "../../../backend/games.service";
 // import { useGamesAnalytics } from "../../../backend/analytics.service";
 import type { GameStatus } from "../../../backend/types";
@@ -31,7 +32,7 @@ import { useNavigate } from "react-router-dom";
 import { cn } from "../../../lib/utils";
 import { formatTime } from "../../../utils/main";
 import GameThumbnail from "../Analytics/GameThumbnail";
-import { X, Search } from "lucide-react";
+import { X, Search, Sparkles, Loader2, CheckCircle2 } from "lucide-react";
 import { usePermissions } from "../../../hooks/usePermissions";
 import { useWebSocket } from "../../../hooks/useWebSocket";
 import { getGameProgress } from "../../../utils/gameProgress";
@@ -115,7 +116,21 @@ export default function GameManagement() {
   const [reorderOpen, setReorderOpen] = useState(false);
   const [reorderHistoryOpen, setReorderHistoryOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [isSeoRunning, setIsSeoRunning] = useState(false);
+  const [seoStatusMap, setSeoStatusMap] = useState<Record<string, 'idle' | 'running' | 'completed' | 'failed'>>({});
   const queryClient = useQueryClient();
+
+  // Listen for agent SEO completion events via WebSocket
+  useEffect(() => {
+    const handleSeoComplete = (e: Event) => {
+      const { gameId } = (e as CustomEvent).detail;
+      setIsSeoRunning(false);
+      setSeoStatusMap(prev => ({ ...prev, [gameId]: 'completed' }));
+      toast.success('SEO metadata ready — new proposal awaiting review');
+    };
+    window.addEventListener('agent-seo-complete', handleSeoComplete);
+    return () => window.removeEventListener('agent-seo-complete', handleSeoComplete);
+  }, []);
 
   // User activity detection (becomes inactive after 60s of no activity)
   const isUserActive = useUserActivity(60000);
@@ -168,6 +183,31 @@ export default function GameManagement() {
   const { data: gamesWithAnalytics, isLoading, isRefetching, dataUpdatedAt } = useSmartGamesAnalytics();
 
   const deleteGame = useDeleteGame();
+  const runAgentSeo = useRunAgentSeo();
+
+  const handleRunSeoOnGame = async (gameId: string) => {
+    setSeoStatusMap(prev => ({ ...prev, [gameId]: 'running' }));
+    try {
+      await runAgentSeo.mutateAsync(gameId);
+      toast.success('Agent SEO job triggered');
+    } catch {
+      setSeoStatusMap(prev => ({ ...prev, [gameId]: 'failed' }));
+      toast.error('Failed to trigger agent SEO');
+    }
+  };
+
+  const handleRunSeoForAll = async () => {
+    setIsSeoRunning(true);
+    try {
+      const response = await runAgentSeo.mutateAsync(undefined) as any;
+      setIsSeoRunning(false);
+      const count = response?.count ?? 0;
+      toast.success(`SEO triggered for ${count} games`);
+    } catch {
+      setIsSeoRunning(false);
+      toast.error('Failed to trigger agent SEO');
+    }
+  };
 
   console.log(isRefetching, dataUpdatedAt)
 
@@ -333,39 +373,6 @@ export default function GameManagement() {
           All Games
         </h1>
         <div className="flex flex-wrap gap-3 justify-end ">
-          {/* Filter buttons - hidden for viewers */}
-          {permissions.canFilter && (
-            <>
-              {!reorderHistoryOpen ? (
-                <FilterSheet
-                  onFilter={setFilters}
-                  onReset={() => setFilters(undefined)}
-                >
-                  <Button
-                    variant="outline"
-                    className="border-[#475568] text-[#475568] flex items-center gap-2 dark:text-white py-2 sm:py-[14px] text-sm sm:text-base h-[48px] font-dmmono cursor-pointer"
-                  >
-                    Filter Games
-                    <RiEqualizer2Line size={24} className="sm:size-8" />
-                  </Button>
-                </FilterSheet>
-              ) : (
-                <HistoryFilterSheet
-                  onFilter={setHistoryFilters}
-                  onReset={() => setHistoryFilters(undefined)}
-                >
-                  <Button
-                    variant="outline"
-                    className="border-[#475568] text-[#475568] flex items-center gap-2 dark:text-white py-2 sm:py-[14px] text-sm sm:text-base h-[48px] font-dmmono cursor-pointer"
-                  >
-                    Filter History
-                    <RiEqualizer2Line size={24} className="sm:size-8" />
-                  </Button>
-                </HistoryFilterSheet>
-              )}
-            </>
-          )}
-
           {/* Hide reorder and create buttons for viewers */}
           {permissions.canManageGames && (
             <>
@@ -399,21 +406,38 @@ export default function GameManagement() {
                 </Button>
               )}
               {!reorderOpen && (
-                <Button
-                  className="bg-[#6A7282] text-white hover:bg-[#6A7282] tracking-wider py-2 sm:py-[14px] text-sm sm:text-base h-[48px] font-dmmono cursor-pointer"
-                  onClick={() => navigate('/admin/create-game')}
-                >
-                  Create New Game
-                </Button>
+                <>
+                  {(permissions.isAdmin || permissions.isSuperAdmin) && (
+                    <Button
+                      variant="outline"
+                      className="border-[#475568] text-[#475568] flex items-center gap-2 dark:text-white py-2 sm:py-[14px] text-sm sm:text-base h-[48px] font-dmmono cursor-pointer disabled:opacity-50"
+                      onClick={handleRunSeoForAll}
+                      disabled={isSeoRunning}
+                    >
+                      {isSeoRunning ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Sparkles className="w-4 h-4" />
+                      )}
+                      {isSeoRunning ? 'SEO Running...' : 'Generate SEO'}
+                    </Button>
+                  )}
+                  <Button
+                    className="bg-[#6A7282] text-white hover:bg-[#6A7282] tracking-wider py-2 sm:py-[14px] text-sm sm:text-base h-[48px] font-dmmono cursor-pointer"
+                    onClick={() => navigate('/admin/create-game')}
+                  >
+                    Create New Game
+                  </Button>
+                </>
               )}
             </>
           )}
         </div>
       </div>
-      {/* Search bar */}
-      {!reorderHistoryOpen && (
-        <div className="mb-4">
-          <div className="relative max-w-md">
+      {/* Search bar + Filter */}
+      {!reorderHistoryOpen ? (
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div className="relative max-w-3xl">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
             <Input
               type="text"
@@ -421,7 +445,7 @@ export default function GameManagement() {
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value);
-                setPage(1); // Reset to first page when searching
+                setPage(1);
               }}
               className="pl-10 h-12 bg-white dark:bg-[#23243a] border-gray-300 dark:border-gray-600 focus:border-[#6A7282] dark:focus:border-[#6A7282]"
             />
@@ -437,6 +461,37 @@ export default function GameManagement() {
               </button>
             )}
           </div>
+          {permissions.canFilter && (
+            <FilterSheet
+              onFilter={setFilters}
+              onReset={() => setFilters(undefined)}
+            >
+              <Button
+                variant="outline"
+                className="border-[#475568] text-[#475568] flex items-center gap-2 dark:text-white h-12 font-dmmono cursor-pointer"
+              >
+                Filter Games
+                <RiEqualizer2Line size={24} />
+              </Button>
+            </FilterSheet>
+          )}
+        </div>
+      ) : (
+        <div className="mb-4 flex items-center gap-3">
+          {permissions.canFilter && (
+            <HistoryFilterSheet
+              onFilter={setHistoryFilters}
+              onReset={() => setHistoryFilters(undefined)}
+            >
+              <Button
+                variant="outline"
+                className="border-[#475568] text-[#475568] flex items-center gap-2 dark:text-white h-12 font-dmmono cursor-pointer"
+              >
+                Filter History
+                <RiEqualizer2Line size={24} />
+              </Button>
+            </HistoryFilterSheet>
+          )}
         </div>
       )}
       {reorderOpen && (
@@ -576,6 +631,33 @@ export default function GameManagement() {
                             }}
                           >
                             <CiEdit className="cursor-pointer" />
+                          </button>
+                        )}
+
+                        {/* Generate SEO button - Admin/SuperAdmin only */}
+                        {(permissions.isAdmin || permissions.isSuperAdmin) && (
+                          <button
+                            className="text-black hover:text-black p-1 dark:text-white cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                            title={
+                              seoStatusMap[game.id] === 'completed'
+                                ? 'SEO complete'
+                                : seoStatusMap[game.id] === 'running'
+                                  ? 'SEO in progress...'
+                                  : 'Generate SEO metadata'
+                            }
+                            disabled={seoStatusMap[game.id] === 'running' || seoStatusMap[game.id] === 'completed'}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRunSeoOnGame(game.id);
+                            }}
+                          >
+                            {seoStatusMap[game.id] === 'running' ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : seoStatusMap[game.id] === 'completed' ? (
+                              <CheckCircle2 className="w-4 h-4 text-green-500" />
+                            ) : (
+                              <Sparkles className="w-4 h-4" />
+                            )}
                           </button>
                         )}
 
