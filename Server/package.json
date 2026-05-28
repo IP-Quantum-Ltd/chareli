@@ -2,9 +2,6 @@
   "name": "server",
   "version": "1.0.0",
   "packageManager": "pnpm@11.4.0",
-  "pnpm": {
-    "onlyBuiltDependencies": ["@scarf/scarf", "bcrypt", "msgpackr-extract", "sharp"]
-  },
   "main": "dist/index.js",
   "scripts": {
     "start": "npm run warm-cache && node dist/index.js",
