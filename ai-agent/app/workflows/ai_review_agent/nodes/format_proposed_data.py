@@ -143,7 +143,8 @@ Return ONLY valid JSON matching this exact structure:
 }}
 
 Rules:
-- description MUST contain only the Overview and Strategy sections from the article — preserve all HTML tags, NO markdown; do NOT include How to Play or FAQ content in description
+- description MUST contain only the Overview section from the article — preserve all HTML tags, NO markdown
+- howToPlay must combine How to Play, Controls, and Strategy as three <h3> sub-sections in that order — no markdown, only HTML
 - use existing_game as the current source of truth; if the new evidence is weak, empty, placeholder-like, or instruction-like, keep the existing value instead of inventing one
 - preserve existing_game.categoryId exactly when it exists
 - howToPlay must be comprehensive HTML — include: objective, step-by-step controls for PC AND mobile separately, gameplay rules, power-up/bonus tips; use <h3>, <p>, <ul>, <li>, <strong> tags; NO markdown, only HTML
@@ -179,18 +180,25 @@ Rules:
             # description gets Overview + Strategy only; dedicated fields get How to Play and FAQ.
             if isinstance(result, dict):
                 sections = _split_article_sections(article)
-                # description keeps h2 headings; dedicated fields strip them (page renders its own heading)
+                # description gets Overview only (h2 kept).
+                # howToPlay gets How to Play + Controls + Strategy as h3 sub-sections.
                 overview_full = sections.get("overview", ("", ""))[0]
-                strategy_full = sections.get("strategy", ("", ""))[0]
-                result["description"] = (
-                    (overview_full + "\n" + strategy_full).strip() or article
-                )
+                how_to_play_body = sections.get("how to play", ("", ""))[1]
+                controls_body = sections.get("controls", ("", ""))[1]
+                strategy_body = sections.get("strategy", ("", ""))[1]
+                faq_body = sections.get("faq", ("", ""))[1]
+                result["description"] = overview_full or article
                 result["title"] = game_title
                 meta = result.setdefault("metadata", {})
-                how_to_play_body = sections.get("how to play", ("", ""))[1]
-                faq_body = sections.get("faq", ("", ""))[1]
+                how_to_play_parts = []
                 if how_to_play_body:
-                    meta["howToPlay"] = how_to_play_body
+                    how_to_play_parts.append(how_to_play_body)
+                if controls_body:
+                    how_to_play_parts.append(f"<h3>Controls</h3>\n{controls_body}")
+                if strategy_body:
+                    how_to_play_parts.append(f"<h3>Strategy</h3>\n{strategy_body}")
+                if how_to_play_parts:
+                    meta["howToPlay"] = "\n".join(how_to_play_parts)
                 if faq_body:
                     meta["faqOverride"] = faq_body
             reconciled_game_data, reconciled_seo = self._submission_reconciler.reconcile(
