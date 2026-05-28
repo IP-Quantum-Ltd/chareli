@@ -61,4 +61,4 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
   CMD ["/usr/local/bin/healthcheck.sh"]
 
 # Run migrations and start the app with PM2
-CMD ["sh", "-c", "node_modules/.bin/typeorm migration:run -d dist/config/database.js && npx pm2-runtime start dist/index.js -i max"]
+CMD ["sh", "-c", "node_modules/.bin/typeorm migration:run -d dist/config/database.js && pnpm dlx pm2-runtime start dist/index.js -i max"]
