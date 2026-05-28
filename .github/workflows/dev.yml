@@ -229,7 +229,7 @@ jobs:
             --task $TASK_ARN \
             --container ${{ env.CONTAINER_NAME }} \
             --interactive \
-            --command "pnpm run warm-cache" || echo "⚠️ Cache warming failed (non-critical)"
+            --command "node dist/scripts/warmCache.js" || echo "⚠️ Cache warming failed (non-critical)"
 
           echo "✅ Cache warming completed"
         continue-on-error: true
