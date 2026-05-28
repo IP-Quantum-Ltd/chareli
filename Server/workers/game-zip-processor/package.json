@@ -2,6 +2,9 @@
   "name": "game-zip-processor",
   "version": "1.0.0",
   "packageManager": "pnpm@11.4.0",
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild", "sharp", "workerd"]
+  },
   "description": "Cloudflare Worker for processing game ZIP files at the edge",
   "main": "src/index.ts",
   "scripts": {
