@@ -34,6 +34,9 @@ WORKDIR /app
 # Set node environment to production
 ENV NODE_ENV=production
 
+# Enable pnpm so it's available for migrations and warm-cache
+RUN corepack enable && corepack prepare pnpm@11.4.0 --activate
+
 # Copy built application from the builder stage
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
