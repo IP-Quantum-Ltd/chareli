@@ -33,6 +33,8 @@ WORKDIR /app
 
 # Set node environment to production
 ENV NODE_ENV=production
+# Tell pnpm it's running in CI so it doesn't require a TTY to confirm module purges
+ENV CI=true
 
 # Enable pnpm so it's available for migrations and warm-cache
 RUN corepack enable && corepack prepare pnpm@11.4.0 --activate
