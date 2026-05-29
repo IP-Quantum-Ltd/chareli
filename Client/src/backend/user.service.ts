@@ -29,7 +29,7 @@ export const useUserById = (id: string) => {
     queryKey: [BackendRoute.USER, id],
     queryFn: async () => {
       const response = await backendService.get(url);
-      return response as unknown as User;
+      return response.data as unknown as User;
     },
     refetchOnWindowFocus: false,
   });
@@ -45,7 +45,7 @@ export const useUpdateUserData = () => {
     mutationFn: async ({ id, ...data }: Partial<User> & { id: string }) => {
       const url = BackendRoute.USER_BY_ID.replace(':id', id);
       const response = await backendService.put(url, data);
-      return response;
+      return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [BackendRoute.USER] });
@@ -114,7 +114,7 @@ export const useChangePassword = () => {
     mutationFn: async ({ oldPassword, password }: { oldPassword: string; password: string }) => {
       const url = BackendRoute.AUTH_CHANGE_PASSWORD;
       const response = await backendService.post(url, { oldPassword, newPassword: password });
-      return response;
+      return response.data;
     }
   });
 };
@@ -127,7 +127,7 @@ export const useSendHeartbeat = () => {
   return useMutation({
     mutationFn: async () => {
       const response = await backendService.post(BackendRoute.USER_HEARTBEAT);
-      return response;
+      return response.data;
     }
   });
 };
@@ -155,7 +155,7 @@ export const useOnlineStatus = () => {
 export const sendHeartbeat = async () => {
   try {
     const response = await backendService.post(BackendRoute.USER_HEARTBEAT);
-    return response;
+    return response.data;
   } catch (error) {
     console.error('Failed to send heartbeat:', error);
     throw error;

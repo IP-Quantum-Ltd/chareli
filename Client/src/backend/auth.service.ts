@@ -18,7 +18,7 @@ export const useLogin = () => {
         BackendRoute.AUTH_LOGIN,
         credentials
       );
-      return response;
+      return response.data;
     },
   });
 };
@@ -32,7 +32,7 @@ export const useVerifyOtp = () => {
         BackendRoute.AUTH_VERIFY_OTP,
         data
       );
-      return response as unknown as AuthTokens;
+      return response.data as unknown as AuthTokens;
     },
     onSuccess: (data) => {
       // Store tokens
@@ -76,7 +76,7 @@ export const useCurrentUser = () => {
     queryKey: [BackendRoute.AUTH_ME],
     queryFn: async () => {
       const response = await backendService.get(BackendRoute.AUTH_ME);
-      return response as unknown as User;
+      return response.data as unknown as User;
     },
     retry: false,
     enabled: !!localStorage.getItem('token'), // Only run if token exists
@@ -98,7 +98,7 @@ export const useRefreshToken = () => {
         BackendRoute.AUTH_REFRESH_TOKEN,
         { refreshToken }
       );
-      return response as unknown as AuthTokens;
+      return response.data as unknown as AuthTokens;
     },
     onSuccess: (data) => {
       localStorage.setItem('token', data.accessToken);
