@@ -20,6 +20,7 @@ import { FAQEditor } from '../../components/admin/FAQEditor';
 import { EditorGameSidebar } from '../../components/admin/EditorGameSidebar';
 import { usePermissions } from '../../hooks/usePermissions';
 import { useWebSocket } from '../../hooks/useWebSocket';
+import { GenerateSeoConfirmationModal } from '../../components/modals/GenerateSeoConfirmationModal';
 
 // ... other imports
 
@@ -101,6 +102,7 @@ export default function EditGame() {
   const reviseProposal = useReviseProposal();
   const runAgentSeo = useRunAgentSeo();
   const [seoStatus, setSeoStatus] = useState<'idle' | 'running' | 'completed' | 'failed'>('idle');
+  const [seoConfirmOpen, setSeoConfirmOpen] = useState(false);
 
   useWebSocket();
 
@@ -126,6 +128,11 @@ export default function EditGame() {
       setSeoStatus('failed');
       toast.error('Failed to trigger agent SEO');
     }
+  };
+
+  const handleConfirmGenerateSeo = async () => {
+    setSeoConfirmOpen(false);
+    await handleGenerateSeo();
   };
 
   const canGenerateSeo =
@@ -619,7 +626,7 @@ export default function EditGame() {
                       type="button"
                       variant="outline"
                       className="border-[#475568] text-[#475568] flex items-center gap-2 dark:text-white shrink-0 disabled:opacity-50"
-                      onClick={handleGenerateSeo}
+                      onClick={() => setSeoConfirmOpen(true)}
                       disabled={seoStatus === 'running'}
                     >
                       {seoStatus === 'running' ? (
@@ -784,6 +791,13 @@ export default function EditGame() {
           </div>
         )}
       </div>
+
+      <GenerateSeoConfirmationModal
+        open={seoConfirmOpen}
+        onOpenChange={setSeoConfirmOpen}
+        onConfirm={handleConfirmGenerateSeo}
+        isConfirming={seoStatus === 'running' || runAgentSeo.isPending}
+      />
     </div>
   );
 }
