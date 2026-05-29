@@ -104,8 +104,8 @@ export default function EditGame() {
     try {
       const result = await reviseProposal.mutateAsync(proposalId);
       toast.success('Proposal revised! You are now editing the new version.');
-      if (result?.data?.id) {
-          navigate(`/admin/edit-proposal/${result.data.id}`);
+      if (result?.id) {
+          navigate(`/admin/edit-proposal/${result.id}`);
       }
     } catch {
       toast.error('Failed to revise proposal');

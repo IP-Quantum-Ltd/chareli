@@ -22,6 +22,7 @@ interface GameProcessingProgress {
 }
 
 const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const isDevMode = import.meta.env.DEV;
 
 export const useWebSocket = () => {
   const socketRef = useRef<Socket | null>(null);
@@ -121,6 +122,19 @@ export const useWebSocket = () => {
         queryClient.invalidateQueries({ queryKey: [BackendRoute.GAME_PROPOSAL_BY_ID] });
         // Also invalidate games list as some proposals create/update games
         queryClient.invalidateQueries({ queryKey: [BackendRoute.GAMES] });
+    });
+
+    socketRef.current.on('agent-seo-complete', (data: { gameId: string; proposalId: string }) => {
+      if (isDevMode) {
+        console.log('📡 [WebSocket] Agent SEO complete:', data);
+      }
+
+      // Invalidate games analytics to reflect new proposal
+      queryClient.invalidateQueries({ queryKey: [BackendRoute.ADMIN_GAMES_ANALYTICS] });
+      queryClient.invalidateQueries({ queryKey: [BackendRoute.GAME_PROPOSALS] });
+
+      // Dispatch custom event so page components can react (e.g. GameManagement toast)
+      window.dispatchEvent(new CustomEvent('agent-seo-complete', { detail: data }));
     });
 
     socketRef.current.on('game-processing-progress', (data: GameProcessingProgress) => {

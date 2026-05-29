@@ -37,6 +37,8 @@ import {
 
 import { GameProposal, GameProposalStatus, GameProposalType } from '../entities/GameProposal';
 import { notifyProposalCreated } from '../services/aiNotification.service';
+import { triggerAgentRun } from '../services/aiAgent.service';
+import { websocketService } from '../services/websocket.service';
 import {
   GamePublishHistory,
   GamePublishAction,
@@ -1314,6 +1316,11 @@ export const createGame = async (
       savedGame.id,
       savedGame.categoryId
     );
+
+    // Fire-and-forget: trigger AI agent SEO analysis for the new game
+    triggerAgentRun({ game_id: game.id, submit_review: true })
+      .then(() => logger.info(`[agentSeo] Triggered SEO for game ${game.id}`))
+      .catch((err) => logger.warn(`[agentSeo] Failed to trigger SEO for game ${game.id}: ${err.message}`));
 
     const apiResponseTime = Date.now() - requestStartTime;
 
@@ -2834,6 +2841,76 @@ export const unpublishGame = async (
     await cacheInvalidationService.invalidateGameUpdate(game.id, game.categoryId);
 
     res.status(200).json({ success: true, data: game });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @swagger
+ * /games/{id}/run-agent-seo:
+ *   post:
+ *     summary: Manually trigger AI agent SEO analysis for a game
+ *     description: >
+ *       Enqueues an AI agent job to analyze the game and produce SEO metadata.
+ *       The agent will create an UPDATE proposal with the results. Admins only.
+ *     tags: [Games]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       202:
+ *         description: Agent SEO job accepted
+ *       500:
+ *         description: AI agent unavailable
+ */
+export const runAgentSeoOnGame = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    logger.info(`[agentSeo] Manual SEO trigger for game ${id} by admin ${req.user?.userId}`);
+
+    await triggerAgentRun({ game_id: id, submit_review: true });
+    websocketService.emitAgentSeoStarted(id);
+
+    res.status(202).json({ success: true, message: 'Agent SEO triggered' });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @swagger
+ * /games/run-agent-seo-all:
+ *   post:
+ *     summary: Trigger AI agent SEO analysis for all games
+ *     description: >
+ *       Fetches all game IDs and triggers the AI agent SEO pipeline for each.
+ *       Fire-and-forget per game — the agent handles dedup internally.
+ *     tags: [Games]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       202:
+ *         description: Agent SEO jobs dispatched for all games
+ */
+export const runAgentSeoOnAllGames = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const games = await gameRepository.find({ select: ['id'] });
+    let triggered = 0;
+    for (const game of games) {
+      triggerAgentRun({ game_id: game.id, submit_review: true })
+        .then(() => logger.info(`[agentSeo] Triggered SEO for game ${game.id}`))
+        .catch((err) => logger.warn(`[agentSeo] Failed to trigger SEO for game ${game.id}: ${err.message}`));
+      triggered++;
+    }
+    logger.info(`[agentSeo] Bulk SEO triggered for ${triggered} games by admin ${req.user?.userId}`);
+    res.status(202).json({ success: true, count: triggered, message: `Agent SEO triggered for ${triggered} games` });
   } catch (error) {
     next(error);
   }

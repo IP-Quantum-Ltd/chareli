@@ -254,7 +254,7 @@ export default function CreateGame() {
 
         try {
           // Check if the game was actually created by searching for it
-          const { data: recentGames } = await backendService.get('/api/games', {
+          const { data: recentGames } = await backendService.get<{ data: { title: string; createdAt: string }[] }>('/api/games', {
             params: {
               limit: 10,
               search: values.title,

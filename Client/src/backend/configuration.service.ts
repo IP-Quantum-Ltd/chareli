@@ -4,10 +4,10 @@ import { BackendRoute } from './constants';
 
 // Get formatted configs (public route)
 export const useFormattedSystemConfigs = () => {
-  return useQuery({
+  return useQuery<Record<string, unknown>[]>({
     queryKey: [BackendRoute.SYSTEM_CONFIG_FORMATTED],
     queryFn: async () => {
-      const response = await backendService.get(
+      const response = await backendService.get<Record<string, unknown>[]>(
         BackendRoute.SYSTEM_CONFIG_FORMATTED
       );
       return response.data;
@@ -21,7 +21,7 @@ export const useSystemConfigByKey = (
   key: string,
   options?: { enabled?: boolean }
 ) => {
-  return useQuery({
+  return useQuery<any>({
     queryKey: [BackendRoute.SYSTEM_CONFIG, key],
     queryFn: async () => {
       const response = await backendService.get(
@@ -36,10 +36,10 @@ export const useSystemConfigByKey = (
 
 // Get all configs (admin route)
 export const useAllSystemConfigs = () => {
-  return useQuery({
+  return useQuery<Record<string, unknown>[]>({
     queryKey: [BackendRoute.SYSTEM_CONFIG],
     queryFn: async () => {
-      const response = await backendService.get(BackendRoute.SYSTEM_CONFIG);
+      const response = await backendService.get<Record<string, unknown>[]>(BackendRoute.SYSTEM_CONFIG);
       return response.data;
     },
   });

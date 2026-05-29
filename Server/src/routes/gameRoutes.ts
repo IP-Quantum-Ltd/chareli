@@ -20,6 +20,8 @@ import {
   unlikeGame,
   publishGame,
   unpublishGame,
+  runAgentSeoOnGame,
+  runAgentSeoOnAllGames,
 } from '../controllers/gameController';
 import {
   authenticate,
@@ -90,6 +92,9 @@ router.post('/multipart/abort', isEditor, uploadLimiter, abortMultipartUpload);
 // Bulk update - Admin only (seems unrelated to single game management)
 router.post('/bulk-update-free-time', isAdmin, bulkUpdateFreeTime);
 
+// Bulk agent SEO trigger - Admin only
+router.post('/run-agent-seo-all', isAdmin, runAgentSeoOnAllGames);
+
 // Create Game - Allow Editors
 router.post('/', isEditor, uploadGameFiles, multerErrorHandler, createGame);
 
@@ -119,6 +124,14 @@ router.post(
 
 // Delete Game - Admin only (User explicitly requested NO delete permissions for Editors)
 router.delete('/:id', isAdmin, validateParams(gameIdParamSchema), deleteGame);
+
+// Agent SEO trigger - Admin only
+router.post(
+  '/:id/run-agent-seo',
+  isAdmin,
+  validateParams(gameIdParamSchema),
+  runAgentSeoOnGame
+);
 
 // Game processing status routes - Allow Editors
 router.get(

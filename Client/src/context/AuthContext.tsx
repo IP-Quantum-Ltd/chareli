@@ -103,10 +103,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const refreshUser = async (): Promise<User> => {
     try {
       setIsLoading(true);
-      const userData = await backendService.get('/api/auth/me');
-      setUser(userData.data as unknown as User);
+      const response = await backendService.get<User>('/api/auth/me');
+      setUser(response.data);
       setIsLoading(false);
-      return userData as unknown as User;
+      return response.data;
     } catch (error) {
       // Token might be invalid, clear tokens
       localStorage.removeItem('token');
@@ -118,7 +118,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const login = async (credentials: LoginCredentials): Promise<LoginResponse> => {
-    const response = await backendService.post('/api/auth/login', credentials);
+    const response = await backendService.post<LoginResponse>('/api/auth/login', credentials);
     const { 
       userId, 
       email, 
@@ -155,7 +155,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const verifyOtp = async (userId: string, otp: string): Promise<User> => {
-    const response = await backendService.post('/api/auth/verify-otp', { userId, otp });
+    const response = await backendService.post<{ accessToken: string; refreshToken: string }>('/api/auth/verify-otp', { userId, otp });
     const { accessToken, refreshToken } = response.data;
     localStorage.setItem('token', accessToken);
     localStorage.setItem('refreshToken', refreshToken);

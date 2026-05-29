@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { backendService } from './api.service';
 import { BackendRoute } from './constants';
-// import type { User } from './types';
+import type { User } from './types';
 
 export interface InviteUserRequest {
   email: string;
@@ -72,7 +72,7 @@ export const useTeamInvitations = () => {
   return useQuery({
     queryKey: [BackendRoute.AUTH_INVITATIONS],
     queryFn: async () => {
-      const response = await backendService.get(BackendRoute.AUTH_INVITATIONS);
+      const response = await backendService.get<Record<string, unknown>[]>(BackendRoute.AUTH_INVITATIONS);
       return response;
     },
     refetchOnWindowFocus: false,
@@ -105,7 +105,7 @@ export const useVerifyInvitation = (token: string) => {
     queryKey: ['verifyInvitation', token],
     queryFn: async () => {
       const url = BackendRoute.AUTH_VERIFY_INVITATION.replace(':token', token);
-      const response = await backendService.get(url);
+      const response = await backendService.get<VerifyInvitationResponse>(url);
       return response.data;
     },
     enabled: !!token,
@@ -146,10 +146,10 @@ export const useResetPasswordFromInvitation = () => {
 };
 
 export const useAllTeamMembers = () => {
-  return useQuery({
+  return useQuery<User[]>({
     queryKey: ['allTeamMembers'], 
     queryFn: async () => {
-      const { data } = await backendService.get(BackendRoute.USER);
+      const { data } = await backendService.get<User[]>(BackendRoute.USER);
       return data;
     },
     refetchOnWindowFocus: false,
