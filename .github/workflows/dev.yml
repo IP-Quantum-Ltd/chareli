@@ -229,7 +229,7 @@ jobs:
             --task $TASK_ARN \
             --container ${{ env.CONTAINER_NAME }} \
             --interactive \
-            --command "pnpm run warm-cache" || echo "⚠️ Cache warming failed (non-critical)"
+            --command "node dist/scripts/warmCache.js" || echo "⚠️ Cache warming failed (non-critical)"
 
           echo "✅ Cache warming completed"
         continue-on-error: true
@@ -301,7 +301,7 @@ jobs:
           echo "🏗️ Building worker..."
           # Build specifically for production-like environment (transpiling TS to JS)
           # We use --dry-run to trigger the build process and --outdir to capture the output
-          npx wrangler deploy --dry-run --outdir dist --name $WORKER_NAME
+          ./node_modules/.bin/wrangler deploy --dry-run --outdir dist --name $WORKER_NAME
 
           echo "🚀 Uploading script content to Cloudflare..."
           # The `/content` endpoint updates only the script, preserving all Provisioned Bindings
