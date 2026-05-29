@@ -285,12 +285,6 @@ class SubmissionReconciler:
         _raw_cand_seo = seo_meta or {}
         candidate_seo = _raw_cand_seo if isinstance(_raw_cand_seo, dict) else {}
 
-        merged_faq = merge_faq_content(
-            current_metadata.get("faqOverride"),
-            candidate_metadata.get("faqOverride"),
-            candidate_seo.get("faq_schema"),
-        )
-
         reconciled_metadata = {
             "howToPlay": _prefer_string(candidate_metadata.get("howToPlay"), current_metadata.get("howToPlay")),
             "features": _prefer_string_list(candidate_metadata.get("features"), current_metadata.get("features")),
@@ -299,10 +293,7 @@ class SubmissionReconciler:
             "developer": _prefer_developer(candidate_metadata.get("developer"), current_metadata.get("developer")),
             "platform": _prefer_string_list(candidate_metadata.get("platform"), current_metadata.get("platform")),
             "releaseDate": _prefer_string(candidate_metadata.get("releaseDate"), current_metadata.get("releaseDate")),
-            "faqOverride": faq_items_to_html(merged_faq) or _prefer_string(
-                candidate_metadata.get("faqOverride"),
-                current_metadata.get("faqOverride"),
-            ),
+            "faqOverride": candidate_metadata.get("faqOverride") or "",
         }
 
         reconciled_game_data = {
@@ -320,7 +311,7 @@ class SubmissionReconciler:
             "primary_h1": _prefer_string(candidate_seo.get("primary_h1"), current_seo.get("primary_h1")),
             "primary_keywords": _prefer_string_list(candidate_seo.get("primary_keywords"), current_seo.get("primary_keywords")),
             "json_ld": _prefer_json(candidate_seo.get("json_ld"), current_seo.get("json_ld")),
-            "faq_schema": faq_items_to_schema(merged_faq)
+            "faq_schema": faq_items_to_schema(_faq_from_html(candidate_metadata.get("faqOverride") or ""))
             or faq_items_to_schema(_faq_from_schema(current_seo.get("faq_schema"))),
         }
 

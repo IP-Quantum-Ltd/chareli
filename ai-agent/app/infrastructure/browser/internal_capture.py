@@ -54,7 +54,10 @@ class InternalCaptureService:
         def _suppress_target_closed(loop, ctx):
             if type(ctx.get("exception")).__name__ in ("TargetClosedError", "ConnectionClosedError"):
                 return
-            (prev_handler or loop.default_exception_handler)(loop, ctx)
+            if prev_handler:
+                prev_handler(loop, ctx)
+            else:
+                loop.default_exception_handler(ctx)
 
         loop.set_exception_handler(_suppress_target_closed)
         playwright, browser = await self._browser_factory.launch()
@@ -86,7 +89,10 @@ class InternalCaptureService:
         def _suppress_target_closed(loop, ctx):
             if type(ctx.get("exception")).__name__ in ("TargetClosedError", "ConnectionClosedError"):
                 return
-            (prev_handler or loop.default_exception_handler)(loop, ctx)
+            if prev_handler:
+                prev_handler(loop, ctx)
+            else:
+                loop.default_exception_handler(ctx)
 
         loop.set_exception_handler(_suppress_target_closed)
         playwright, browser = await self._browser_factory.launch()

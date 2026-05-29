@@ -30,9 +30,19 @@ class ContentPlanningService:
         result = await self.ai.chat_completion(
             messages=[
                 {"role": "system", "content": "You are a Content Architect specializing in gaming SEO. Respond only with JSON."},
-                {"role": "user", "content": f"""Task: Design a Content Plan for a high-ranking SEO guide on '{game_title}'. Research Verification: {json_dumps_safe(compact_research_data, indent=2)}
-Return ONLY valid JSON:
-{{"sections": [{{"title": "Overview", "goals": ["string"]}}, {{"title": "Controls", "goals": ["string"]}}, {{"title": "Strategy", "goals": ["string"]}}, {{"title": "FAQ", "goals": ["string"]}}], "estimated_word_count": int, "formatting_requirements": ["list"]}}"""},
+                {"role": "user", "content": f"""Task: Design a Content Plan for a high-ranking SEO guide on '{game_title}'.
+
+Rules:
+- The five section titles are fixed. Do not rename, reorder, or add sections: Overview, How to Play, Controls, Strategy, FAQ.
+- Gameplay instructions and objectives belong ONLY in the "How to Play" section goals.
+- Control schemes (keyboard, mouse, touch) belong ONLY in the "Controls" section goals.
+- FAQ-style questions and answers belong ONLY in the "FAQ" section goals.
+- The Overview must not include controls, gameplay instructions, or FAQ-style content.
+
+Research Verification: {json_dumps_safe(compact_research_data, indent=2)}
+
+Return ONLY valid JSON with exactly these five sections in order (fill in the goals, do not change the titles):
+{{"sections": [{{"title": "Overview", "goals": ["string"]}}, {{"title": "How to Play", "goals": ["string"]}}, {{"title": "Controls", "goals": ["string"]}}, {{"title": "Strategy", "goals": ["string"]}}, {{"title": "FAQ", "goals": ["string"]}}], "estimated_word_count": int, "formatting_requirements": ["list"]}}"""},
             ],
             response_format={"type": "json_object"},
             pydantic_schema=ContentPlanOutput,
