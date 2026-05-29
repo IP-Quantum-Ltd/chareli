@@ -201,7 +201,7 @@ export default function GameManagement() {
     try {
       const response = await runAgentSeo.mutateAsync(undefined);
       const count = response?.count ?? 0;
-      toast.success(`SEO triggered for ${count} games`);
+      toast.success(response?.message ?? `SEO triggered for ${count} games`);
     } catch {
       setIsSeoRunning(false);
       toast.error('Failed to trigger agent SEO');
