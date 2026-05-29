@@ -186,7 +186,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const isRoleIncluded = ['admin', 'superadmin'].includes(user?.role.name || '') || false;
+  const isRoleIncluded = ['admin', 'superadmin'].includes(user?.role?.name || '') || false;
 
   return (
     <AuthContext.Provider
