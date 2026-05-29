@@ -2878,7 +2878,7 @@ export const runAgentSeoOnGame = async (req: Request, res: Response, next: NextF
     await triggerAgentRun({ game_id: id, submit_review: true });
     websocketService.emitAgentSeoStarted(id);
 
-    res.status(202).json({ success: true, data: {}, message: 'Agent SEO triggered' });
+    res.status(202).json({ success: true, data: { gameId: id }, message: 'Agent SEO triggered' });
   } catch (error) {
     next(error);
   }

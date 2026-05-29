@@ -45,6 +45,8 @@ interface UploadedFile {
   key: string;
 }
 
+const AGENT_SEO_COMPLETION_TIMEOUT_MS = 5 * 60 * 1000;
+
 const validationSchema = yupObject({
   title: yupString().required('Title is required').trim(),
   developer: yupString().trim(),
@@ -117,6 +119,19 @@ export default function EditGame() {
     window.addEventListener('agent-seo-complete', handleSeoComplete);
     return () => window.removeEventListener('agent-seo-complete', handleSeoComplete);
   }, [gameId]);
+
+  useEffect(() => {
+    if (seoStatus !== 'running') return;
+
+    const timeoutId = setTimeout(() => {
+      setSeoStatus('idle');
+      toast.warning(
+        'Timed out waiting for SEO completion. The job may still finish — check proposals.'
+      );
+    }, AGENT_SEO_COMPLETION_TIMEOUT_MS);
+
+    return () => clearTimeout(timeoutId);
+  }, [seoStatus]);
 
   const handleGenerateSeo = async () => {
     if (!gameId) return;
