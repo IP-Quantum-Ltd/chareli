@@ -200,6 +200,7 @@ export default function GameManagement() {
     setIsSeoRunning(true);
     try {
       const response = await runAgentSeo.mutateAsync(undefined);
+      setIsSeoRunning(false);
       const count = response?.count ?? 0;
       toast.success(`SEO triggered for ${count} games`);
     } catch {
