@@ -521,12 +521,10 @@ export const useGameProcessingStatus = (gameId: string) => {
 };
 
 export const useRunAgentSeo = () => {
-  return useMutation<{ count: number }, unknown, string | undefined>({
-    mutationFn: async (gameId?: string) => {
-      const response = await backendService.post<{ count: number }>(
-        gameId ? `/api/games/${gameId}/run-agent-seo` : '/api/games/run-agent-seo-all'
-      );
-      return response.data;
+  return useMutation<{ message?: string }, unknown, string>({
+    mutationFn: async (gameId: string) => {
+      const response = await backendService.post(`/api/games/${gameId}/run-agent-seo`);
+      return { message: response.message };
     },
   });
 };

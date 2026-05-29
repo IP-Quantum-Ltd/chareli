@@ -8,7 +8,6 @@ import { toast } from "sonner";
 import {
   useAllPositionHistory,
   useDeleteGame,
-  useRunAgentSeo,
 } from "../../../backend/games.service";
 // import { useGamesAnalytics } from "../../../backend/analytics.service";
 import type { GameStatus } from "../../../backend/types";
@@ -32,7 +31,7 @@ import { useNavigate } from "react-router-dom";
 import { cn } from "../../../lib/utils";
 import { formatTime } from "../../../utils/main";
 import GameThumbnail from "../Analytics/GameThumbnail";
-import { X, Search, Sparkles, Loader2, CheckCircle2 } from "lucide-react";
+import { X, Search } from "lucide-react";
 import { usePermissions } from "../../../hooks/usePermissions";
 import { useWebSocket } from "../../../hooks/useWebSocket";
 import { getGameProgress } from "../../../utils/gameProgress";
@@ -116,21 +115,7 @@ export default function GameManagement() {
   const [reorderOpen, setReorderOpen] = useState(false);
   const [reorderHistoryOpen, setReorderHistoryOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [isSeoRunning, setIsSeoRunning] = useState(false);
-  const [seoStatusMap, setSeoStatusMap] = useState<Record<string, 'idle' | 'running' | 'completed' | 'failed'>>({});
   const queryClient = useQueryClient();
-
-  // Listen for agent SEO completion events via WebSocket
-  useEffect(() => {
-    const handleSeoComplete = (e: Event) => {
-      const { gameId } = (e as CustomEvent).detail;
-      setIsSeoRunning(false);
-      setSeoStatusMap(prev => ({ ...prev, [gameId]: 'completed' }));
-      toast.success('SEO metadata ready — new proposal awaiting review');
-    };
-    window.addEventListener('agent-seo-complete', handleSeoComplete);
-    return () => window.removeEventListener('agent-seo-complete', handleSeoComplete);
-  }, []);
 
   // User activity detection (becomes inactive after 60s of no activity)
   const isUserActive = useUserActivity(60000);
@@ -183,31 +168,6 @@ export default function GameManagement() {
   const { data: gamesWithAnalytics, isLoading } = useSmartGamesAnalytics();
 
   const deleteGame = useDeleteGame();
-  const runAgentSeo = useRunAgentSeo();
-
-  const handleRunSeoOnGame = async (gameId: string) => {
-    setSeoStatusMap(prev => ({ ...prev, [gameId]: 'running' }));
-    try {
-      await runAgentSeo.mutateAsync(gameId);
-      toast.success('Agent SEO job triggered');
-    } catch {
-      setSeoStatusMap(prev => ({ ...prev, [gameId]: 'failed' }));
-      toast.error('Failed to trigger agent SEO');
-    }
-  };
-
-  const handleRunSeoForAll = async () => {
-    setIsSeoRunning(true);
-    try {
-      const response = await runAgentSeo.mutateAsync(undefined);
-      setIsSeoRunning(false);
-      const count = response?.count ?? 0;
-      toast.success(`SEO triggered for ${count} games`);
-    } catch {
-      setIsSeoRunning(false);
-      toast.error('Failed to trigger agent SEO');
-    }
-  };
 
   // Enhanced status rendering function
   const renderGameStatus = (game: any) => {
@@ -405,21 +365,6 @@ export default function GameManagement() {
               )}
               {!reorderOpen && (
                 <>
-                  {(permissions.isAdmin || permissions.isSuperAdmin) && (
-                    <Button
-                      variant="outline"
-                      className="border-[#475568] text-[#475568] flex items-center gap-2 dark:text-white py-2 sm:py-[14px] text-sm sm:text-base h-[48px] font-dmmono cursor-pointer disabled:opacity-50"
-                      onClick={handleRunSeoForAll}
-                      disabled={isSeoRunning}
-                    >
-                      {isSeoRunning ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Sparkles className="w-4 h-4" />
-                      )}
-                      {isSeoRunning ? 'SEO Running...' : 'Generate SEO'}
-                    </Button>
-                  )}
                   <Button
                     className="bg-[#6A7282] text-white hover:bg-[#6A7282] tracking-wider py-2 sm:py-[14px] text-sm sm:text-base h-[48px] font-dmmono cursor-pointer"
                     onClick={() => navigate('/admin/create-game')}
@@ -629,33 +574,6 @@ export default function GameManagement() {
                             }}
                           >
                             <CiEdit className="cursor-pointer" />
-                          </button>
-                        )}
-
-                        {/* Generate SEO button - Admin/SuperAdmin only */}
-                        {(permissions.isAdmin || permissions.isSuperAdmin) && (
-                          <button
-                            className="text-black hover:text-black p-1 dark:text-white cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                            title={
-                              seoStatusMap[game.id] === 'completed'
-                                ? 'SEO complete — click to rerun'
-                                : seoStatusMap[game.id] === 'running'
-                                  ? 'SEO in progress...'
-                                  : 'Generate SEO metadata'
-                            }
-                            disabled={seoStatusMap[game.id] === 'running'}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleRunSeoOnGame(game.id);
-                            }}
-                          >
-                            {seoStatusMap[game.id] === 'running' ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : seoStatusMap[game.id] === 'completed' ? (
-                              <CheckCircle2 className="w-4 h-4 text-green-500" />
-                            ) : (
-                              <Sparkles className="w-4 h-4" />
-                            )}
                           </button>
                         )}
 

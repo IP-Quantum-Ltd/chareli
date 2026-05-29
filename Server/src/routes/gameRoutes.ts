@@ -21,7 +21,6 @@ import {
   publishGame,
   unpublishGame,
   runAgentSeoOnGame,
-  runAgentSeoOnAllGames,
 } from '../controllers/gameController';
 import {
   authenticate,
@@ -91,9 +90,6 @@ router.post('/multipart/abort', isEditor, uploadLimiter, abortMultipartUpload);
 
 // Bulk update - Admin only (seems unrelated to single game management)
 router.post('/bulk-update-free-time', isAdmin, bulkUpdateFreeTime);
-
-// Bulk agent SEO trigger - Admin only
-router.post('/run-agent-seo-all', isAdmin, runAgentSeoOnAllGames);
 
 // Create Game - Allow Editors
 router.post('/', isEditor, uploadGameFiles, multerErrorHandler, createGame);
