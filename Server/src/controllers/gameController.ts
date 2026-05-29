@@ -2878,7 +2878,7 @@ export const runAgentSeoOnGame = async (req: Request, res: Response, next: NextF
     await triggerAgentRun({ game_id: id, submit_review: true });
     websocketService.emitAgentSeoStarted(id);
 
-    res.status(202).json({ success: true, message: 'Agent SEO triggered' });
+    res.status(202).json({ success: true, data: {}, message: 'Agent SEO triggered' });
   } catch (error) {
     next(error);
   }
@@ -2910,7 +2910,11 @@ export const runAgentSeoOnAllGames = async (req: Request, res: Response, next: N
       triggered++;
     }
     logger.info(`[agentSeo] Bulk SEO triggered for ${triggered} games by admin ${req.user?.userId}`);
-    res.status(202).json({ success: true, count: triggered, message: `Agent SEO triggered for ${triggered} games` });
+    res.status(202).json({
+      success: true,
+      data: { count: triggered },
+      message: `Agent SEO triggered for ${triggered} games`,
+    });
   } catch (error) {
     next(error);
   }
