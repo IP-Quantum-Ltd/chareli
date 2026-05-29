@@ -255,7 +255,7 @@ const config: Config = {
   },
   loadTestBypassToken: process.env.LOAD_TEST_BYPASS_TOKEN || '',
   aiAgent: {
-    webhookUrl: process.env.AI_AGENT_WEBHOOK_URL || '',
+    webhookUrl: process.env.AI_AGENT_INTERNAL_URL || '',
     webhookSecret: process.env.AI_AGENT_WEBHOOK_SECRET || '',
   },
 };

@@ -137,10 +137,10 @@ export default function GameManagement() {
 
   // Custom hook for smart polling games analytics - created locally for efficiency
   const useSmartGamesAnalytics = () => {
-    return useQuery<{ data: Record<string, unknown>[] }>({
+    return useQuery<Record<string, unknown>[]>({
       queryKey: [BackendRoute.ADMIN_GAMES_ANALYTICS],
       queryFn: async () => {
-        const response = await backendService.get<{ data: Record<string, unknown>[] }>(BackendRoute.ADMIN_GAMES_ANALYTICS);
+        const response = await backendService.get<Record<string, unknown>[]>(BackendRoute.ADMIN_GAMES_ANALYTICS);
         return response.data;
       },
       refetchOnWindowFocus: false,
@@ -200,6 +200,7 @@ export default function GameManagement() {
     setIsSeoRunning(true);
     try {
       const response = await runAgentSeo.mutateAsync(undefined);
+      setIsSeoRunning(false);
       const count = response?.count ?? 0;
       toast.success(response?.message ?? `SEO triggered for ${count} games`);
     } catch {
@@ -315,7 +316,7 @@ export default function GameManagement() {
   const gameData = allHistoryData.slice(startIndex, endIndex);
 
   // Apply filters and search
-  const filteredGames = (gamesWithAnalytics?.data ?? []).filter((game: any) => {
+  const filteredGames = (gamesWithAnalytics ?? []).filter((game: any) => {
     // Apply category and status filters
     if (filters?.categoryId && game.category?.id !== filters.categoryId)
       return false;
@@ -536,12 +537,12 @@ export default function GameManagement() {
                   <td colSpan={6}>
                     <NoResults
                       title={
-                        gamesWithAnalytics?.data?.length
+                        gamesWithAnalytics?.length
                           ? "No matching results"
                           : "No games found"
                       }
                       message={
-                        gamesWithAnalytics?.data?.length
+                        gamesWithAnalytics?.length
                           ? "Try adjusting your filters"
                           : "No games have been added to the system yet"
                       }

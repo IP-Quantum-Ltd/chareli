@@ -657,7 +657,7 @@ export const useGamesWithPopularity = (filters?: DashboardFilters) => {
       const url = `${BackendRoute.ADMIN_GAMES_ANALYTICS_POPULARITY}${
         params.toString() ? `?${params.toString()}` : ''
       }`;
-      const response = await backendService.get<{ data: Record<string, unknown>[] }>(url);
+      const response = await backendService.get<Record<string, unknown>[]>(url);
       return response.data;
     },
     refetchOnWindowFocus: false,
