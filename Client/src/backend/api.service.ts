@@ -1,11 +1,18 @@
 import axios from 'axios';
-import type { AxiosRequestConfig, AxiosError, AxiosResponse } from 'axios';
+import type { AxiosRequestConfig, AxiosError } from 'axios';
 import { BackendRoute } from './constants';
 import { toast } from 'sonner';
 
 // Extend AxiosRequestConfig to include suppressErrorToast
 interface CustomAxiosRequestConfig extends AxiosRequestConfig {
   suppressErrorToast?: boolean;
+}
+
+// Shape of every successful server response: { success, data, message? }
+export interface ApiResponse<T = unknown> {
+  success: boolean;
+  data: T;
+  message?: string;
 }
 
 const api = axios.create({
@@ -53,7 +60,9 @@ const processQueue = (
 
 // Add response interceptor for error handling and token refresh
 api.interceptors.response.use(
-  (response) => response,
+  // Unwrap the axios envelope: callers receive the server payload ({ success, data, message })
+  // so response.data gives the typed entity directly.
+  (response) => response.data,
   async (error) => {
     const originalRequest = error.config;
 
@@ -106,14 +115,15 @@ api.interceptors.response.use(
         return Promise.reject(error);
       }
 
-      // Try to refresh the token
+      // Try to refresh the token (raw axios — not intercepted)
       const response = await axios.post(
         `${api.defaults.baseURL}${BackendRoute.AUTH_REFRESH_TOKEN}`,
         { refreshToken },
         { headers: { 'Content-Type': 'application/json' } }
       );
 
-      const { accessToken, refreshToken: newRefreshToken } = response.data;
+      // Server returns { success, data: { accessToken, refreshToken } }
+      const { accessToken, refreshToken: newRefreshToken } = response.data.data;
 
       // Store the new tokens
       localStorage.setItem('token', accessToken);
@@ -155,18 +165,23 @@ api.interceptors.response.use(
 );
 
 /**
- * Backend service for API calls
+ * Backend service for API calls.
+ *
+ * The response interceptor unwraps the axios envelope, so each method resolves
+ * with ApiResponse<T> — the server payload { success, data, message? } — rather
+ * than a full AxiosResponse. Callers access the entity via response.data.
  */
 export const backendService = {
-  get: <T = unknown>(url: string, config?: CustomAxiosRequestConfig): Promise<AxiosResponse<T>> =>
-    api.get<T>(url, config),
-  post: <T = unknown>(url: string, data?: unknown, config?: CustomAxiosRequestConfig): Promise<AxiosResponse<T>> =>
-    api.post<T>(url, data, config),
-  put: <T = unknown>(url: string, data?: unknown, config?: CustomAxiosRequestConfig): Promise<AxiosResponse<T>> =>
-    api.put<T>(url, data, config),
-  patch: <T = unknown>(url: string, data?: unknown, config?: CustomAxiosRequestConfig): Promise<AxiosResponse<T>> =>
-    api.patch<T>(url, data, config),
-  delete: <T = unknown>(url: string, config?: CustomAxiosRequestConfig): Promise<AxiosResponse<T>> =>
-    api.delete<T>(url, config),
-  getFile: <T = unknown>(id: string): Promise<AxiosResponse<T>> => api.get<T>(`/files/${id}`),
+  get: <T = unknown>(url: string, config?: CustomAxiosRequestConfig): Promise<ApiResponse<T>> =>
+    api.get(url, config) as unknown as Promise<ApiResponse<T>>,
+  post: <T = unknown>(url: string, data?: unknown, config?: CustomAxiosRequestConfig): Promise<ApiResponse<T>> =>
+    api.post(url, data, config) as unknown as Promise<ApiResponse<T>>,
+  put: <T = unknown>(url: string, data?: unknown, config?: CustomAxiosRequestConfig): Promise<ApiResponse<T>> =>
+    api.put(url, data, config) as unknown as Promise<ApiResponse<T>>,
+  patch: <T = unknown>(url: string, data?: unknown, config?: CustomAxiosRequestConfig): Promise<ApiResponse<T>> =>
+    api.patch(url, data, config) as unknown as Promise<ApiResponse<T>>,
+  delete: <T = unknown>(url: string, config?: CustomAxiosRequestConfig): Promise<ApiResponse<T>> =>
+    api.delete(url, config) as unknown as Promise<ApiResponse<T>>,
+  getFile: <T = unknown>(id: string): Promise<ApiResponse<T>> =>
+    api.get(`/files/${id}`) as unknown as Promise<ApiResponse<T>>,
 };
