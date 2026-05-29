@@ -22,7 +22,7 @@ export const useAllAnalytics = () => {
   return useQuery<Analytics[]>({
     queryKey: [BackendRoute.ANALYTICS],
     queryFn: async () => {
-      const response = await backendService.get(BackendRoute.ANALYTICS);
+      const response = await backendService.get<Analytics[]>(BackendRoute.ANALYTICS);
       return response.data;
     },
     refetchOnWindowFocus: false,
@@ -39,7 +39,7 @@ export const useAnalyticsById = (id: string) => {
   return useQuery<Analytics>({
     queryKey: [BackendRoute.ANALYTICS, id],
     queryFn: async () => {
-      const response = await backendService.get(url);
+      const response = await backendService.get<Analytics>(url);
       return response.data;
     },
     refetchOnWindowFocus: false,
@@ -392,8 +392,7 @@ export const useDashboardAnalytics = (filters?: DashboardFilters) => {
       const url = `${BackendRoute.ADMIN_DASHBOARD}${
         params.toString() ? `?${params.toString()}` : ''
       }`;
-      const response = await backendService.get(url);
-      console.log('API Response:', response.data);
+      const response = await backendService.get<DashboardAnalytics>(url);
       return response.data;
     },
     refetchOnWindowFocus: false,
@@ -468,7 +467,7 @@ export const useUsersAnalytics = (filters?: FilterState) => {
       const url = `${BackendRoute.ADMIN_USERS_ANALYTICS}${
         params.toString() ? `?${params.toString()}` : ''
       }`;
-      const response = await backendService.get(url);
+      const response = await backendService.get<UserAnalytics[]>(url);
       return response.data;
     },
     refetchOnWindowFocus: false,
@@ -485,7 +484,7 @@ export const useUserAnalyticsById = (userId: string) => {
   return useQuery<UserAnalytics>({
     queryKey: [BackendRoute.ADMIN_USER_ANALYTICS, userId],
     queryFn: async () => {
-      const response = await backendService.get(url);
+      const response = await backendService.get<UserAnalytics>(url);
       return response.data;
     },
     refetchOnWindowFocus: false,
@@ -500,7 +499,7 @@ export const useGamesAnalytics = () => {
   return useQuery<GameAnalytics[]>({
     queryKey: [BackendRoute.ADMIN_GAMES_ANALYTICS],
     queryFn: async () => {
-      const response = await backendService.get(
+      const response = await backendService.get<GameAnalytics[]>(
         BackendRoute.ADMIN_GAMES_ANALYTICS
       );
       return response.data;
@@ -519,7 +518,7 @@ export const useGameAnalyticsById = (gameId: string) => {
   return useQuery<GameAnalytics>({
     queryKey: [BackendRoute.ADMIN_GAME_ANALYTICS, gameId],
     queryFn: async () => {
-      const response = await backendService.get(url);
+      const response = await backendService.get<GameAnalytics>(url);
       return response.data;
     },
     refetchOnWindowFocus: false,
@@ -570,7 +569,7 @@ export const useUserActivityLog = (filters?: ActivityLogFilterState) => {
       const url = `${BackendRoute.ADMIN_USER_ACTIVITY}${
         params.toString() ? `?${params.toString()}` : ''
       }`;
-      const response = await backendService.get(url);
+      const response = await backendService.get<UserActivityLog[]>(url);
       return response.data;
     },
     refetchOnWindowFocus: false,
@@ -628,7 +627,7 @@ export const useCurrentUserStats = () => {
   return useQuery<UserStats>({
     queryKey: [BackendRoute.USER_STATS],
     queryFn: async () => {
-      const response = await backendService.get(BackendRoute.USER_STATS);
+      const response = await backendService.get<UserStats>(BackendRoute.USER_STATS);
       return response.data;
     },
     refetchOnWindowFocus: false,
@@ -658,8 +657,8 @@ export const useGamesWithPopularity = (filters?: DashboardFilters) => {
       const url = `${BackendRoute.ADMIN_GAMES_ANALYTICS_POPULARITY}${
         params.toString() ? `?${params.toString()}` : ''
       }`;
-      const response = await backendService.get(url);
-      return response;
+      const response = await backendService.get<{ data: Record<string, unknown>[] }>(url);
+      return response.data;
     },
     refetchOnWindowFocus: false,
   });

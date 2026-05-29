@@ -232,21 +232,11 @@ export const useGameById = (id: string) => {
         '[Game Detail] Fetching from API:',
         BackendRoute.GAME_BY_ID.replace(':id', id)
       );
-      const response = await backendService.get(
+      const response = await backendService.get<GameResponse>(
         BackendRoute.GAME_BY_ID.replace(':id', id)
       );
-      console.log('[Game Detail] Game API Response:', response.data);
 
-      // API returns { success: true, data: {game object} }
-      // Extract the actual game data
-      if (response.data?.data) {
-        console.log('[Game Detail] Returning game data from API');
-        return response.data.data as GameResponse;
-      }
-
-      // Fallback if response structure is different
-      console.log('[Game Detail] Returning response.data directly');
-      return response.data as GameResponse;
+      return response.data;
     },
   });
 };
@@ -254,14 +244,15 @@ export const useGameById = (id: string) => {
 export const useCreateGame = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    mutationFn: (data: any) =>
-      backendService.post(BackendRoute.GAMES, data, {
+    mutationFn: async (data: any) => {
+      const response = await backendService.post<{ data: { id: string } }>(BackendRoute.GAMES, data, {
         headers: {
           'Content-Type': 'application/json',
         },
         timeout: 1200000, // 20 minutes timeout for game creation/upload
-      }),
+      });
+      return response.data;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [BackendRoute.GAMES] });
       queryClient.invalidateQueries({
@@ -530,9 +521,13 @@ export const useGameProcessingStatus = (gameId: string) => {
 };
 
 export const useRunAgentSeo = () => {
-  return useMutation({
-    mutationFn: (gameId?: string) =>
-      backendService.post(gameId ? `/api/games/${gameId}/run-agent-seo` : '/api/games/run-agent-seo-all'),
+  return useMutation<{ count: number }, unknown, string | undefined>({
+    mutationFn: async (gameId?: string) => {
+      const response = await backendService.post<{ count: number }>(
+        gameId ? `/api/games/${gameId}/run-agent-seo` : '/api/games/run-agent-seo-all'
+      );
+      return response.data;
+    },
   });
 };
 

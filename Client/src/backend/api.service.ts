@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { AxiosRequestConfig, AxiosError } from 'axios';
+import type { AxiosRequestConfig, AxiosError, AxiosResponse } from 'axios';
 import { BackendRoute } from './constants';
 import { toast } from 'sonner';
 
@@ -53,7 +53,7 @@ const processQueue = (
 
 // Add response interceptor for error handling and token refresh
 api.interceptors.response.use(
-  (response) => response.data,
+  (response) => response,
   async (error) => {
     const originalRequest = error.config;
 
@@ -158,13 +158,15 @@ api.interceptors.response.use(
  * Backend service for API calls
  */
 export const backendService = {
-  get: (url: string, config?: CustomAxiosRequestConfig) => api.get(url, config),
-  post: (url: string, data?: unknown, config?: CustomAxiosRequestConfig) =>
-    api.post(url, data, config),
-  put: (url: string, data?: unknown, config?: CustomAxiosRequestConfig) =>
-    api.put(url, data, config),
-  patch: (url: string, data?: unknown, config?: CustomAxiosRequestConfig) =>
-    api.patch(url, data, config),
-  delete: (url: string, config?: CustomAxiosRequestConfig) => api.delete(url, config),
-  getFile: (id: string) => api.get(`/files/${id}`),
+  get: <T = unknown>(url: string, config?: CustomAxiosRequestConfig): Promise<AxiosResponse<T>> =>
+    api.get<T>(url, config),
+  post: <T = unknown>(url: string, data?: unknown, config?: CustomAxiosRequestConfig): Promise<AxiosResponse<T>> =>
+    api.post<T>(url, data, config),
+  put: <T = unknown>(url: string, data?: unknown, config?: CustomAxiosRequestConfig): Promise<AxiosResponse<T>> =>
+    api.put<T>(url, data, config),
+  patch: <T = unknown>(url: string, data?: unknown, config?: CustomAxiosRequestConfig): Promise<AxiosResponse<T>> =>
+    api.patch<T>(url, data, config),
+  delete: <T = unknown>(url: string, config?: CustomAxiosRequestConfig): Promise<AxiosResponse<T>> =>
+    api.delete<T>(url, config),
+  getFile: <T = unknown>(id: string): Promise<AxiosResponse<T>> => api.get<T>(`/files/${id}`),
 };

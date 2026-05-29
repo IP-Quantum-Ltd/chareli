@@ -96,10 +96,9 @@ export const useSignupAnalyticsData = (filters?: DashboardFilters | { days?: num
       }
 
       const url = `${BackendRoute.SIGNUP_ANALYTICS_DATA}${params.toString() ? `?${params.toString()}` : ''}`;
-      const response = await backendService.get(url);
+      const response = await backendService.get<SignupAnalyticsData>(url);
 
-      const analyticsData = response.data;
-      return analyticsData;
+      return response.data;
     },
     refetchOnWindowFocus: false,
     retry: 3,

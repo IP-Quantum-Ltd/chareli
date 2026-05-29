@@ -137,10 +137,10 @@ export default function GameManagement() {
 
   // Custom hook for smart polling games analytics - created locally for efficiency
   const useSmartGamesAnalytics = () => {
-    return useQuery({
+    return useQuery<{ data: Record<string, unknown>[] }>({
       queryKey: [BackendRoute.ADMIN_GAMES_ANALYTICS],
       queryFn: async () => {
-        const response = await backendService.get(BackendRoute.ADMIN_GAMES_ANALYTICS);
+        const response = await backendService.get<{ data: Record<string, unknown>[] }>(BackendRoute.ADMIN_GAMES_ANALYTICS);
         return response.data;
       },
       refetchOnWindowFocus: false,
@@ -180,7 +180,7 @@ export default function GameManagement() {
   };
 
   // Use the local smart polling hook
-  const { data: gamesWithAnalytics, isLoading, isRefetching, dataUpdatedAt } = useSmartGamesAnalytics();
+  const { data: gamesWithAnalytics, isLoading } = useSmartGamesAnalytics();
 
   const deleteGame = useDeleteGame();
   const runAgentSeo = useRunAgentSeo();
@@ -199,8 +199,7 @@ export default function GameManagement() {
   const handleRunSeoForAll = async () => {
     setIsSeoRunning(true);
     try {
-      const response = await runAgentSeo.mutateAsync(undefined) as any;
-      setIsSeoRunning(false);
+      const response = await runAgentSeo.mutateAsync(undefined);
       const count = response?.count ?? 0;
       toast.success(`SEO triggered for ${count} games`);
     } catch {
@@ -208,8 +207,6 @@ export default function GameManagement() {
       toast.error('Failed to trigger agent SEO');
     }
   };
-
-  console.log(isRefetching, dataUpdatedAt)
 
   // Enhanced status rendering function
   const renderGameStatus = (game: any) => {
@@ -318,7 +315,7 @@ export default function GameManagement() {
   const gameData = allHistoryData.slice(startIndex, endIndex);
 
   // Apply filters and search
-  const filteredGames = (gamesWithAnalytics ?? []).filter((game: any) => {
+  const filteredGames = (gamesWithAnalytics?.data ?? []).filter((game: any) => {
     // Apply category and status filters
     if (filters?.categoryId && game.category?.id !== filters.categoryId)
       return false;
@@ -539,12 +536,12 @@ export default function GameManagement() {
                   <td colSpan={6}>
                     <NoResults
                       title={
-                        gamesWithAnalytics?.length
+                        gamesWithAnalytics?.data?.length
                           ? "No matching results"
                           : "No games found"
                       }
                       message={
-                        gamesWithAnalytics?.length
+                        gamesWithAnalytics?.data?.length
                           ? "Try adjusting your filters"
                           : "No games have been added to the system yet"
                       }
@@ -640,12 +637,12 @@ export default function GameManagement() {
                             className="text-black hover:text-black p-1 dark:text-white cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                             title={
                               seoStatusMap[game.id] === 'completed'
-                                ? 'SEO complete'
+                                ? 'SEO complete — click to rerun'
                                 : seoStatusMap[game.id] === 'running'
                                   ? 'SEO in progress...'
                                   : 'Generate SEO metadata'
                             }
-                            disabled={seoStatusMap[game.id] === 'running' || seoStatusMap[game.id] === 'completed'}
+                            disabled={seoStatusMap[game.id] === 'running'}
                             onClick={(e) => {
                               e.stopPropagation();
                               handleRunSeoOnGame(game.id);

@@ -221,8 +221,7 @@ export function CreateGameSheet({
       setCurrentStep('Queueing background processing...');
 
       const result = await createGame.mutateAsync(gameData);
-      //edmond check this
-      const newGameId = result?.data?.data?.id;
+      const newGameId = result?.data?.id;
 
       setProgress(100);
       setCurrentStep('Game created successfully!');
@@ -261,7 +260,7 @@ export function CreateGameSheet({
         try {
           // Check if the game was actually created by searching for it
           // We'll search for games with the same title created in the last few minutes
-          const { data: recentGames } = await backendService.get('/api/games', {
+          const { data: recentGames } = await backendService.get<{ data: { title: string; createdAt: string }[] }>('/api/games', {
             params: {
               limit: 10,
               search: values.title,

@@ -8,7 +8,7 @@ export const useMyProposals = (enabled: boolean = true) => {
   return useQuery<GameProposal[]>({
     queryKey: [BackendRoute.MY_PROPOSALS],
     queryFn: async () => {
-      const response = await backendService.get(BackendRoute.MY_PROPOSALS);
+      const response = await backendService.get<GameProposal[]>(BackendRoute.MY_PROPOSALS);
       return response.data;
     },
     enabled,
@@ -19,7 +19,7 @@ export const useProposalById = (id: string) => {
   return useQuery<GameProposal>({
     queryKey: [BackendRoute.GAME_PROPOSAL_BY_ID, id],
     queryFn: async () => {
-      const response = await backendService.get(BackendRoute.GAME_PROPOSAL_BY_ID.replace(':id', id));
+      const response = await backendService.get<GameProposal>(BackendRoute.GAME_PROPOSAL_BY_ID.replace(':id', id));
       return response.data;
     },
     enabled: !!id,
@@ -58,7 +58,7 @@ export const useProposals = (status?: GameProposalStatus, enabled: boolean = tru
     queryKey: [BackendRoute.GAME_PROPOSALS, status],
     queryFn: async () => {
       const params = status ? { status } : undefined;
-      const response = await backendService.get(BackendRoute.GAME_PROPOSALS, { params });
+      const response = await backendService.get<GameProposal[]>(BackendRoute.GAME_PROPOSALS, { params });
       return response.data;
     },
     enabled,
@@ -113,8 +113,10 @@ export const useDismissFeedback = () => {
 export const useReviseProposal = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
-      backendService.post(BackendRoute.REVISE_PROPOSAL.replace(':id', id), {}),
+    mutationFn: async (id: string) => {
+      const response = await backendService.post<{ id: string }>(BackendRoute.REVISE_PROPOSAL.replace(':id', id), {});
+      return response.data;
+    },
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: [BackendRoute.MY_PROPOSALS] }),

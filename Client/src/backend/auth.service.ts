@@ -131,9 +131,11 @@ export const useForgotPassword = () => {
 export const useForgotPasswordPhone = () => {
   return useMutation({
     mutationFn: async (phoneNumber: string) => {
-      return backendService.post(BackendRoute.AUTH_FORGOT_PASSWORD + '/phone', {
-        phoneNumber,
-      });
+      const response = await backendService.post<{ userId: string }>(
+        BackendRoute.AUTH_FORGOT_PASSWORD + '/phone',
+        { phoneNumber }
+      );
+      return response.data;
     },
   });
 };

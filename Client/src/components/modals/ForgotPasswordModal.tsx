@@ -94,9 +94,9 @@ export function ForgotPasswordModal({
           );
           setSubmittedContact(values.phoneNumber!);
 
-          if (response.data?.userId) {
+          if (response?.userId) {
             // Valid phone number - show OTP verification
-            setUserId(response.data.userId);
+            setUserId(response.userId);
             onOpenChange(false);
             setIsOTPVerificationModalOpen(true);
             setIsSubmitted(false); // Ensure submitted state is false to show the form
