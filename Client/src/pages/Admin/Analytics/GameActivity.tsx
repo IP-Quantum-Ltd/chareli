@@ -96,7 +96,7 @@ export default function GameActivity({ filters }: GameActivityProps) {
     );
   }
 
-  const allGames = gamesAnalytics?.data || [];
+  const allGames = gamesAnalytics || [];
 
   // Sort games based on selected sort option
   const sortedGames = [...allGames].sort((a: any, b: any) => {

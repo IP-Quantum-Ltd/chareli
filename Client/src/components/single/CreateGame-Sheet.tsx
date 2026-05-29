@@ -260,7 +260,7 @@ export function CreateGameSheet({
         try {
           // Check if the game was actually created by searching for it
           // We'll search for games with the same title created in the last few minutes
-          const { data: recentGames } = await backendService.get<{ data: { title: string; createdAt: string }[] }>('/api/games', {
+          const { data: recentGames } = await backendService.get<{ title: string; createdAt: string }[]>('/api/games', {
             params: {
               limit: 10,
               search: values.title,
@@ -270,7 +270,7 @@ export function CreateGameSheet({
 
           // Look for a game with the exact title created recently (within the last 5 minutes)
           const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
-          const possibleGame = recentGames?.data?.find(
+          const possibleGame = recentGames?.find(
             (game: any) =>
               game.title === values.title &&
               new Date(game.createdAt) > fiveMinutesAgo

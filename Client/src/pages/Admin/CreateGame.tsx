@@ -254,7 +254,7 @@ export default function CreateGame() {
 
         try {
           // Check if the game was actually created by searching for it
-          const { data: recentGames } = await backendService.get<{ data: { title: string; createdAt: string }[] }>('/api/games', {
+          const { data: recentGames } = await backendService.get<{ title: string; createdAt: string }[]>('/api/games', {
             params: {
               limit: 10,
               search: values.title,
@@ -264,7 +264,7 @@ export default function CreateGame() {
 
           // Look for a game with the exact title created recently (within the last 5 minutes)
           const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
-          const possibleGame = recentGames?.data?.find(
+          const possibleGame = recentGames?.find(
             (game: any) => // eslint-disable-line @typescript-eslint/no-explicit-any
               game.title === values.title &&
               new Date(game.createdAt) > fiveMinutesAgo

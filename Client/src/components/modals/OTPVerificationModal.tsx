@@ -93,7 +93,7 @@ export function OTPVerificationModal({
         onVerificationSuccess();
       }
 
-      const userRole = (user as any)?.data?.role.name;
+      const userRole = user?.role?.name;
 
       setTimeout(() => {
         if (isValidRole(userRole)) {
