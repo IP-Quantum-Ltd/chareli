@@ -2883,39 +2883,3 @@ export const runAgentSeoOnGame = async (req: Request, res: Response, next: NextF
     next(error);
   }
 };
-
-/**
- * @swagger
- * /games/run-agent-seo-all:
- *   post:
- *     summary: Trigger AI agent SEO analysis for all games
- *     description: >
- *       Fetches all game IDs and triggers the AI agent SEO pipeline for each.
- *       Fire-and-forget per game — the agent handles dedup internally.
- *     tags: [Games]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       202:
- *         description: Agent SEO jobs dispatched for all games
- */
-export const runAgentSeoOnAllGames = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const games = await gameRepository.find({ select: ['id'] });
-    let triggered = 0;
-    for (const game of games) {
-      triggerAgentRun({ game_id: game.id, submit_review: true })
-        .then(() => logger.info(`[agentSeo] Triggered SEO for game ${game.id}`))
-        .catch((err) => logger.warn(`[agentSeo] Failed to trigger SEO for game ${game.id}: ${err.message}`));
-      triggered++;
-    }
-    logger.info(`[agentSeo] Bulk SEO triggered for ${triggered} games by admin ${req.user?.userId}`);
-    res.status(202).json({
-      success: true,
-      data: { count: triggered },
-      message: `Agent SEO triggered for ${triggered} games`,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
