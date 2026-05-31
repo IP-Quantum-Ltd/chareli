@@ -24,10 +24,6 @@ class InitializeAgentNode:
                 proposal_type = str(proposal.get("type") or "update").lower()
                 derived_game_id = self.proposal_context_builder.extract_game_id(proposal)
 
-                # If the agent already enriched this proposal, don't submit again
-                if proposal.get("proposedData", {}).get("aiReview"):
-                    submit_review = False
-
                 if proposal_type == "create" and not derived_game_id:
                     # New game — no existing game record to look up; research from title only
                     game_title = self.proposal_context_builder.extract_game_title(proposal, proposal_id)

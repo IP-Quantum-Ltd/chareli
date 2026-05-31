@@ -1,4 +1,5 @@
 import unittest
+import uuid
 
 from app.workflows.ai_review_agent.services.submission_reconciler import SubmissionReconciler
 
@@ -181,3 +182,61 @@ class SubmissionReconcilerTests(unittest.TestCase):
         self.assertIn("Is it free?", reconciled_game["metadata"]["faqOverride"])
         self.assertNotIn("How do you play Kingdom Wars online?", reconciled_game["metadata"]["faqOverride"])
         self.assertEqual(len(reconciled_seo["faq_schema"]), 1)
+
+    def test_trademark_redaction_applied_in_reconcile(self) -> None:
+        proposed = {
+            "title": "Brick Fall",
+            "description": "<p>A game inspired by Tetris mechanics.</p>",
+            "metadata": {
+                "howToPlay": "<p>Stack blocks like in Minecraft to fill rows.</p>",
+                "faqOverride": "<h3>FAQ</h3><h4>Q: Is it like Roblox?</h4><p>No, original.</p>",
+                "features": ["Falling blocks"],
+                "tags": ["puzzle"],
+                "seoKeywords": "brick fall",
+                "developer": "",
+                "platform": ["Browser"],
+                "releaseDate": "",
+            },
+        }
+        seo_meta = {"title_tag": "", "meta_description": "", "primary_h1": "", "primary_keywords": [], "json_ld": {}, "faq_schema": []}
+        current = {"title": "Brick Fall", "metadata": {}, "seoMeta": {}}
+        reconciled_game, _ = self.reconciler.reconcile(proposed, seo_meta, current)
+        self.assertNotIn("Tetris", reconciled_game["description"])
+        self.assertNotIn("Minecraft", reconciled_game["metadata"]["howToPlay"])
+        self.assertNotIn("Roblox", reconciled_game["metadata"]["faqOverride"])
+
+    def test_uuid_serialized_to_string_in_reconcile(self) -> None:
+        import uuid
+        proposed_uuid = uuid.uuid4()
+        current_uuid = uuid.uuid4()
+        proposed = {
+            "title": "Brick Fall",
+            "description": "Clean description",
+            "categoryId": proposed_uuid,
+            "metadata": {},
+        }
+        seo_meta = {"title_tag": "", "meta_description": "", "primary_h1": "", "primary_keywords": [], "json_ld": {}, "faq_schema": []}
+        current = {
+            "title": "Brick Fall",
+            "categoryId": current_uuid,
+            "metadata": {},
+            "seoMeta": {},
+        }
+        
+        # 1. Test when proposed has UUID
+        reconciled_game, _ = self.reconciler.reconcile(proposed, seo_meta, current)
+        self.assertEqual(reconciled_game["categoryId"], str(proposed_uuid))
+        self.assertIsInstance(reconciled_game["categoryId"], str)
+
+        # 2. Test fallback when proposed has no categoryId (should fallback to current and stringify)
+        proposed_empty = {
+            "title": "Brick Fall",
+            "description": "Clean description",
+            "categoryId": None,
+            "metadata": {},
+        }
+        reconciled_game_empty, _ = self.reconciler.reconcile(proposed_empty, seo_meta, current)
+        self.assertEqual(reconciled_game_empty["categoryId"], str(current_uuid))
+        self.assertIsInstance(reconciled_game_empty["categoryId"], str)
+
+

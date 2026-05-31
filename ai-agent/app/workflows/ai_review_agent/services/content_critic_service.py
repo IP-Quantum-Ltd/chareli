@@ -7,6 +7,7 @@ from app.domain.schemas.llm_outputs import ContentPlanValidationOutput
 from app.infrastructure.llm.ai_executor import AIExecutor
 from app.services.json_utils import json_dumps_safe
 from app.services.prompt_compaction import compact_for_llm
+from app.workflows.ai_review_agent.services.proposal_structure import CANONICAL_SECTIONS
 
 logger = logging.getLogger(__name__)
 
@@ -32,25 +33,66 @@ class ContentCriticService:
 
     def _fallback_validation(self, outline: Dict[str, Any], grounded_context: Dict[str, Any], seo_blueprint: Dict[str, Any]) -> Dict[str, Any]:
         sections = outline.get("sections") or []
-        section_titles = " ".join(str(section.get("title", "")) for section in sections if isinstance(section, dict)).lower()
-        missing = []
+        section_titles_list = [str(s.get("title", "")).strip() for s in sections if isinstance(s, dict)]
+        section_titles_lower = [t.lower() for t in section_titles_list]
+        revision_instructions = []
+
+        # --- Structural compliance check ---
+        missing_canonical: List[str] = []
+        for required in CANONICAL_SECTIONS:
+            if not any(required.lower() in t for t in section_titles_lower):
+                missing_canonical.append(required)
+
+        if missing_canonical:
+            revision_instructions.append(
+                f"The plan is missing the following required sections: {', '.join(missing_canonical)}. "
+                f"All 5 sections must be present in this exact order: {', '.join(CANONICAL_SECTIONS)}."
+            )
+
+        # Check 'How to Play' and 'Controls' are distinct
+        has_htp = any("how to play" in t for t in section_titles_lower)
+        has_controls = any("controls" in t for t in section_titles_lower)
+        if has_htp and has_controls:
+            # Both present — good. Check they are not the same section.
+            htp_goals = ""
+            ctrl_goals = ""
+            for s in sections:
+                title_l = str(s.get("title", "")).lower()
+                goals_text = " ".join(str(g) for g in (s.get("goals") or []))
+                if "how to play" in title_l:
+                    htp_goals = goals_text.lower()
+                elif "controls" in title_l:
+                    ctrl_goals = goals_text.lower()
+            # If goals overlap heavily the sections are likely merged
+            if htp_goals and ctrl_goals and len(set(htp_goals.split()) & set(ctrl_goals.split())) / max(len(set(htp_goals.split())), 1) > 0.6:
+                revision_instructions.append(
+                    "'How to Play' and 'Controls' sections have heavily overlapping goals. "
+                    "How to Play must cover the gameplay loop/objectives only; "
+                    "Controls must list only input keys/buttons."
+                )
+        elif not has_htp:
+            revision_instructions.append("'How to Play' section is missing. It must describe the gameplay loop, objectives, and scoring.")
+        elif not has_controls:
+            revision_instructions.append("'Controls' section is missing. It must list all keyboard, mouse, and touch inputs.")
+
+        # --- Fact coverage check ---
+        missing_facts = []
         for fact in self._required_facts(grounded_context, seo_blueprint)[:12]:
             probe = fact.lower().split()[0]
-            if probe and probe not in section_titles:
-                missing.append(fact)
-        approved = bool(sections) and len(missing) <= 4
-        revision_instructions = []
-        if missing:
-            revision_instructions.append("Add sections or subsection goals that explicitly cover the missing required facts.")
-        if not any("faq" in str(section.get("title", "")).lower() for section in sections if isinstance(section, dict)):
-            revision_instructions.append("Add an FAQ section to cover intent and SERP coverage.")
+            section_titles_str = " ".join(section_titles_lower)
+            if probe and probe not in section_titles_str:
+                missing_facts.append(fact)
+        if missing_facts:
+            revision_instructions.append("Add sections or goals that explicitly cover the missing required facts.")
+
+        approved = not missing_canonical and len(missing_facts) <= 4
         return {
             "approved": approved,
-            "coverage_score": max(0, min(100, 100 - (len(missing) * 12))),
-            "missing_facts": missing[:8],
-            "missing_entities": (seo_blueprint.get("semantic_entities") or [])[:3] if missing else [],
+            "coverage_score": max(0, min(100, 100 - (len(missing_canonical) * 20) - (len(missing_facts) * 8))),
+            "missing_facts": missing_facts[:8],
+            "missing_entities": (seo_blueprint.get("semantic_entities") or [])[:3] if missing_facts else [],
             "revision_instructions": revision_instructions,
-            "reasoning": "Fallback validation based on outline section coverage against grounded facts and entity expectations.",
+            "reasoning": "Fallback validation: checked 5-section structure, How to Play/Controls distinctness, and grounded fact coverage.",
         }
 
     @traceable(run_type="chain", name="Content Plan Critic")
@@ -70,8 +112,13 @@ class ContentCriticService:
                 {
                     "role": "system",
                     "content": (
-                        "You are the Stage 4 Critic for ArcadeBox. Reject plans that omit grounded facts, user intent, FAQ coverage, "
-                        "or entity coverage. Respond only with JSON."
+                        "You are the Stage 4 Content Critic for ArcadeBox. "
+                        f"The content plan MUST include exactly these 5 sections in this order: {', '.join(CANONICAL_SECTIONS)}. "
+                        "Reject any plan that omits, renames, or reorders them. "
+                        "'How to Play' and 'Controls' must be SEPARATE sections — 'How to Play' covers the gameplay loop and "
+                        "objectives; 'Controls' covers only input keys and buttons. "
+                        "Reject plans that merge them. Also check grounded facts, user intent, and FAQ coverage. "
+                        "Respond only with JSON."
                     ),
                 },
                 {
