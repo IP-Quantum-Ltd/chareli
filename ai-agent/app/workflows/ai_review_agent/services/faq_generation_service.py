@@ -83,12 +83,57 @@ def _is_unconfirmed_answer(text: str) -> bool:
     return bool(_UNCONFIRMED_RE.search(text))
 
 
+def _has_bad_placeholder(text: str) -> bool:
+    """True if the text contains a square-bracketed writer placeholder (e.g. '[Insert Strategy]')."""
+    _BAD_PLACEHOLDER_RE = re.compile(
+        r"\[\s*(?:insert|write|todo|replace|add|strategy|enter|type|your|my|instructions)\b",
+        re.IGNORECASE,
+    )
+    return bool(_BAD_PLACEHOLDER_RE.search(text))
+
+
 def _clean(text: Any) -> str:
     """Strip HTML tags and collapse whitespace."""
     if not isinstance(text, str):
         return ""
     plain = re.sub(r"<[^>]+>", " ", text)
     return re.sub(r"\s+", " ", plain).strip()
+
+
+def _has_nested_faqs(text: str) -> bool:
+    """True if the text contains a nested FAQ block or looks like a dumped FAQ section."""
+    clean_text = text.lower()
+    
+    # 1. Reject if it contains headings or titles characteristic of an FAQ section
+    if "frequently asked questions" in clean_text or "getting started" in clean_text:
+        if len(clean_text) > 100:
+            return True
+        
+    # 2. Check for multiple question marks "?" inside the answer body
+    # (indicating multiple questions are embedded in a single answer)
+    q_mark_count = clean_text.count("?")
+    if q_mark_count >= 2:
+        return True
+        
+    # 3. Check for embedded "Q:" and "A:" patterns or "question" / "answer" labels
+    if "q:" in clean_text and "a:" in clean_text:
+        return True
+        
+    return False
+
+
+def _has_free_play_hallucination(text: str) -> bool:
+    """True if the text claims the game is completely free, 100% free, or has no cost/barriers."""
+    clean_text = text.lower()
+    
+    # Reject common unlimited free play / no barriers / no cost phrases
+    _FREE_RE = re.compile(
+        r"\b(?:completely\s+free|100%\s+free|without\s+(?:any\s+)?cost|no\s+cost|"
+        r"free\s+of\s+charge|without\s+(?:any\s+)?barriers|without\s+barriers|"
+        r"no\s+barriers|enjoy\s+without\s+barriers|without\s+any\s+cost\s+barriers)\b",
+        re.IGNORECASE
+    )
+    return bool(_FREE_RE.search(clean_text))
 
 
 # ---------------------------------------------------------------------------
@@ -118,6 +163,12 @@ def _score_faq_item(
     if _is_instructional(answer):
         return 0.0
     if _is_unconfirmed_answer(answer):
+        return 0.0
+    if _has_bad_placeholder(question) or _has_bad_placeholder(answer):
+        return 0.0
+    if _has_nested_faqs(question) or _has_nested_faqs(answer):
+        return 0.0
+    if _has_free_play_hallucination(question) or _has_free_play_hallucination(answer):
         return 0.0
 
     source_scores = {0: 30, 1: 25, 2: 20, 3: 15}

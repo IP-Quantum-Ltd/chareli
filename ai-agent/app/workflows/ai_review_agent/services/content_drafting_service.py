@@ -53,13 +53,15 @@ class ContentDraftingService:
             "'like in [Brand]'). This includes game names, character names, and publisher/developer brands "
             "that do not belong to this game.\n"
             "4. NO HALLUCINATION: Only write facts explicitly present in the Fact Sheet. If a detail is "
-            "unknown, write 'not publicly specified' rather than inventing it.\n"
+            "unknown, write 'not publicly specified' rather than inventing it. Never lie or invent "
+            "unsupported mechanics or features about the game.\n"
             "5. FAQ FORMAT: The FAQ section must use exactly this HTML structure \u2014 "
             "<h3>[Game Name] FAQ</h3> then for each item: <h4>Q: [question]</h4><p>[answer]</p>. "
             "FAQ questions must address what a real player asks AFTER reading the first 4 sections \u2014 "
             "never repeat content already covered above.\n"
             "6. HTML ONLY: Respond with body HTML only. Use <h2>, <h3>, <h4>, <p>, <ul>, <li>, "
-            "<strong>, <em>. No Markdown, no <html>/<body> wrapper tags, no external URLs or links."
+            "<strong>, <em>. No Markdown, no <html>/<body> wrapper tags, no external URLs or links.\n"
+            "7. BUSINESS MODEL & COST: Never claim that the game is 'completely free', '100% free', 'without any cost barriers', or has 'unlimited free play'. ArcadeBox is a play-to-earn/credits-based platform. If cost or play limits are mentioned in FAQs or Overview, state that standard ArcadeBox session limits and demo policies apply."
         )
 
         user_prompt = (
@@ -81,7 +83,7 @@ class ContentDraftingService:
             f"<h2>Controls</h2>\n<ul><li>Use your keyboard or mouse to control the game.</li></ul>\n"
             f"<h2>Strategy</h2>\n<p>Focus on the core objectives to achieve a high score.</p>\n"
             f"<h2>FAQ</h2>\n<h3>{game_title} FAQ</h3>\n"
-            f"<h4>Q: Is {game_title} free to play?</h4><p>Yes, it is free on ArcadeBox.</p>\n"
+            f"<h4>Q: What platforms are supported?</h4><p>{game_title} is supported on web browsers for desktop and mobile devices.</p>\n"
         )
 
         article = await self.ai.chat_completion(

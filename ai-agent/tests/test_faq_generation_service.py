@@ -53,7 +53,7 @@ class TestFaqGenerationService(unittest.TestCase):
     def test_returns_items_from_article(self):
         items = self.service.generate(
             article_faq_items=[
-                {"question": "Is it free?", "answer": "Yes, completely free."},
+                {"question": "Is it free?", "answer": "Yes, play sessions are available on ArcadeBox."},
                 {"question": "Can I play on mobile?", "answer": "Yes, touch support is available."},
                 {"question": "Does it save progress?", "answer": "Progress is saved locally."},
             ]
@@ -67,14 +67,14 @@ class TestFaqGenerationService(unittest.TestCase):
         # These two questions share very high token overlap (>0.70 Jaccard)
         items = self.service.generate(
             article_faq_items=[
-                {"question": "Is the game free to play on ArcadeBox browser?", "answer": "Yes, it is free."},
-                {"question": "Is the game free to play on ArcadeBox browser online?", "answer": "Yes, completely free."},
+                {"question": "Is the game available on ArcadeBox browser?", "answer": "Yes, play sessions are available."},
+                {"question": "Is the game available on ArcadeBox browser online?", "answer": "Yes, you can play online."},
                 {"question": "Can I play on mobile?", "answer": "Yes."},
                 {"question": "Does it save progress?", "answer": "Yes, via local storage."},
             ]
         )
         questions = [i["question"].lower() for i in items]
-        free_questions = [q for q in questions if "free" in q and "arcadebox" in q]
+        free_questions = [q for q in questions if "available" in q and "arcadebox" in q]
         self.assertLessEqual(len(free_questions), 1)
 
     def test_drops_instructional_answers(self):
@@ -101,6 +101,20 @@ class TestFaqGenerationService(unittest.TestCase):
         for item in items:
             self.assertNotIn("Dominoes", item["question"])
             self.assertNotIn("not publicly specified", item["answer"])
+
+    def test_drops_bracket_placeholders(self):
+        items = self.service.generate(
+            article_faq_items=[
+                {"question": "What is the best strategy?", "answer": "To score high, focus on [Insert Strategy]."},
+                {"question": "Is it free?", "answer": "Yes, completely free on ArcadeBox."},
+                {"question": "Can I play on mobile?", "answer": "Yes, touch support is available."},
+                {"question": "Is there a leaderboard?", "answer": "Yes, scores are saved locally."},
+            ]
+        )
+        for item in items:
+            self.assertNotIn("best strategy", item["question"])
+            self.assertNotIn("[Insert Strategy]", item["answer"])
+
 
 
     def test_enforces_minimum_items(self):

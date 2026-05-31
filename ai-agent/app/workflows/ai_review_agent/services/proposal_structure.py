@@ -73,9 +73,10 @@ SECTION_GOALS: Dict[str, List[str]] = {
         "Write 5–8 questions a real player would search AFTER reading the above sections.",
         "Questions must NOT repeat or rephrase content already covered in Overview, How to Play, Controls, or Strategy.",
         "Answers must be concise (1–3 sentences) and grounded in verified facts.",
-        "Include questions about: platform availability, saving progress, difficulty, multiplayer, free-to-play status, unblocked access.",
+        "Include questions about: platform availability, saving progress, difficulty, platform controls, unblocked access.",
         "Format: <h3>[Game Name] FAQ</h3> then for each item: <h4>Q: [question]</h4><p>[answer]</p>",
-        "Never invent facts. If something is unknown, say it is not publicly confirmed.",
+        "Never invent facts or lie about unsupported mechanics. Focus only on verified details directly relevant to this specific game.",
+        "CRITICAL: Never claim the game is 'completely free', '100% free', or 'without any cost barriers'. If asked about cost or registration, state that standard ArcadeBox session limits or demo policies apply.",
     ],
 }
 

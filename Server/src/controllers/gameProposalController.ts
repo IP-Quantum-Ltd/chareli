@@ -161,8 +161,16 @@ export const approveProposal = async (req: Request, res: Response, next: NextFun
       }
       game = existingGame;
 
-      // Merge data
-      Object.assign(game, proposedData);
+      // Merge data with nested merging for metadata to prevent wiping out existing keys
+      const { metadata, ...restProposedData } = proposedData || {};
+      Object.assign(game, restProposedData);
+
+      if (metadata) {
+        game.metadata = {
+          ...(game.metadata || {}),
+          ...metadata
+        };
+      }
 
       // Map AI SEO metadata if available (overwrites any existing)
       if (proposedData.aiReview?.seo_meta) {
@@ -360,11 +368,20 @@ export const updateProposal = async (req: Request, res: Response, next: NextFunc
       return next(ApiError.badRequest('Cannot update a proposal that is not pending'));
     }
 
-    // Update data
+    // Update data with nested merging for metadata to prevent wiping out existing keys
+    const { metadata, ...restProposedData } = proposedData || {};
+
     proposal.proposedData = {
       ...proposal.proposedData,
-      ...proposedData
+      ...restProposedData
     };
+
+    if (metadata) {
+      proposal.proposedData.metadata = {
+        ...(proposal.proposedData.metadata || {}),
+        ...metadata
+      };
+    }
 
     // If file keys are provided, we accept them directly as valid URLs
     // (assuming frontend has handled upload/presigning)
