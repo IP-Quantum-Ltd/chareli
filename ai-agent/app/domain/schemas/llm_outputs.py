@@ -1,6 +1,6 @@
 from typing import Any, Dict, List
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class SearchPlanOutput(BaseModel):
@@ -83,6 +83,21 @@ class ContentPlanOutput(BaseModel):
     estimated_word_count: int = 0
     formatting_requirements: List[str] = Field(default_factory=list)
 
+    @model_validator(mode="after")
+    def _ensure_canonical_sections(self) -> "ContentPlanOutput":
+        """Ensure all 5 canonical sections are present (case-insensitive)."""
+        from app.workflows.ai_review_agent.services.proposal_structure import CANONICAL_SECTIONS
+        existing = {s.title.strip().lower() for s in self.sections}
+        missing = [
+            name for name in CANONICAL_SECTIONS
+            if name.lower() not in existing
+        ]
+        if missing:
+            # Append missing sections with empty goals — the critic will request revision
+            for name in missing:
+                self.sections.append(PlanSectionOutput(title=name, goals=[]))
+        return self
+
 
 class ContentPlanValidationOutput(BaseModel):
     approved: bool = False
@@ -139,6 +154,10 @@ class AuditReportOutput(BaseModel):
     verified_claims: List[str] = Field(default_factory=list)
     revision_instructions: List[str] = Field(default_factory=list)
     reasoning: str = ""
+    # New fields for structural compliance
+    section_structure_ok: bool = True
+    cross_section_duplicates: List[str] = Field(default_factory=list)
+    trademark_violations: List[str] = Field(default_factory=list)
 
 
 class FaqSchemaItemOutput(BaseModel):
@@ -177,3 +196,19 @@ class ProposedGameDataOutput(BaseModel):
     description: str = ""
     categoryId: str = ""
     metadata: GameMetadataOutput = Field(default_factory=GameMetadataOutput)
+
+
+class StructuredArticleSectionOutput(BaseModel):
+    """Internal model used to validate that the scribe produced all 5 sections."""
+    heading: str = ""
+    content_html: str = ""
+    word_count: int = 0
+
+
+class StructuredArticleOutput(BaseModel):
+    """Internal validation model for the scribe's structured article output."""
+    overview: StructuredArticleSectionOutput = Field(default_factory=StructuredArticleSectionOutput)
+    how_to_play: StructuredArticleSectionOutput = Field(default_factory=StructuredArticleSectionOutput)
+    controls: StructuredArticleSectionOutput = Field(default_factory=StructuredArticleSectionOutput)
+    strategy: StructuredArticleSectionOutput = Field(default_factory=StructuredArticleSectionOutput)
+    faq_items: List[FaqSchemaItemOutput] = Field(default_factory=list)

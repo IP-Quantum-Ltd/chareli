@@ -1,7 +1,10 @@
 import html
 import re
+import uuid
 from html.parser import HTMLParser
 from typing import Any, Dict, List, Optional
+
+from app.workflows.ai_review_agent.services.trademark_guard import redact_trademarks
 
 
 _URL_RE = re.compile(r"(?i)\b(?:https?://|www\.)[^\s<>'\"]+")
@@ -78,6 +81,8 @@ def is_valid_developer_value(value: Any) -> bool:
 
 
 def sanitize_recursive(value: Any) -> Any:
+    if isinstance(value, uuid.UUID):
+        return str(value)
     if isinstance(value, str):
         return sanitize_user_facing_text(value)
     if isinstance(value, list):
@@ -305,11 +310,14 @@ class SubmissionReconciler:
             ),
         }
 
+        category_id = (proposed_game_data or {}).get("categoryId") or current_game.get("categoryId")
+        category_id_str = str(category_id) if category_id else ""
+
         reconciled_game_data = {
             **dict(proposed_game_data or {}),
             "title": _prefer_string((proposed_game_data or {}).get("title"), current_game.get("title")),
             "description": _prefer_string((proposed_game_data or {}).get("description"), current_game.get("description")),
-            "categoryId": (proposed_game_data or {}).get("categoryId") or current_game.get("categoryId"),
+            "categoryId": category_id_str,
             "metadata": reconciled_metadata,
         }
 
@@ -335,4 +343,17 @@ class SubmissionReconciler:
             json_ld["author"] = author
             json_ld["gamePlatform"] = "Browser"
 
-        return sanitize_recursive(reconciled_game_data), sanitize_recursive(reconciled_seo)
+        # Final trademark redaction safety pass (belt-and-suspenders)
+        sanitised_game = sanitize_recursive(reconciled_game_data)
+        sanitised_seo = sanitize_recursive(reconciled_seo)
+        if isinstance(sanitised_game, dict):
+            if isinstance(sanitised_game.get("description"), str):
+                sanitised_game["description"] = redact_trademarks(sanitised_game["description"])
+            meta = sanitised_game.get("metadata")
+            if isinstance(meta, dict):
+                if isinstance(meta.get("howToPlay"), str):
+                    meta["howToPlay"] = redact_trademarks(meta["howToPlay"])
+                if isinstance(meta.get("faqOverride"), str):
+                    meta["faqOverride"] = redact_trademarks(meta["faqOverride"])
+
+        return sanitised_game, sanitised_seo
