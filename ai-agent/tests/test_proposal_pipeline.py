@@ -128,7 +128,8 @@ class ProposalPipelineServiceTests(unittest.IsolatedAsyncioTestCase):
 
         # howToPlay = How to Play + Controls + Strategy
         how_to_play = extractor.get_how_to_play_html()
-        self.assertIn("How to Play", how_to_play)
+        self.assertNotIn("<h2>How to Play</h2>", how_to_play)
+        self.assertIn("Select pairs of matching tiles", how_to_play)
         self.assertIn("Controls", how_to_play)
         self.assertIn("Strategy", how_to_play)
         self.assertNotIn("Overview", how_to_play)

@@ -176,7 +176,15 @@ class ArticleSectionExtractor:
 
     def get_how_to_play_html(self) -> str:
         """How to Play + Controls + Strategy → metadata.howToPlay field."""
-        return self.get_sections(HOW_TO_PLAY_SECTIONS)
+        htp = self.get_section("How to Play")
+        # Remove the first <h2> heading tag and its closing tag from the "How to Play" section to avoid duplication in client UI
+        htp_clean = re.sub(r"^\s*<h[2-6][^>]*>How\s+to\s+Play</h[2-6]>\s*", "", htp, flags=re.IGNORECASE)
+
+        controls = self.get_section("Controls")
+        strategy = self.get_section("Strategy")
+
+        parts = [htp_clean, controls, strategy]
+        return "\n".join(p for p in parts if p)
 
     def get_faq_section(self) -> str:
         """

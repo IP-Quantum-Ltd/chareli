@@ -86,7 +86,8 @@ class TestArticleSectionExtractor(unittest.TestCase):
 
     def test_how_to_play_contains_three_sections(self):
         htp = self.extractor.get_how_to_play_html()
-        self.assertIn("How to Play", htp)
+        self.assertNotIn("<h2>How to Play</h2>", htp)
+        self.assertIn("Each round presents a new grid", htp)
         self.assertIn("Controls", htp)
         self.assertIn("Strategy", htp)
         self.assertNotIn("Overview", htp)
