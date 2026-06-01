@@ -39,6 +39,16 @@ import { GameProposal, GameProposalStatus, GameProposalType } from '../entities/
 import { notifyProposalCreated } from '../services/aiNotification.service';
 import { triggerAgentRun } from '../services/aiAgent.service';
 import { websocketService } from '../services/websocket.service';
+
+export function scheduleAgentSeoForGame(gameId: string): void {
+  triggerAgentRun({ game_id: gameId, submit_review: true })
+    .then(() => logger.info(`[agentSeo] Triggered SEO for game ${gameId}`))
+    .catch((err) =>
+      logger.warn(
+        `[agentSeo] Failed to trigger SEO for game ${gameId}: ${err.message}`
+      )
+    );
+}
 import {
   GamePublishHistory,
   GamePublishAction,
@@ -1317,10 +1327,7 @@ export const createGame = async (
       savedGame.categoryId
     );
 
-    // Fire-and-forget: trigger AI agent SEO analysis for the new game
-    triggerAgentRun({ game_id: game.id, submit_review: true })
-      .then(() => logger.info(`[agentSeo] Triggered SEO for game ${game.id}`))
-      .catch((err) => logger.warn(`[agentSeo] Failed to trigger SEO for game ${game.id}: ${err.message}`));
+    scheduleAgentSeoForGame(game.id);
 
     const apiResponseTime = Date.now() - requestStartTime;
 

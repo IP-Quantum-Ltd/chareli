@@ -31,9 +31,11 @@ import { useNavigate } from "react-router-dom";
 import { cn } from "../../../lib/utils";
 import { formatTime } from "../../../utils/main";
 import GameThumbnail from "../Analytics/GameThumbnail";
-import { X, Search } from "lucide-react";
+import { X, Search, Sparkles } from "lucide-react";
 import { usePermissions } from "../../../hooks/usePermissions";
 import { useWebSocket } from "../../../hooks/useWebSocket";
+import { useAgentSeoTrigger } from "../../../hooks/useAgentSeoTrigger";
+import { GenerateSeoConfirmationModal } from "../../../components/modals/GenerateSeoConfirmationModal";
 import { getGameProgress } from "../../../utils/gameProgress";
 import { Input } from "../../../components/ui/input";
 
@@ -115,7 +117,34 @@ export default function GameManagement() {
   const [reorderOpen, setReorderOpen] = useState(false);
   const [reorderHistoryOpen, setReorderHistoryOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [seoTargetGameId, setSeoTargetGameId] = useState<string | null>(null);
   const queryClient = useQueryClient();
+
+  const {
+    seoConfirmOpen,
+    setSeoConfirmOpen,
+    handleConfirm: handleConfirmGenerateSeo,
+    isTriggering,
+  } = useAgentSeoTrigger({ gameId: seoTargetGameId });
+
+  const canGenerateSeo =
+    permissions.isAdmin || permissions.isSuperAdmin;
+
+  const handleOpenSeoForGame = (
+    gameId: string,
+    e: React.MouseEvent<HTMLButtonElement>
+  ) => {
+    e.stopPropagation();
+    setSeoTargetGameId(gameId);
+    setSeoConfirmOpen(true);
+  };
+
+  const handleSeoModalOpenChange = (open: boolean) => {
+    setSeoConfirmOpen(open);
+    if (!open) {
+      setSeoTargetGameId(null);
+    }
+  };
 
   // User activity detection (becomes inactive after 60s of no activity)
   const isUserActive = useUserActivity(60000);
@@ -577,6 +606,20 @@ export default function GameManagement() {
                           </button>
                         )}
 
+                        {canGenerateSeo && (
+                          <button
+                            type="button"
+                            className="text-black hover:text-black p-1 dark:text-white cursor-pointer disabled:opacity-50"
+                            title="Generate SEO"
+                            disabled={
+                              isTriggering && seoTargetGameId === game.id
+                            }
+                            onClick={(e) => handleOpenSeoForGame(game.id, e)}
+                          >
+                            <Sparkles className="cursor-pointer w-[18px] h-[18px]" />
+                          </button>
+                        )}
+
                         {/* View button - available for all users */}
                         <button
                           className="text-black hover:text-black p-1 dark:text-white cursor-pointer"
@@ -983,6 +1026,13 @@ export default function GameManagement() {
       )}
 
 
+
+      <GenerateSeoConfirmationModal
+        open={seoConfirmOpen}
+        onOpenChange={handleSeoModalOpenChange}
+        onConfirm={handleConfirmGenerateSeo}
+        isConfirming={isTriggering}
+      />
 
       {/* Delete Confirmation Modal */}
       <DeleteConfirmationModal

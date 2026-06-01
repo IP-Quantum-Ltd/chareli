@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Formik, Form, Field, ErrorMessage } from 'formik';
 import { object as yupObject, string as yupString, number as yupNumber } from 'yup';
@@ -8,18 +8,19 @@ import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
 import { SearchableSelect } from '../../components/ui/searchable-select';
 import { useProposalById, useUpdateProposal, useDismissFeedback, useReviseProposal } from '../../backend/proposal.service';
-import { useGameById, useUpdateGame, useRunAgentSeo } from '../../backend/games.service';
+import { useGameById, useUpdateGame } from '../../backend/games.service';
 import { useCategories } from '../../backend/category.service';
 import { toast } from 'sonner';
 import { RichTextEditor } from '../../components/ui/RichTextEditor';
 import { GameBreadcrumb } from '../../components/single/GameBreadcrumb';
 import UppyUpload from '../../components/single/UppyUpload';
-import { X, AlertCircle, RefreshCcw, Sparkles, Loader2, CheckCircle2 } from 'lucide-react';
+import { X, AlertCircle, RefreshCcw } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import { FAQEditor } from '../../components/admin/FAQEditor';
 import { EditorGameSidebar } from '../../components/admin/EditorGameSidebar';
 import { usePermissions } from '../../hooks/usePermissions';
 import { useWebSocket } from '../../hooks/useWebSocket';
+import { useAgentSeoTrigger } from '../../hooks/useAgentSeoTrigger';
 import { GenerateSeoConfirmationModal } from '../../components/modals/GenerateSeoConfirmationModal';
 
 // ... other imports
@@ -44,8 +45,6 @@ interface UploadedFile {
   publicUrl: string;
   key: string;
 }
-
-const AGENT_SEO_COMPLETION_TIMEOUT_MS = 5 * 60 * 1000;
 
 const validationSchema = yupObject({
   title: yupString().required('Title is required').trim(),
@@ -102,58 +101,21 @@ export default function EditGame() {
   const updateProposal = useUpdateProposal();
   const permissions = usePermissions();
   const reviseProposal = useReviseProposal();
-  const runAgentSeo = useRunAgentSeo();
-  const [seoStatus, setSeoStatus] = useState<'idle' | 'running' | 'completed' | 'failed'>('idle');
-  const [seoConfirmOpen, setSeoConfirmOpen] = useState(false);
 
   useWebSocket();
 
-  useEffect(() => {
-    if (!gameId) return;
-    const handleSeoComplete = (e: Event) => {
-      const { gameId: completedGameId } = (e as CustomEvent<{ gameId: string }>).detail;
-      if (completedGameId !== gameId) return;
-      setSeoStatus('completed');
-      toast.success('SEO metadata ready — new proposal awaiting review');
-    };
-    window.addEventListener('agent-seo-complete', handleSeoComplete);
-    return () => window.removeEventListener('agent-seo-complete', handleSeoComplete);
-  }, [gameId]);
-
-  useEffect(() => {
-    if (seoStatus !== 'running') return;
-
-    const timeoutId = setTimeout(() => {
-      setSeoStatus('idle');
-      toast.warning(
-        'Timed out waiting for SEO completion. The job may still finish — check proposals.'
-      );
-    }, AGENT_SEO_COMPLETION_TIMEOUT_MS);
-
-    return () => clearTimeout(timeoutId);
-  }, [seoStatus]);
-
-  const handleGenerateSeo = async () => {
-    if (!gameId) return;
-    setSeoStatus('running');
-    try {
-      await runAgentSeo.mutateAsync(gameId);
-      toast.success('Agent SEO job triggered');
-    } catch {
-      setSeoStatus('failed');
-      toast.error('Failed to trigger agent SEO');
-    }
-  };
-
-  const handleConfirmGenerateSeo = async () => {
-    setSeoConfirmOpen(false);
-    await handleGenerateSeo();
-  };
-
-  const canGenerateSeo =
-    !!gameId &&
-    !proposalId &&
-    (permissions.isAdmin || permissions.isSuperAdmin);
+  const {
+    canTrigger: canGenerateSeo,
+    seoStatus,
+    seoConfirmOpen,
+    setSeoConfirmOpen,
+    openConfirm,
+    handleConfirm: handleConfirmGenerateSeo,
+    isTriggering,
+  } = useAgentSeoTrigger({
+    gameId: gameId ?? null,
+    disabled: !!proposalId,
+  });
 
   const handleRevise = async () => {
     if (!proposalId) return;
@@ -626,36 +588,6 @@ export default function EditGame() {
                   />
                 </div>
 
-                {/* SEO metadata generation — game edit only, admin/superadmin */}
-                {canGenerateSeo && !isReadOnly && (
-                  <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                    <div>
-                      <h3 className="text-sm font-medium text-gray-900 dark:text-white">
-                        SEO metadata
-                      </h3>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        Runs the SEO agent for this game. Results arrive as a proposal for review and are not applied to this form automatically.
-                      </p>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="border-[#475568] text-[#475568] flex items-center gap-2 dark:text-white shrink-0 disabled:opacity-50"
-                      onClick={() => setSeoConfirmOpen(true)}
-                      disabled={seoStatus === 'running'}
-                    >
-                      {seoStatus === 'running' ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : seoStatus === 'completed' ? (
-                        <CheckCircle2 className="w-4 h-4 text-green-500" />
-                      ) : (
-                        <Sparkles className="w-4 h-4" />
-                      )}
-                      {seoStatus === 'running' ? 'SEO Running...' : 'Generate SEO'}
-                    </Button>
-                  </div>
-                )}
-
                 {/* Game Description */}
                 <div className="space-y-2">
                   <Label htmlFor="description">Game Description</Label>
@@ -773,16 +705,28 @@ export default function EditGame() {
                 </div>
 
                 {/* Action Buttons */}
-                <div className="flex justify-end gap-3 pt-4 border-t dark:border-gray-700 pointer-events-auto">
-                 {/* Re-enable pointer events for buttons so user can leave */}
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => navigate(proposalId ? '/admin/my-proposals' : `/admin/view-game/${gameId}`)}
-                  >
-                    {isReadOnly ? 'Back to List' : 'Cancel'}
-                  </Button>
-                  {!isReadOnly && (
+                <div className="flex justify-between items-center gap-3 pt-4 border-t dark:border-gray-700 pointer-events-auto">
+                  <div>
+                    {canGenerateSeo && !isReadOnly && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={openConfirm}
+                        disabled={isTriggering}
+                      >
+                        {seoStatus === 'running' ? 'SEO Running...' : 'Generate SEO'}
+                      </Button>
+                    )}
+                  </div>
+                  <div className="flex gap-3">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => navigate(proposalId ? '/admin/my-proposals' : `/admin/view-game/${gameId}`)}
+                    >
+                      {isReadOnly ? 'Back to List' : 'Cancel'}
+                    </Button>
+                    {!isReadOnly && (
                       <Button
                         type="submit"
                         disabled={isSubmitting || isUploading.thumbnail || isUploading.game}
@@ -792,7 +736,8 @@ export default function EditGame() {
                           ? (permissions?.isEditor ? 'Submitting...' : 'Saving...')
                           : (permissions?.isEditor ? 'Submit for Review' : 'Save Changes')}
                       </Button>
-                  )}
+                    )}
+                  </div>
                 </div>
               </Form>
             )}
@@ -811,7 +756,7 @@ export default function EditGame() {
         open={seoConfirmOpen}
         onOpenChange={setSeoConfirmOpen}
         onConfirm={handleConfirmGenerateSeo}
-        isConfirming={seoStatus === 'running' || runAgentSeo.isPending}
+        isConfirming={isTriggering}
       />
     </div>
   );
