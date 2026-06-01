@@ -113,7 +113,7 @@ cd Server
 pnpm exec jest src/controllers/__tests__/agentSeo.test.ts src/services/__tests__/aiAgent.service.test.ts --runInBand
 ```
 
-Expected: **2 suites, 7 tests, all passing**.
+Expected: **2 suites, 7 tests, all passing**. See **[agent_seo_test_results.md](./agent_seo_test_results.md)** for the dedicated test results report.
 
 ### 4.2 Test matrix
 
@@ -154,7 +154,7 @@ Expected: **2 suites, 7 tests, all passing**.
 - [ ] Manual trigger emits `agent-seo-started`; auto does not (intentional)
 - [ ] Agent failures on auto path do not fail the create response (fire-and-forget)
 - [ ] Manual agent failures surface to client via API error (handler calls `next`)
-- [ ] Tests pass locally with command in §4.1
+- [x] Tests pass locally with command in §4.1 (see [agent_seo_test_results.md](./agent_seo_test_results.md) — 7/7 passed on 2026-06-01)
 
 ---
 
@@ -173,3 +173,4 @@ Expected: **2 suites, 7 tests, all passing**.
 - Route: `Server/src/routes/gameRoutes.ts` — `POST /:id/run-agent-seo`
 - Swagger: `runAgentSeoOnGame` in `gameController.ts`
 - Client API: `useRunAgentSeo` in `Client/src/backend/games.service.ts`
+
